@@ -1,0 +1,629 @@
+<script setup>
+import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  Pause, Play, Bell, BellOff, Check, X, Minus, Plus,
+  Settings2, NotebookPen, Timer, Hourglass,
+  Headphones, PenLine, RotateCcw, BookMarked,
+} from 'lucide-vue-next'
+import FocusRing from '../components/FocusRing.vue'
+import SubjectIcon from '../components/SubjectIcon.vue'
+import { useTimerStore } from '../stores/timer'
+import { useAppStore } from '../stores/app'
+import { useSubjectsStore } from '../stores/subjects'
+import {
+  DURATIONS, MIN_DURATION, MAX_DURATION, ACTIVITIES,
+} from '../data/subjects'
+import { fmtClock } from '../utils/date'
+import { useToast } from '../composables/useToast'
+
+const timer = useTimerStore()
+const app = useAppStore()
+const subjects = useSubjectsStore()
+const { toast } = useToast()
+const router = useRouter()
+
+const ACT_ICONS = { Headphones, PenLine, RotateCcw, BookMarked }
+
+// idle 配置
+const mode = ref(timer.current?.mode || 'timer')
+const subjId = ref(timer.current?.subjectId || '')
+const activity = ref(timer.current?.activityType || '')
+const plan = ref(timer.current?.mode === 'timer' ? timer.current.plannedMin || 25 : 25)
+const customOpen = ref(false)
+const customVal = ref(40)
+
+const sheet = ref(false) // false | 'confirm' | 'done'
+const note = ref('')
+const finished = ref(null)
+
+const phase = computed(() =>
+  !timer.current ? 'idle' : timer.isPaused ? 'paused' : 'focusing'
+)
+const currentSubject = computed(
+  () =>
+    subjects.byId[timer.current?.subjectId || subjId.value] ||
+    subjects.active[0]
+)
+const currentActivity = computed(() =>
+  ACTIVITIES.find((a) => a.id === (timer.current?.activityType ?? activity.value))
+)
+const isStopwatch = computed(() =>
+  phase.value === 'idle' ? mode.value === 'stopwatch' : timer.current?.mode === 'stopwatch'
+)
+const ringColor = computed(() => {
+  if (phase.value === 'paused') return '#94a3b8'
+  return isStopwatch.value ? '#3a7fc4' : '#f2705b'
+})
+const ringStart = computed(() => (isStopwatch.value ? '#82b4e8' : '#ff9d8a'))
+const ringProgress = computed(() => {
+  if (phase.value === 'idle') return 0
+  if (timer.current?.mode === 'stopwatch') return (timer.elapsedSec % 60) / 60
+  return timer.progress
+})
+const displayTime = computed(() => {
+  if (phase.value === 'idle')
+    return isStopwatch.value ? '00:00' : fmtClock(plan.value * 60)
+  if (timer.current?.mode === 'stopwatch') return fmtClock(timer.elapsedSec)
+  return fmtClock(timer.remainingSec)
+})
+const phaseText = computed(
+  () => ({ idle: '准备开始', focusing: '专注中', paused: '已暂停' }[phase.value])
+)
+
+function start() {
+  if (!subjects.active.length) {
+    toast('请先添加一个科目')
+    return
+  }
+  const subjectId = subjId.value || subjects.active[0].id
+  timer.start({
+    subjectId,
+    mode: mode.value,
+    plannedMin: plan.value,
+    activityType: activity.value,
+  })
+  toast(mode.value === 'stopwatch' ? '开始正向计时，大雪深埋' : '开始专注，大雪深埋')
+}
+function toggle() {
+  if (timer.isPaused) timer.resume()
+  else timer.pause()
+}
+function openConfirm() {
+  note.value = ''
+  sheet.value = 'confirm'
+}
+async function record() {
+  const s = await timer.finish(false, note.value)
+  finished.value = s
+  sheet.value = 'done'
+  toast('已记录这次专注')
+}
+function giveup() {
+  timer.abort()
+  sheet.value = false
+  toast('已放弃，不计入记录')
+}
+function goMistake() {
+  const s = finished.value
+  sheet.value = false
+  router.push({
+    path: '/mistake/edit',
+    query: {
+      subjectId: s?.subjectId || '',
+      sessionId: s?.id || '',
+      date: s?.date || '',
+    },
+  })
+}
+function stepCustom(d) {
+  let v = (Number(customVal.value) || 25) + d
+  v = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(v)))
+  customVal.value = v
+  plan.value = v
+}
+function applyCustom() {
+  let v = Number(customVal.value)
+  if (!Number.isFinite(v)) v = 25
+  v = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(v)))
+  customVal.value = v
+  plan.value = v
+  customOpen.value = false
+}
+
+async function toggleNotify() {
+  if (!('Notification' in window)) {
+    toast('当前浏览器不支持通知')
+    return
+  }
+  if (Notification.permission === 'granted') {
+    app.setNotifyEnabled(!app.notifyEnabled)
+    toast(app.notifyEnabled ? '已开启到点通知' : '已关闭通知')
+    return
+  }
+  const p = await Notification.requestPermission()
+  if (p === 'granted') {
+    app.setNotifyEnabled(true)
+    toast('已开启到点通知')
+  } else {
+    toast('未获得通知权限')
+  }
+}
+
+let lastAt = 0
+watch(
+  () => timer.lastFinished?.at,
+  (at) => {
+    if (!at || at === lastAt) return
+    lastAt = at
+    if (timer.lastFinished.auto) toast('一颗番茄完成，休息一下吧')
+  }
+)
+</script>
+
+<template>
+  <div>
+    <div class="nav">
+      <div>
+        <div class="nav-title">专注</div>
+        <div class="nav-sub">沉潜一刻，静水流深</div>
+      </div>
+      <button class="notify-btn" @click="toggleNotify">
+        <component :is="app.notifyEnabled ? Bell : BellOff" :size="18" :stroke-width="2.2" />
+      </button>
+    </div>
+
+    <div class="page focus-page">
+      <!-- 计时环 -->
+      <div class="focus-hero" :class="{ sw: isStopwatch && phase !== 'idle' }">
+        <FocusRing
+          :progress="ringProgress"
+          :color="ringColor"
+          :start-color="ringStart"
+          :size="264"
+        >
+          <div class="clock tnum">{{ displayTime }}</div>
+          <div class="clock-phase">
+            <span class="phase-dot" :style="{ background: currentSubject?.color }"></span>
+            {{ currentSubject?.name }}<template v-if="currentActivity"> · {{ currentActivity.name }}</template>
+            · {{ phaseText }}
+          </div>
+        </FocusRing>
+
+        <template v-if="phase !== 'idle'">
+          <div class="active-controls">
+            <button class="ctl-main" @click="toggle">
+              <component :is="timer.isPaused ? Play : Pause" :size="22" :stroke-width="2.4" />
+              <span>{{ timer.isPaused ? '继续' : '暂停' }}</span>
+            </button>
+            <button class="ctl-end" @click="openConfirm">结束</button>
+          </div>
+        </template>
+      </div>
+
+      <!-- idle 配置 -->
+      <template v-if="phase === 'idle'">
+        <!-- 模式切换 -->
+        <div class="mode-switch">
+          <button
+            class="mode-btn"
+            :class="{ active: mode === 'timer' }"
+            @click="mode = 'timer'"
+          >
+            <Hourglass :size="16" />
+            <span>倒计时</span>
+            <small>到点自动结束</small>
+          </button>
+          <button
+            class="mode-btn"
+            :class="{ active: mode === 'stopwatch' }"
+            @click="mode = 'stopwatch'"
+          >
+            <Timer :size="16" />
+            <span>正向计时</span>
+            <small>无上限，手动结束</small>
+          </button>
+        </div>
+
+        <!-- 科目 -->
+        <div class="card">
+          <div class="cfg-head">
+            <div class="cfg-label">选择科目</div>
+            <button class="cfg-manage" @click="router.push('/subjects')">
+              <Settings2 :size="13" />管理
+            </button>
+          </div>
+          <div class="pill-row">
+            <button
+              v-for="s in subjects.active"
+              :key="s.id"
+              class="pill"
+              :class="{ active: (subjId || subjects.active[0]?.id) === s.id }"
+              :style="(subjId || subjects.active[0]?.id) === s.id ? { background: s.color } : {}"
+              @click="subjId = s.id"
+            >
+              <SubjectIcon :name="s.icon" :size="15" />
+              <span>{{ s.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 学习类型 -->
+        <div class="card">
+          <div class="cfg-label">这次在做什么</div>
+          <div class="pill-row">
+            <button
+              v-for="a in ACTIVITIES"
+              :key="a.id"
+              class="pill"
+              :class="{ active: activity === a.id }"
+              :style="activity === a.id ? { background: a.color } : {}"
+              @click="activity = activity === a.id ? '' : a.id"
+            >
+              <component :is="ACT_ICONS[a.icon]" :size="14" />
+              <span>{{ a.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 倒计时时长（正向计时不显示） -->
+        <div v-if="mode === 'timer'" class="card">
+          <div class="cfg-label">专注时长（分钟）</div>
+          <div class="pill-row">
+            <button
+              v-for="d in DURATIONS"
+              :key="d"
+              class="pill"
+              :class="{ active: !customOpen && plan === d }"
+              :style="!customOpen && plan === d ? { background: 'var(--tomato)' } : {}"
+              @click="customOpen = false; plan = d"
+            >
+              {{ d }}
+            </button>
+            <button
+              class="pill"
+              :class="{ active: customOpen }"
+              :style="customOpen ? { background: 'var(--tomato)' } : {}"
+              @click="customOpen = true; customVal = plan"
+            >
+              自定义
+            </button>
+          </div>
+          <div v-if="customOpen" class="custom-box">
+            <button class="step-btn" @click="stepCustom(-5)"><Minus :size="16" /></button>
+            <input
+              v-model.number="customVal"
+              class="custom-input tnum"
+              type="number"
+              :min="MIN_DURATION"
+              :max="MAX_DURATION"
+              @keyup.enter="applyCustom"
+            />
+            <button class="step-btn" @click="stepCustom(5)"><Plus :size="16" /></button>
+            <button class="btn btn-primary btn-sm" @click="applyCustom">
+              <Check :size="15" />确定
+            </button>
+          </div>
+          <div class="range-hint">可设 {{ MIN_DURATION }}–{{ MAX_DURATION }} 分钟</div>
+        </div>
+
+        <button
+          class="btn btn-block start-btn"
+          :class="mode === 'stopwatch' ? 'btn-primary' : 'btn-tomato'"
+          @click="start"
+        >
+          <Play :size="20" :stroke-width="2.6" />
+          <span>{{ mode === 'stopwatch' ? '开始正向计时' : `开始 ${plan} 分钟专注` }}</span>
+        </button>
+      </template>
+
+      <!-- 专注中的提示 -->
+      <div v-else class="focus-tip">
+        <span v-if="phase === 'focusing'">
+          {{ isStopwatch ? '正向计时中，沉下心，慢慢啃。' : '保持专注，手机放下，世界与你无关。' }}
+        </span>
+        <span v-else>已暂停，随时继续。</span>
+      </div>
+    </div>
+
+    <!-- 结束确认 -->
+    <div v-if="sheet" class="mask" @click.self="sheet = false">
+      <div class="sheet">
+        <!-- 记录前 -->
+        <template v-if="sheet === 'confirm'">
+          <div class="sheet-title">结束这次专注？</div>
+          <div class="sheet-sub">
+            你已专注 <b class="tnum">{{ Math.floor(timer.elapsedSec / 60) }} 分 {{ timer.elapsedSec % 60 }} 秒</b>
+          </div>
+          <textarea
+            v-model="note"
+            class="note-input"
+            rows="2"
+            placeholder="备注：做了哪套真题 / 哪一章（可选）"
+          ></textarea>
+          <button class="btn btn-tomato btn-block mt12" @click="record">
+            <Check :size="18" />记录并结束（按实际时长）
+          </button>
+          <button class="btn btn-danger btn-block mt8" @click="giveup">
+            <X :size="18" />放弃（不记录）
+          </button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = false">继续专注</button>
+        </template>
+
+        <!-- 记录后 -->
+        <template v-else>
+          <div class="done-ic"><Check :size="30" :stroke-width="3" /></div>
+          <div class="sheet-title">已记录</div>
+          <div class="sheet-sub">
+            实际专注 <b class="tnum">{{ Math.floor((finished?.actualSec || 0) / 60) }} 分 {{ (finished?.actualSec || 0) % 60 }} 秒</b>
+          </div>
+          <button class="btn btn-primary btn-block" @click="goMistake">
+            <NotebookPen :size="18" />顺手记一道错题
+          </button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = false">完成</button>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.focus-page {
+  padding-top: 4px;
+}
+.notify-btn {
+  margin-left: auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.focus-hero {
+  background: linear-gradient(160deg, #2b2f45 0%, #1c2238 55%, #161b2e 100%);
+  border-radius: 26px;
+  padding: 26px 18px 22px;
+  box-shadow: 0 16px 34px rgba(22, 27, 46, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.focus-hero.sw {
+  background: linear-gradient(160deg, #1f3b5c 0%, #16294d 55%, #10203f 100%);
+}
+.clock {
+  font-size: 56px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 1px;
+  line-height: 1.1;
+}
+.clock-phase {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.phase-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.active-controls {
+  display: flex;
+  gap: 14px;
+  margin-top: 24px;
+  width: 100%;
+  padding: 0 10px;
+}
+.ctl-main {
+  flex: 1;
+  border: none;
+  border-radius: 15px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #ff8a72, var(--tomato-deep));
+  box-shadow: 0 8px 20px rgba(224, 82, 63, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.ctl-end {
+  width: 104px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 模式切换 */
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mode-btn {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  border-radius: 16px;
+  padding: 13px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--sub);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mode-btn span {
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mode-btn small {
+  font-size: 11px;
+  color: var(--faint);
+  font-weight: 500;
+}
+.mode-btn.active {
+  border-color: var(--primary);
+  background: #eef5fd;
+  color: var(--primary-deep);
+}
+
+.cfg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.cfg-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+.cfg-manage {
+  border: none;
+  background: none;
+  color: var(--faint);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.pill {
+  padding: 9px 15px;
+}
+.custom-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.step-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.custom-input {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+.range-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.start-btn {
+  margin-top: 14px;
+  font-size: 17px;
+  padding: 16px;
+}
+.focus-tip {
+  text-align: center;
+  color: var(--faint);
+  font-size: 13px;
+  margin-top: 18px;
+}
+
+.note-input {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  background: #f8fafc;
+}
+.note-input:focus {
+  border-color: var(--primary);
+}
+.done-ic {
+  width: 58px;
+  height: 58px;
+  margin: 4px auto 10px;
+  border-radius: 50%;
+  background: #e6f7ef;
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 底部弹层 */
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 150;
+  animation: fade 0.15s ease;
+}
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border-radius: 22px 22px 0 0;
+  padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+  animation: up 0.2s ease;
+}
+@keyframes up {
+  from { transform: translateY(40px); }
+  to { transform: translateY(0); }
+}
+.sheet-title {
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+}
+.sheet-sub {
+  text-align: center;
+  color: var(--sub);
+  font-size: 13px;
+  margin: 8px 0 14px;
+}
+</style>

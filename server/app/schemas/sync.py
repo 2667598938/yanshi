@@ -1,0 +1,19 @@
+"""学习数据同步入参（字段名与前端同步引擎保持 camelCase）。"""
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class Change(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    id: str = Field(min_length=1, max_length=500)
+    expectedRevision: int = Field(ge=0)
+    # 必填：可以是记录对象（dict）或 null（删除）
+    record: Any = Field(...)
+
+
+class SyncCommand(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    operationId: str = Field(min_length=1, max_length=100)
+    changes: list[Change] = Field(min_length=1, max_length=200)

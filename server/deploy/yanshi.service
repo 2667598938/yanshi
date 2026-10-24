@@ -1,0 +1,19 @@
+[Unit]
+Description=Yanshi (研时) FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/yanshi-server
+EnvironmentFile=/root/yanshi-server/.env
+# SQLite 单文件 + 同步写锁：固定 1 个 worker 最稳，避免跨进程写锁（4 人私密足够）
+ExecStart=/root/yanshi-server/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=3
+# 日志
+StandardOutput=append:/var/log/yanshi.log
+StandardError=append:/var/log/yanshi.log
+
+[Install]
+WantedBy=multi-user.target
