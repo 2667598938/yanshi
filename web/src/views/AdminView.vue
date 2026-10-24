@@ -1,7 +1,10 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Copy, Plus, UserPlus, Megaphone, Users, Trash2, Ban, KeyRound } from 'lucide-vue-next'
+import {
+  ArrowLeft, Copy, Plus, UserPlus, Megaphone, Users, Trash2, Ban, KeyRound,
+  Crown, ClipboardCheck, Check, X,
+} from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { adminApi } from '../api'
 import { SCHOOL_MAP } from '../data/schools'
@@ -15,14 +18,20 @@ const overview = ref(null)
 const members = ref([])
 const invites = ref([])
 const announcements = ref([])
+const requests = ref([])
+const requestFilter = ref('pending')
 const tab = ref('invite')
 
 const sheet = ref(null)
-const inviteForm = ref({ remark: '', expires_days: '' })
+const inviteForm = ref({ remark: '', expires_days: '', vip_days: '' })
 const memberForm = ref({ email: '', nickname: '', password: '' })
 const announcementForm = ref('')
 const resetTarget = ref(null)
 const newPwd = ref('')
+const vipTarget = ref(null)
+const vipForm = ref({ action: 'grant', days: 30, note: '' })
+const reviewTarget = ref(null)
+const reviewNote = ref('')
 
 function fmtBytes(n) {
   if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB'
@@ -47,6 +56,78 @@ async function loadAll() {
   }
 }
 
+async function loadRequests(status = requestFilter.value) {
+  requestFilter.value = status
+  try {
+    requests.value = await adminApi.requests(status)
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+function switchTab(next) {
+  tab.value = next
+  if (next === 'request') loadRequests('pending')
+}
+
+function openVip(m) {
+  vipTarget.value = m
+  vipForm.value = { action: 'grant', days: 30, note: '' }
+  sheet.value = 'vip'
+}
+
+async function submitVip() {
+  const f = vipForm.value
+  if (f.note.trim().length < 5) return toast('请填写至少 5 个字的操作备注')
+  const payload = { vip_action: f.action, note: f.note.trim() }
+  if (f.action !== 'revoke') payload.vip_days = Number(f.days) || 30
+  try {
+    const row = await adminApi.updateMember(vipTarget.value.id, payload)
+    Object.assign(vipTarget.value, row)
+    if (overview.value) overview.value.vip_count = members.value.filter((x) => x.is_vip).length
+    sheet.value = null
+    toast(`${row.nickname} ${f.action === 'revoke' ? '已降级' : '会员已更新'}`)
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function approveRequest(r) {
+  try {
+    const row = await adminApi.reviewRequest(r.id, { action: 'approve', note: '' })
+    Object.assign(r, row)
+    if (requestFilter.value !== row.status) {
+      requests.value = requests.value.filter((x) => x.id !== row.id)
+    }
+    toast('已通过')
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+function openReject(r) {
+  reviewTarget.value = r
+  reviewNote.value = ''
+  sheet.value = 'reject'
+}
+
+async function submitReject() {
+  if (!reviewNote.value.trim()) return toast('请填写驳回原因')
+  try {
+    const row = await adminApi.reviewRequest(reviewTarget.value.id, {
+      action: 'reject', note: reviewNote.value.trim(),
+    })
+    Object.assign(reviewTarget.value, row)
+    if (requestFilter.value !== row.status) {
+      requests.value = requests.value.filter((x) => x.id !== row.id)
+    }
+    sheet.value = null
+    toast('已驳回')
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
 async function copyCode(code) {
   try {
     await navigator.clipboard.writeText(code)
@@ -60,10 +141,11 @@ async function createInvite() {
   try {
     const payload = { remark: inviteForm.value.remark }
     if (inviteForm.value.expires_days) payload.expires_days = Number(inviteForm.value.expires_days)
+    if (inviteForm.value.vip_days) payload.vip_days = Number(inviteForm.value.vip_days)
     const row = await adminApi.createInvite(payload)
     invites.value.unshift(row)
     sheet.value = null
-    inviteForm.value = { remark: '', expires_days: '' }
+    inviteForm.value = { remark: '', expires_days: '', vip_days: '' }
     toast('邀请码已生成：' + row.code)
   } catch (e) {
     toast(e.message)
@@ -168,17 +250,18 @@ onMounted(() => {
       <!-- 概览 -->
       <div v-if="overview" class="ov-grid">
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}/{{ overview.room_capacity }}</div><div class="ov-l">成员</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.vip_count || 0 }}</div><div class="ov-l">VIP</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.online_count }}</div><div class="ov-l">在线</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtSec(overview.total_focus_sec) }}</div><div class="ov-l">累计专注</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtBytes(overview.attachment_bytes) }}</div><div class="ov-l">图片占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.record_count }}</div><div class="ov-l">同步记录</div></div>
-        <div class="ov"><div class="ov-n tnum">{{ overview.conversation_count }}</div><div class="ov-l">AI 会话</div></div>
       </div>
 
       <div class="tabs">
-        <button :class="{ on: tab === 'invite' }" @click="tab = 'invite'">邀请码</button>
-        <button :class="{ on: tab === 'member' }" @click="tab = 'member'">成员</button>
-        <button :class="{ on: tab === 'announce' }" @click="tab = 'announce'">公告</button>
+        <button :class="{ on: tab === 'invite' }" @click="switchTab('invite')">邀请码</button>
+        <button :class="{ on: tab === 'member' }" @click="switchTab('member')">成员</button>
+        <button :class="{ on: tab === 'request' }" @click="switchTab('request')">审批</button>
+        <button :class="{ on: tab === 'announce' }" @click="switchTab('announce')">公告</button>
       </div>
 
       <!-- 邀请码 -->
@@ -190,6 +273,7 @@ onMounted(() => {
             <div class="invite-sub">
               <span v-if="c.is_used" class="tag tag-used">已使用</span>
               <span v-else class="tag tag-new">可用</span>
+              <span v-if="c.vip_days" class="tag tag-vip">VIP +{{ c.vip_days }}天</span>
               {{ c.remark || '无备注' }}
               <span v-if="c.expires_at"> · 有效期至 {{ c.expires_at.slice(0, 10) }}</span>
             </div>
@@ -208,15 +292,49 @@ onMounted(() => {
             <div class="member-name">
               {{ m.nickname }}
               <span v-if="m.role === 'admin'" class="tag tag-admin">管理员</span>
+              <span v-if="m.is_vip" class="tag tag-vip">VIP</span>
               <span v-if="m.status === 'banned'" class="tag tag-ban">已封禁</span>
               <span v-if="m.status === 'deleted'" class="tag tag-used">已注销</span>
             </div>
-            <div class="member-sub">{{ m.email }} · {{ SCHOOL_MAP[m.target_school]?.short || '未填梦校' }}</div>
+            <div class="member-sub">
+              {{ m.email }} · {{ SCHOOL_MAP[m.target_school]?.short || '未填梦校' }}
+              <span v-if="m.is_vip"> · 到期 {{ m.vip_until?.slice(0, 10) }}</span>
+            </div>
           </div>
           <div class="member-actions">
+            <button class="mini" title="会员调整" @click="openVip(m)"><Crown :size="15" /></button>
             <button class="mini" title="重置密码" @click="sheet = 'reset'; resetTarget = m; newPwd = ''"><KeyRound :size="15" /></button>
             <button v-if="m.role !== 'admin'" class="mini" title="封禁/恢复" @click="toggleBan(m)"><Ban :size="15" /></button>
             <button v-if="m.role !== 'admin'" class="mini danger" title="删除" @click="removeMember(m)"><Trash2 :size="15" /></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 审批 -->
+      <div v-if="tab === 'request'" class="card">
+        <div class="seg">
+          <button :class="{ on: requestFilter === 'pending' }" @click="loadRequests('pending')">待审核</button>
+          <button :class="{ on: requestFilter === 'approved' }" @click="loadRequests('approved')">已通过</button>
+          <button :class="{ on: requestFilter === 'rejected' }" @click="loadRequests('rejected')">已驳回</button>
+        </div>
+        <div v-if="!requests.length" class="empty">暂无记录</div>
+        <div v-for="r in requests" :key="r.id" class="req-card">
+          <div class="req-top">
+            <span class="req-avatar">{{ r.user.nickname.slice(0, 1) }}</span>
+            <div class="req-user">
+              <div class="req-nick">{{ r.user.nickname }}</div>
+              <div class="req-time">{{ r.created_at?.slice(5, 16).replace('T', ' ') }}</div>
+            </div>
+            <span class="tag tag-feature">{{ r.feature_label }}</span>
+          </div>
+          <div class="req-body">{{ r.reason }}</div>
+          <div v-if="r.review_note" class="req-note">审批备注：{{ r.review_note }}</div>
+          <div v-if="r.status === 'pending'" class="req-actions">
+            <button class="req-reject" @click="openReject(r)"><X :size="14" />驳回</button>
+            <button class="req-approve" @click="approveRequest(r)"><Check :size="14" />通过</button>
+          </div>
+          <div v-else class="req-status">
+            {{ r.status === 'approved' ? '已通过' : '已驳回' }} · {{ r.reviewed_at?.slice(0, 10) }}
           </div>
         </div>
       </div>
@@ -243,6 +361,7 @@ onMounted(() => {
           <div class="sheet-title">生成邀请码</div>
           <label class="sf"><span>备注（发给谁）</span><input v-model="inviteForm.remark" maxlength="50" placeholder="如：室友小王" /></label>
           <label class="sf"><span>有效天数（可空 = 长期）</span><input v-model="inviteForm.expires_days" type="number" min="1" max="365" placeholder="如 7" /></label>
+          <label class="sf"><span>附带 VIP 天数（0 或空 = 仅注册）</span><input v-model="inviteForm.vip_days" type="number" min="0" max="3650" placeholder="如 30" /></label>
           <button class="btn btn-primary btn-block mt16" @click="createInvite">生成</button>
           <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
         </template>
@@ -260,6 +379,39 @@ onMounted(() => {
           <div class="sheet-title">重置「{{ resetTarget?.nickname }}」密码</div>
           <label class="sf"><span>新密码</span><input v-model="newPwd" placeholder="8-64 位含字母数字" /></label>
           <button class="btn btn-primary btn-block mt16" @click="submitReset">确认重置</button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
+        </template>
+
+        <template v-else-if="sheet === 'vip'">
+          <div class="sheet-title">会员调整 · {{ vipTarget?.nickname }}</div>
+          <div class="vip-current">
+            当前状态：{{ vipTarget?.is_vip ? `VIP · ${vipTarget.vip_until?.slice(0, 10)} 到期` : '未开通' }}
+          </div>
+          <div class="seg" style="margin-bottom: 12px">
+            <button :class="{ on: vipForm.action === 'grant' }" @click="vipForm.action = 'grant'">开通</button>
+            <button :class="{ on: vipForm.action === 'renew' }" @click="vipForm.action = 'renew'">续期</button>
+            <button :class="{ on: vipForm.action === 'revoke' }" @click="vipForm.action = 'revoke'">降级</button>
+          </div>
+          <label v-if="vipForm.action !== 'revoke'" class="sf">
+            <span>会员天数</span>
+            <input v-model="vipForm.days" type="number" min="1" max="3650" placeholder="30" />
+          </label>
+          <label class="sf">
+            <span>操作备注（必填 ≥5 字）</span>
+            <input v-model="vipForm.note" maxlength="300" placeholder="如：研友续期一个月" />
+          </label>
+          <button class="btn btn-primary btn-block mt16" @click="submitVip">确认调整</button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
+        </template>
+
+        <template v-else-if="sheet === 'reject'">
+          <div class="sheet-title">驳回申请 · {{ reviewTarget?.feature_label }}</div>
+          <div class="vip-current">{{ reviewTarget?.user.nickname }}：{{ reviewTarget?.reason }}</div>
+          <label class="sf">
+            <span>驳回原因</span>
+            <textarea v-model="reviewNote" class="ta" rows="3" maxlength="300" placeholder="写清楚原因，申请人可见"></textarea>
+          </label>
+          <button class="btn btn-danger btn-block mt16" @click="submitReject">确认驳回</button>
           <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
         </template>
 
@@ -290,7 +442,7 @@ onMounted(() => {
 .invite-code { font-size: 19px; font-weight: 800; letter-spacing: 2px; color: var(--ink); }
 .invite-sub, .member-sub { font-size: 12px; color: var(--faint); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .member-name { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
-.member-actions { display: flex; gap: 6px; }
+.member-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .mini { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--sub); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .mini.danger { color: var(--red); }
 .tag { font-size: 10px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
@@ -298,6 +450,27 @@ onMounted(() => {
 .tag-used { background: #eef1f6; color: var(--faint); }
 .tag-admin { background: #fff3df; color: var(--accent-deep); }
 .tag-ban { background: #fdecec; color: var(--red); }
+.tag-vip { background: #fff3df; color: #b06000; }
+.tag-feature { background: #eef0fe; color: var(--purple); }
+
+.seg { display: flex; gap: 2px; background: #f1f4fa; border-radius: 10px; padding: 3px; }
+.seg button { flex: 1; border: none; background: transparent; padding: 7px 0; border-radius: 7px; font-size: 12.5px; color: var(--sub); cursor: pointer; }
+.seg button.on { background: #fff; color: var(--primary); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.req-card { padding: 13px 0; border-bottom: 1px solid var(--line); }
+.req-card:last-child { border-bottom: none; }
+.req-top { display: flex; align-items: center; gap: 9px; }
+.req-avatar { width: 30px; height: 30px; border-radius: 50%; background: #e6f0fb; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.req-user { flex: 1; min-width: 0; }
+.req-nick { font-size: 13.5px; font-weight: 700; }
+.req-time { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
+.req-body { margin-top: 9px; font-size: 12.5px; color: var(--sub); line-height: 1.65; background: #f6f9fd; border-radius: 9px; padding: 8px 10px; }
+.req-note { margin-top: 7px; font-size: 11.5px; color: var(--primary-deep); }
+.req-actions { display: flex; gap: 8px; margin-top: 10px; }
+.req-reject, .req-approve { flex: 1; height: 34px; border: none; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.req-reject { background: #f1f4fa; color: var(--sub); }
+.req-approve { background: var(--primary); color: #fff; }
+.req-status { margin-top: 8px; font-size: 11.5px; color: var(--faint); }
+.vip-current { font-size: 12.5px; color: var(--sub); margin-bottom: 12px; line-height: 1.6; }
 .ann-content { font-size: 14px; line-height: 1.6; color: var(--ink); }
 .ann-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--faint); }
 .empty { text-align: center; color: var(--faint); font-size: 13px; padding: 20px 0; }

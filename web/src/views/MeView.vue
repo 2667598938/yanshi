@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   ChevronRight, Pencil, Target, Clock3, Bell, NotebookPen,
   Sparkles, Trash2, Info, Check, ListChecks, Download, Camera,
-  LogOut, ShieldCheck, FileText, BookMarked,
+  LogOut, ShieldCheck, FileText, BookMarked, Crown, ClipboardCheck,
 } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
@@ -34,6 +34,7 @@ const legalTab = ref('terms')
 
 const school = computed(() => SCHOOL_MAP[auth.user?.target_school || app.dreamSchool] || SCHOOL_MAP[app.dreamSchool])
 const avatar = computed(() => auth.user?.avatar_key || '')
+const vipUntil = computed(() => auth.user?.vip_until?.slice(0, 10) || '')
 
 const goals = [
   { min: 120, label: '2 小时' },
@@ -190,6 +191,7 @@ async function toggleNotify() {
 }
 
 onMounted(() => {
+  auth.fetchMe().catch(() => {})
   if (auth.user) {
     app.setNickname(auth.user.nickname)
     if (auth.user.target_school) app.setDreamSchool(auth.user.target_school)
@@ -214,6 +216,7 @@ onMounted(() => {
           <div class="pf-meta">
             <div class="pf-name" @click="open('nickname')">
               {{ auth.user?.nickname || app.nickname }}
+              <span v-if="auth.isVip" class="pf-vip"><Crown :size="11" />VIP</span>
               <Pencil :size="14" class="edit-ic" />
             </div>
             <div class="pf-email">{{ auth.user?.email }}</div>
@@ -277,6 +280,25 @@ onMounted(() => {
           <div class="row" @click="router.push('/ai')">
             <span class="row-ic c-ink"><Sparkles :size="18" /></span>
             <span class="row-label">AI 助教</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 会员与申请 -->
+      <div class="group">
+        <div class="group-title">会员与申请</div>
+        <div class="card menu">
+          <div class="row" @click="router.push('/vip')">
+            <span class="row-ic c-gold"><Crown :size="18" /></span>
+            <span class="row-label">会员中心</span>
+            <span class="row-val">{{ auth.isVip ? `VIP · ${vipUntil} 到期` : '未开通' }}</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/requests')">
+            <span class="row-ic c-blue"><ClipboardCheck :size="18" /></span>
+            <span class="row-label">功能申请</span>
+            <span class="row-val">提交 / 查看进度</span>
             <ChevronRight :size="17" class="row-arrow" />
           </div>
         </div>
@@ -419,6 +441,17 @@ onMounted(() => {
 .cam { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
 .pf-meta { flex: 1; min-width: 0; }
 .pf-name { font-size: 20px; font-weight: 800; display: inline-flex; align-items: center; gap: 7px; }
+.pf-vip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #3a2700;
+  background: linear-gradient(120deg, #ffd88a, #f0a830);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
 .edit-ic { color: rgba(255,255,255,.6); }
 .pf-email { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 2px; }
 .pf-school { font-size: 12px; color: rgba(255,255,255,.66); margin-top: 2px; }

@@ -9,6 +9,11 @@ const routes = [
   { path: '/ai', name: 'ai', component: () => import('../views/AiView.vue'), meta: { title: 'AI', requiresAuth: true } },
   { path: '/me', name: 'me', component: () => import('../views/MeView.vue'), meta: { title: '我的', requiresAuth: true } },
 
+  // 会员 / 功能申请（隐藏底部导航）
+  { path: '/vip', name: 'vip', component: () => import('../views/VipView.vue'), meta: { title: '会员中心', requiresAuth: true, hideTabbar: true } },
+  { path: '/vip/redeem', name: 'vip-redeem', component: () => import('../views/VipRedeemView.vue'), meta: { title: '开通 VIP', requiresAuth: true, hideTabbar: true } },
+  { path: '/requests', name: 'requests', component: () => import('../views/RequestsView.vue'), meta: { title: '功能申请', requiresAuth: true, hideTabbar: true } },
+
   // 登录 / 注册 / 找回（无底部导航）
   { path: '/login', name: 'login', component: () => import('../views/auth/AuthView.vue'), meta: { title: '登录', hideTabbar: true } },
   // 后台管理（仅管理员，页面内二次校验）

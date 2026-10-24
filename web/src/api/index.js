@@ -77,6 +77,18 @@ export const aiApi = {
   deleteConversation: (id) => http.del(`/ai/conversations/${id}`),
 }
 
+// ------------------------------------------------------------ 运营 / 会员
+export const vipApi = {
+  status: () => http.get('/vip/status'),
+  redeem: (code) => http.post('/vip/redeem', { code }),
+}
+
+export const requestApi = {
+  mine: () => http.get('/requests/mine'),
+  create: (body) => http.post('/requests', body),
+  withdraw: (id) => http.post(`/requests/${id}/withdraw`, {}),
+}
+
 // ------------------------------------------------------------ 后台
 export const adminApi = {
   overview: () => http.get('/admin/overview'),
@@ -86,6 +98,8 @@ export const adminApi = {
   resetMemberPassword: (id, new_password) =>
     http.post(`/admin/members/${id}/reset-password`, { new_password }),
   deleteMember: (id) => http.del(`/admin/members/${id}`),
+  requests: (status = 'pending') => http.get('/admin/requests', { query: { status } }),
+  reviewRequest: (id, body) => http.post(`/admin/requests/${id}/review`, body),
   invites: () => http.get('/admin/invites'),
   createInvite: (body) => http.post('/admin/invites', body),
   deleteInvite: (id) => http.del(`/admin/invites/${id}`),

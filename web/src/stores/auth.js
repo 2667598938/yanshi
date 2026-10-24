@@ -21,6 +21,7 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isLoggedIn: (s) => !!s.accessToken && !!s.user,
     isAdmin: (s) => s.user?.role === 'admin',
+    isVip: (s) => !!s.user?.vip_until && new Date(s.user.vip_until) > new Date(),
   },
   actions: {
     persist() {
