@@ -85,6 +85,8 @@ def register(body: RegisterInput, request: Request, db=Depends(get_db)):
         raise ApiError(409, 40901, '该邮箱已注册') from None
     invite.used_by = user.id
     invite.used_at = now
+    if invite.vip_days:
+        user.vip_until = now + timedelta(days=invite.vip_days)
     ensure_member(db, user)  # 注册后自动加入固定四人自习室（满员则拒绝）
 
     audit(db, request, 'auth.register', user_id=user.id)

@@ -1,27 +1,28 @@
 """后台管理接口（仅管理员）：概览、成员、邀请码、配置、公告、审计、数据导出。"""
 import json
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
-from sqlalchemy import delete as sa_delete
+from sqlalchemy import delete as sa_delete, func, select, update as sa_update
 
 from ..deps import audit, get_admin, get_db
 from ..errors import ApiError, ok
 from ..models import (
-    AIConversation, AIMessage, Announcement, Attachment, Audit, Config, Invite,
-    LearningOperation, LearningRecord, RefreshToken, Room, RoomGoal, RoomMember,
+    AIConversation, AIMessage, Announcement, Attachment, Audit, Config, FeatureRequest,
+    Invite, LearningOperation, LearningRecord, RefreshToken, Room, RoomGoal, RoomMember,
     RoomMessage, RoomPresence, User,
 )
 from ..schemas.account import (
     AdminCreateMember, AdminMemberUpdate, AdminResetPassword, AnnouncementInput,
-    AnnouncementUpdate, InviteCreate,
+    AnnouncementUpdate, FeatureRequestReview, InviteCreate,
 )
 from ..serializers import iso
 from ..services import room as room_service
 from ..services.security import hash_password, new_invite_code
 from ..services.transient import digest
 from ..time import utcnow
+from .vip import FEATURE_LABELS
 
 router = APIRouter(prefix='/api/v1/admin', tags=['admin'], dependencies=[Depends(get_admin)])
 
@@ -40,6 +41,7 @@ def invite_dict(row):
     return {
         'id': row.id, 'code': row.hint, 'remark': row.remark,
         'created_by': row.created_by, 'used_by': row.used_by,
+        'vip_days': row.vip_days or 0,
         'used_at': iso(row.used_at), 'expires_at': iso(row.expires_at),
         'created_at': iso(row.created_at),
         'is_used': bool(row.used_at),
@@ -51,7 +53,21 @@ def member_dict(row):
         'id': row.id, 'email': row.email, 'nickname': row.nickname, 'role': row.role,
         'status': row.status, 'target_school': row.target_school, 'exam_year': row.exam_year,
         'avatar_key': row.avatar_key or '', 'daily_goal_min': row.daily_goal_min,
+        'vip_until': iso(row.vip_until),
+        'is_vip': bool(row.vip_until and row.vip_until > utcnow()),
         'created_at': iso(row.created_at), 'last_login_at': iso(row.last_login_at),
+    }
+
+
+def admin_request_dict(row, user):
+    return {
+        'id': row.id, 'feature': row.feature,
+        'feature_label': FEATURE_LABELS.get(row.feature, row.feature),
+        'reason': row.reason, 'status': row.status,
+        'review_note': row.review_note or '',
+        'reviewed_at': iso(row.reviewed_at),
+        'created_at': iso(row.created_at),
+        'user': {'id': user.id, 'nickname': user.nickname, 'email': user.email},
     }
 
 
@@ -87,6 +103,7 @@ def overview(request: Request, db=Depends(get_db)):
 
     return ok({
         'member_count': len(users),
+        'vip_count': sum(1 for u in users if u.vip_until and u.vip_until > utcnow()),
         'room_capacity': room.capacity if room else 0,
         'room_member_count': room_member_count,
         'online_count': online_count,
@@ -155,7 +172,21 @@ def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depend
             user.status = body.status
             if body.status == 'banned':
                 user.token_version += 1     # 强制下线
-    audit(db, request, 'admin.update_member', user_id=uid, detail=body.model_dump_json())
+    if body.vip_action:
+        note = (body.note or '').strip()
+        if len(note) < 5:
+            raise ApiError(400, 40001, '请填写至少 5 个字的操作备注')
+        now = utcnow()
+        days = body.vip_days or 30
+        if body.vip_action == 'grant':
+            user.vip_until = now + timedelta(days=days)
+        elif body.vip_action == 'renew':
+            base = user.vip_until if (user.vip_until and user.vip_until > now) else now
+            user.vip_until = base + timedelta(days=days)
+        else:
+            user.vip_until = None
+    audit(db, request, 'admin.update_member', user_id=uid,
+          detail=body.model_dump_json(exclude_none=True))
     db.commit()
     db.refresh(user)
     return ok(member_dict(user))
@@ -196,6 +227,10 @@ def delete_member(uid: int, request: Request, db=Depends(get_db)):
     db.execute(sa_delete(AIConversation).where(AIConversation.user_id == uid))
     # 上传的附件记录（本地文件孤儿由备份/清理流程处理）
     db.execute(sa_delete(Attachment).where(Attachment.uploader_id == uid))
+    # 功能申请与审批记录
+    db.execute(sa_delete(FeatureRequest).where(FeatureRequest.user_id == uid))
+    db.execute(sa_update(FeatureRequest).where(
+        FeatureRequest.reviewed_by == uid).values(reviewed_by=None))
     audit(db, request, 'admin.delete_member', user_id=uid, detail=user.email)
     db.commit()
     return ok()
@@ -214,10 +249,10 @@ def create_invite(body: InviteCreate, request: Request, db=Depends(get_db),
     code = new_invite_code()
     expires_at = None
     if body.expires_days:
-        from datetime import timedelta
         expires_at = utcnow() + timedelta(days=body.expires_days)
     # 数据库只存哈希；hint 存明文便于管理员复制发给研友（邀请码非密码，本就是分享凭证）
     row = Invite(code_hash=digest(code.upper()), hint=code, remark=body.remark,
+                 vip_days=body.vip_days or 0,
                  created_by=admin.id, expires_at=expires_at)
     db.add(row)
     audit(db, request, 'admin.create_invite', detail=code)
@@ -237,6 +272,37 @@ def delete_invite(invite_id: int, request: Request, db=Depends(get_db)):
     audit(db, request, 'admin.delete_invite', detail=str(invite_id))
     db.commit()
     return ok()
+
+
+# ---------------------------------------------------------------- 功能申请审批
+@router.get('/requests')
+def list_requests(status: str = 'pending', db=Depends(get_db)):
+    query = select(FeatureRequest, User).join(User, FeatureRequest.user_id == User.id)
+    if status != 'all':
+        if status not in ('pending', 'approved', 'rejected', 'withdrawn'):
+            raise ApiError(400, 40001, '未知的申请状态')
+        query = query.where(FeatureRequest.status == status)
+    rows = db.execute(query.order_by(FeatureRequest.id.desc()).limit(200)).all()
+    return ok([admin_request_dict(r, u) for r, u in rows])
+
+
+@router.post('/requests/{rid}/review')
+def review_request(rid: int, body: FeatureRequestReview, request: Request,
+                   db=Depends(get_db), admin=Depends(get_admin)):
+    row = db.get(FeatureRequest, rid)
+    if not row:
+        raise ApiError(404, 40401, '申请不存在')
+    if row.status != 'pending':
+        raise ApiError(400, 40001, '该申请已处理')
+    row.status = 'approved' if body.action == 'approve' else 'rejected'
+    row.review_note = body.note.strip()
+    row.reviewed_by = admin.id
+    row.reviewed_at = utcnow()
+    audit(db, request, 'admin.review_request', user_id=row.user_id,
+          detail=f'{rid} {row.status} {row.review_note}'.strip())
+    db.commit()
+    user = db.get(User, row.user_id)
+    return ok(admin_request_dict(row, user))
 
 
 # ---------------------------------------------------------------- 公告
@@ -325,7 +391,7 @@ def update_config(body: dict, request: Request, db=Depends(get_db), admin=Depend
 def export_data(db=Depends(get_db)):
     users = [{'id': u.id, 'email': u.email, 'nickname': u.nickname, 'role': u.role,
               'status': u.status, 'target_school': u.target_school, 'exam_year': u.exam_year,
-              'created_at': iso(u.created_at)}
+              'vip_until': iso(u.vip_until), 'created_at': iso(u.created_at)}
              for u in db.scalars(select(User).order_by(User.id)).all()]
     records = [{'user_id': r.user_id, 'id': r.id, 'body': json.loads(r.body) if isinstance(r.body, str) else r.body,
                 'revision': r.revision, 'deleted': r.deleted,

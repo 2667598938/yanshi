@@ -5,6 +5,7 @@ import bcrypt
 import jwt
 
 from ..models import RefreshToken
+from ..serializers import iso
 from ..time import utcnow
 from .transient import digest
 
@@ -53,4 +54,6 @@ def user_payload(user):
         'target_school': user.target_school, 'exam_year': user.exam_year,
         'daily_goal_min': user.daily_goal_min, 'exam_date': user.exam_date,
         'notify_enabled': user.notify_enabled,
+        'vip_until': iso(user.vip_until),
+        'is_vip': bool(user.vip_until and user.vip_until > utcnow()),
     }

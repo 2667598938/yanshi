@@ -46,3 +46,18 @@ class Audit(Base):
     user_agent = Column(String(300), default='', server_default='')
     detail = Column(Text, default='', server_default='')
     created_at = Column(DateTime, default=now, nullable=False, index=True)
+
+
+class FeatureRequest(Base):
+    __tablename__ = 'feature_requests'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    feature = Column(String(40), nullable=False)
+    reason = Column(String(500), nullable=False)
+    status = Column(String(16), nullable=False, default='pending', server_default='pending',
+                    index=True)   # pending | approved | rejected | withdrawn
+    review_note = Column(String(300), default='', server_default='')
+    reviewed_by = Column(ForeignKey('users.id'), nullable=True)
+    reviewed_at = Column(DateTime)
+    created_at = Column(DateTime, default=now, nullable=False, index=True)

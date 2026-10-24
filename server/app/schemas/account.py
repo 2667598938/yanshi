@@ -88,6 +88,21 @@ class AdminCreateMember(Strict):
 class InviteCreate(Strict):
     remark: str = Field(default='', max_length=200)
     expires_days: Optional[int] = Field(default=None, ge=1, le=365)
+    vip_days: Optional[int] = Field(default=None, ge=0, le=3650)
+
+
+class VipRedeemInput(Strict):
+    code: str = Field(min_length=1, max_length=32)
+
+
+class FeatureRequestInput(Strict):
+    feature: Literal['ai', 'materials', 'room', 'other']
+    reason: str = Field(min_length=5, max_length=500)
+
+
+class FeatureRequestReview(Strict):
+    action: Literal['approve', 'reject']
+    note: str = Field(default='', max_length=300)
 
 
 class AdminMemberUpdate(Strict):
@@ -95,6 +110,9 @@ class AdminMemberUpdate(Strict):
     target_school: Optional[str] = Field(default=None, max_length=32)
     daily_goal_min: Optional[int] = Field(default=None, ge=1, le=1440)
     status: Optional[Literal['active', 'banned']] = None
+    vip_action: Optional[Literal['grant', 'renew', 'revoke']] = None
+    vip_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    note: Optional[str] = Field(default=None, max_length=300)
 
 
 class AdminResetPassword(Strict):

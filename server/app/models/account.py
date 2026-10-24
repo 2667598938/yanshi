@@ -26,6 +26,8 @@ class User(Base):
     exam_date = Column(String(10), default='', server_default='')   # 空则用系统配置
     notify_enabled = Column(Boolean, default=False, server_default='0', nullable=False)
 
+    vip_until = Column(DateTime)
+
     token_version = Column(Integer, nullable=False, default=0, server_default='0')
     last_login_at = Column(DateTime)
     last_seen_at = Column(DateTime, index=True)
@@ -52,6 +54,7 @@ class Invite(Base):
     created_by = Column(ForeignKey('users.id'), nullable=False)
     used_by = Column(ForeignKey('users.id'), nullable=True)
     remark = Column(String(200), default='', server_default='')
+    vip_days = Column(Integer, nullable=False, default=0, server_default='0')
     expires_at = Column(DateTime)
     used_at = Column(DateTime)
     revoked_at = Column(DateTime)
