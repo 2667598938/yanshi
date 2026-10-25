@@ -6,6 +6,7 @@ import { reactive, toRaw } from 'vue'
 import { db, uid } from '../db'
 import { syncApi } from '../api'
 import { flushCommunity } from './community'
+import { flushMistakeImages } from './attachments'
 import { useAuthStore } from '../stores/auth'
 
 // Vue 的 reactive 会把对象包成 Proxy，IndexedDB 无法克隆 Proxy（DataCloneError）。
@@ -53,9 +54,13 @@ export const syncState = reactive({ pendingConflicts: [] })
 
 function stripLocal(row, type) {
   const { _rev, ...clean } = row
-  if (type === 'mistake' && Array.isArray(clean.images)) {
+  if (type === 'mistake') {
     // Blob 无法 JSON 化，只同步已上传的附件 key
-    clean.images = clean.images.filter((x) => typeof x === 'string')
+    for (const field of ['images', 'answerImages']) {
+      if (Array.isArray(clean[field])) {
+        clean[field] = clean[field].filter((x) => typeof x === 'string')
+      }
+    }
   }
   clean.type = type
   return clean
@@ -322,6 +327,9 @@ export async function syncNow() {
   }
   syncing = true
   try {
+    // 先把离线拍的错题图补传为附件 key，再推送记录
+    const uploaded = await flushMistakeImages()
+    for (const row of uploaded) await enqueueRecord('mistakes', row)
     await flushCommunity()
     await pushOutbox()
     const changed = await pullAll()

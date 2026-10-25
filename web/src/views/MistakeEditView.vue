@@ -9,7 +9,7 @@ import { useMistakesStore } from '../stores/mistakes'
 import { useSubjectsStore } from '../stores/subjects'
 import { useAuthStore } from '../stores/auth'
 import { attachmentApi, errorTypeApi } from '../api'
-import { MISTAKE_REASONS, REVIEW_INTERVALS } from '../data/subjects'
+import { MISTAKE_REASONS, REVIEW_INTERVALS, intervalLabel } from '../data/subjects'
 import { compressImage } from '../utils/image'
 import { todayKey } from '../utils/date'
 import { useToast } from '../composables/useToast'
@@ -29,11 +29,15 @@ const fChapter = ref('')
 const fReason = ref('concept')
 const tags = ref([])
 const images = ref([])
+const answerImages = ref([])
 const fContent = ref('')
+const fIdea = ref('')
+const fAnalysis = ref('')
 const fDate = ref(todayKey())
 const sessionId = ref(null)
 const tagInput = ref('')
 const fileRef = ref(null)
+const answerFileRef = ref(null)
 const customReasons = ref([])
 
 const reasonOptions = computed(() => {
@@ -65,7 +69,10 @@ onMounted(() => {
       fReason.value = m.reason
       tags.value = [...(m.tags || [])]
       images.value = [...(m.images || [])]
+      answerImages.value = [...(m.answerImages || [])]
       fContent.value = m.content
+      fIdea.value = m.idea || ''
+      fAnalysis.value = m.analysis || ''
       fDate.value = m.sourceDate
       sessionId.value = m.sessionId
     }
@@ -90,30 +97,39 @@ function removeTag(t) {
   tags.value = tags.value.filter((x) => x !== t)
 }
 
-async function onPick(e) {
+async function pickInto(list, e) {
   const files = Array.from(e.target.files || [])
   for (const f of files) {
-    if (images.value.length >= 9) {
+    if (list.value.length >= 9) {
       toast('最多 9 张图')
       break
     }
     try {
       const blob = await compressImage(f, 1280, 0.82)
-      images.value.push(blob)
+      list.value.push(blob)
     } catch {
       toast('图片读取失败')
     }
   }
   e.target.value = ''
 }
+function onPick(e) {
+  return pickInto(images, e)
+}
+function onPickAnswer(e) {
+  return pickInto(answerImages, e)
+}
 function removeImg(i) {
   images.value.splice(i, 1)
 }
+function removeAnswerImg(i) {
+  answerImages.value.splice(i, 1)
+}
 
 // 登录后把本地图片上传为附件 key（可跨设备同步）；未登录或失败则保留本地 Blob
-async function resolveImages() {
+async function resolveImages(source) {
   const out = []
-  for (const b of images.value) {
+  for (const b of source.value) {
     if (typeof b === 'string') {
       out.push(b)
       continue
@@ -140,7 +156,10 @@ async function save() {
     reason: fReason.value,
     tags: tags.value,
     content: fContent.value.trim(),
-    images: await resolveImages(),
+    idea: fIdea.value.trim(),
+    analysis: fAnalysis.value.trim(),
+    images: await resolveImages(images),
+    answerImages: await resolveImages(answerImages),
     sourceDate: fDate.value,
   }
   if (!payload.content && !images.value.length) {
@@ -153,7 +172,7 @@ async function save() {
   } else {
     payload.sessionId = sessionId.value
     await mistakes.add(payload)
-    toast(`已收录，将在第 ${REVIEW_INTERVALS[0]} 天提醒复习`)
+    toast(`已收录，将在 ${intervalLabel(REVIEW_INTERVALS[0])}后提醒复习`)
   }
   router.push('/mistakes')
 }
@@ -216,7 +235,7 @@ async function save() {
     </div>
 
     <div class="card">
-      <div class="f-label">题目截图 / 批注（最多 9 张）</div>
+      <div class="f-label">题目图（最多 9 张）</div>
       <div class="img-grid">
         <div v-for="(b, i) in images" :key="i" class="img-cell">
           <BlobImage :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" />
@@ -224,7 +243,7 @@ async function save() {
         </div>
         <button class="img-add" @click="fileRef.click()">
           <ImagePlus :size="24" />
-          <span>加图片</span>
+          <span>加题目图</span>
         </button>
       </div>
       <input
@@ -238,12 +257,50 @@ async function save() {
     </div>
 
     <div class="card">
-      <div class="f-label">题干 / 笔记（可选）</div>
+      <div class="f-label">解析图（最多 9 张）</div>
+      <div class="img-grid">
+        <div v-for="(b, i) in answerImages" :key="i" class="img-cell">
+          <BlobImage :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" />
+          <button class="img-del" @click="removeAnswerImg(i)"><X :size="14" /></button>
+        </div>
+        <button class="img-add" @click="answerFileRef.click()">
+          <ImagePlus :size="24" />
+          <span>加解析图</span>
+        </button>
+      </div>
+      <input
+        ref="answerFileRef"
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        @change="onPickAnswer"
+      />
+    </div>
+
+    <div class="card">
+      <div class="f-label">题干摘要 / 笔记（可选）</div>
       <textarea
         v-model="fContent"
         class="big-input"
         rows="3"
         placeholder="题目、正确思路、自己卡在哪……"
+      ></textarea>
+
+      <div class="f-label">主要思路</div>
+      <textarea
+        v-model="fIdea"
+        class="big-input"
+        rows="2"
+        placeholder="这道题的关键切入点、为什么这么做"
+      ></textarea>
+
+      <div class="f-label">答案解析</div>
+      <textarea
+        v-model="fAnalysis"
+        class="big-input"
+        rows="3"
+        placeholder="标准答案或自己的解析，便于复习时对照"
       ></textarea>
 
       <div class="f-label">归到哪一天</div>
