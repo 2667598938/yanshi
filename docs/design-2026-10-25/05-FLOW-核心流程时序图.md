@@ -314,13 +314,99 @@ sequenceDiagram
     A->>L: 服务端代发（stream:true, 超时 60s）
     L-->>A: SSE 数据流
     A-->>W: StreamingResponse **逐字流式返回**
-    A->>DB: 流结束后落 ai_chat（user/assistant 各一条 + token 用量）
+    A->>DB: 流结束后落 ai_messages（user/assistant 各一条 + token 用量）
     A->>A: 用完立即从内存清除明文
 ```
 
-**红线**：`key_cipher` 任何接口都不返回；第三方错误统一包装为「Key 无效或额度不足」，不带 Key 片段；AI Key **不进离线同步**。
+### 7.1 拉取模型：错误分类与降级
 
-**协议统一**：所有服务商走 OpenAI 兼容的 `/v1/chat/completions`，一个适配器通吃；非该协议的服务商一期不接。
+`GET/POST /ai/models` 由后端代理，前端**永远不直接请求服务商**。上游结果必须翻译成五类，前端据此决定"禁下拉 / 开手填 / 保留上次"：
+
+| 上游 | 服务端判定 | 返回前端 | 前端动作 |
+|---|---|---|---|
+| 401 / 403 | Key 无效或无权限 | `AI_KEY_INVALID` | 禁用下拉 + 开手填 |
+| 402 / body 含 `insufficient` `balance` `quota` | 欠费 | `AI_NO_QUOTA` | 同上 |
+| 404 / 405 | 无 `/models` 端点 | `AI_NO_MODELS_API` | 直接开手填 |
+| 超时 8s | `asyncio.TimeoutError` | `AI_UPSTREAM_TIMEOUT` | 同上 |
+| 5xx | 上游故障 | `AI_UPSTREAM_ERROR` | **保留上次结果** |
+| 429 | 限流 | `AI_RATE_LIMITED`（带 retry_after） | 保留上次结果 |
+
+- 上游 body **只进服务端日志且已脱敏**，不回传前端；错误对象里不得出现 Key 片段。
+- 拉取成功但列表为空 → 按 `AI_NO_MODELS_API` 处理（有些兼容网关会返回 `{"data":[]}`）。
+
+### 7.2 缓存与失效：防止跨服务商串味
+
+- 缓存键：`(user_id, provider, base_url, key_fingerprint)`，`key_fingerprint = sha256(key)[:16]`，只存指纹不存明文。
+- 命中条件：24h 内 **且** `provider` / `base_url` / `key_fingerprint` 三者都未变。
+- **切换服务商或换 Key 立即作废**（不靠 TTL），否则 A 家的 `deepseek-v4-pro` 会被带到 B 家的下拉里。
+- 用户主动点「重新拉取」→ 无视 TTL 重打一次。
+- 并发点击 → **single-flight**：同一用户同一缓存的并发请求只打上游一次，其余复用结果。
+
+### 7.3 上下文注入：让 AI 知道你昨天学了什么
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant W as 前端
+    participant A as AI 服务
+    participant DB as DB
+    participant L as 大模型
+
+    U->>W: 帮我复盘今天学习情况
+    W->>A: POST /ai/chat {session_id, message}
+    A->>A: 限流（10 次/分 · 200 次/天）
+    A->>DB: 取近 N 条会话历史（按条数截断，N=10）
+    A->>DB: 构建上下文（**只读本人**）
+    Note over A,DB: 待办任务≤20 条 · 7 天完成聚合<br/>今日番茄时长/颗数/是否在专注 · 30 天热力摘要
+    A->>A: 摘要拼装，token 预算 ≤1200，超出按"最近优先"截断
+    A->>L: system(摘要) + history + message
+    L-->>A: SSE
+    A-->>W: 逐字流式返回
+    A->>DB: 落 ai_messages（含 token 用量、latency）
+```
+
+**三条边界**（写死，别在实现时松口）：
+1. **只读本人**：`WHERE user_id = current_user.id`，不读同圈成员，也不读被移出圈子的历史数据；
+2. **只给摘要**：任务最多 20 条、统计只给聚合值，绝不把原始行整表塞进 prompt；
+3. **`privacy_mode` 不阻断**：隐私模式是"不让别人看"，AI 是"给自己用"；但摘要里**不得出现他人昵称**。
+
+### 7.4 任务导入：唯一会写数据的 AI 能力
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant W as 前端
+    participant A as AI 服务
+    participant DB as DB
+
+    Note over U: AI 回复里带 ```json 任务块
+    W->>W: 解析 JSON（schema 校验：title / acceptance / estimate_min）
+    alt 解析失败或缺字段
+        W->>U: **隐藏「一键导入」按钮**（不报错、不崩）
+    else 解析成功
+        U->>W: 点「一键导入为系统任务」
+        W->>U: 预览弹窗（逐条可取消）
+        U->>W: 确认
+        W->>A: POST /ai/import-tasks {message_id, tasks[]}
+        A->>A: 幂等校验：该 message 已导入 → 409 直接返回已导入
+        A->>DB: 批量 insert task(source='ai', source_message_id=?)
+        A-->>W: {imported: n, task_ids:[...]}
+        W->>U: 「已导入 n 条」+ 「撤销本次导入」
+    end
+```
+
+- **禁止静默新增**：没有确认弹窗就不许写库；这是硬性验收项。
+- 幂等：`source_message_id` + `imported_at` 判重，同一条回复只能导一次（重复请求返回 409 与已导入数量）。
+- 撤销：按 `source_message_id` 批量软删（`deleted_at`），并写入 `admin_operation_log` 之外的**用户操作记录**（`task` 表本身的 `deleted_at` 足够追溯）。
+- 导入的任务与手动任务同构：同表、同同步、同圈子聚合、同隐私规则。
+
+### 7.5 红线汇总
+
+- `key_cipher` 任何接口都不返回；第三方错误统一脱敏；**AI Key 与对话记录都不进离线同步**。
+- 所有服务商走 OpenAI 兼容的 `/v1/chat/completions`，一个适配器通吃；非该协议一期不接。
+- 模型 id **不写死在前端**：下拉内容一律来自本次拉取结果或用户手填。
 
 ---
 
@@ -363,7 +449,7 @@ sequenceDiagram
 
 ## 9. 圈子加入 / 审核 / 退出（二期草案）
 
-> 对应 `01-PRD` §8 与 `03-DB` §3.7。一期不实现，此节为二期设计基线。
+> 对应 `01-PRD` §8 与 `03-DB` §3.8。一期不实现，此节为二期设计基线。
 
 ### 9.1 加入时序（四档合一）
 

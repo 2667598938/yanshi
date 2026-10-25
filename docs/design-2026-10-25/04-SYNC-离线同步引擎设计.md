@@ -155,7 +155,7 @@ for op in ops:
 
 ```
 GET /sync/pull
-  ?tables=tomato,mistake,favorite,post,apply,profile
+  ?tables=tomato,mistake,task,favorite,post,apply,profile
   &cursor=<base64(updated_at|id)>     # 首次为空
 →
 {
@@ -181,7 +181,7 @@ flowchart LR
 - **删除必须随同步返回**（`sync_deleted=1`），客户端收到后本地移除对应记录
 - cursor 必须每批提交后再更新，防止中途失败导致漏拉（用「本地最后成功批」落盘）
 - pull 回来的 UTC 时间用于渲染与统计；本地 UI 一律转本地时区
-- **表清单只写在一处**：客户端与服务端共用常量 `SYNC_TABLES = ['tomato','mistake','favorite','post','apply','profile']`，服务端按白名单过滤，不接受客户端自定义表名
+- **表清单只写在一处**：客户端与服务端共用常量 `SYNC_TABLES = ['tomato','mistake','task','favorite','post','apply','profile']`，服务端按白名单过滤，不接受客户端自定义表名
 
 > ⚠️ 本节示例原为 4 张表（漏 `post` / `apply`）。后果不是"少一个功能"，而是 **push 上得去、pull 拉不回来**：换设备或清缓存（S-13）后，自己离线发的帖子在本地永久消失，而服务端明明有。属于"漏一个字符串"级别的 bug，所以改成单点常量，禁止各接口手写。
 
