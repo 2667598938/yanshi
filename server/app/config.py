@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     wechat_app_secret: str = ''
     qq_app_id: str = ''
     qq_app_secret: str = ''
+    account_max_users: int = Field(default=4, ge=0, le=1000000)
+    registration_open: bool = False
+    features: str = 'checkin_room,resource,post,inspiration,dream_school'
+    sms_secret_id: str = ''
+    sms_secret_key: str = ''
+    sms_sdk_app_id: str = ''
+    sms_sign_name: str = ''
+    sms_template_id: str = ''
+    sms_region: str = 'ap-guangzhou'
     sms_provider: str = ''                # 留空 = 未接入短信服务
 
     # 邮件（QQ SMTP 465 SSL；留空且 mail_console=true 时验证码打印到控制台）
@@ -64,8 +73,14 @@ class Settings(BaseSettings):
     volc_base_url: str = 'https://ark.cn-beijing.volces.com/api/v3'
     ai_max_tokens: int = 1200
     ai_daily_limit: int = Field(default=100, ge=1, le=10000)
+    ai_custom_hosts: str = ''
+    ai_allow_private_hosts: bool = False
     # 用户自填 AI Key 的加密主密钥（AES-256-GCM）；留空时退回 JWT secret 派生
     ai_key_enc_secret: str = ''
+
+    @property
+    def enabled_features(self):
+        return [x.strip() for x in self.features.split(',') if x.strip()]
 
     @property
     def ai_enabled(self):

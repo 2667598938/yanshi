@@ -12,6 +12,7 @@ from ..deps import audit, get_current_user, get_db
 from ..errors import ApiError, ok
 from ..models import AIConversation, AIMessage, UserAIKey, AIModelCache
 from ..services import ai_usage
+from ..services.outbound import validate_ai_base
 from ..schemas.ai import (
     AIKeyInput, AIModelsInput, ChatInput, ConversationCreate, ConversationUpdate, AIPreferencesInput,
 )
@@ -96,7 +97,7 @@ def get_key(request: Request, user=Depends(get_current_user), db=Depends(get_db)
 def save_key(body: AIKeyInput, request: Request, user=Depends(get_current_user),
              db=Depends(get_db)):
     require_ai(db, user)
-    base_url = ai_service.resolve_base_url(body.provider, body.base_url)
+    base_url = validate_ai_base(request.app.state.settings, ai_service.resolve_base_url(body.provider, body.base_url))
     model = body.model.strip() or ai_service.default_model(body.provider)
     cipher_text = crypto.encrypt(enc_secret(request), body.api_key.strip(), str(user.id))
     row = db.get(UserAIKey, user.id)
@@ -147,11 +148,15 @@ async def models(body: AIModelsInput, request: Request, user=Depends(get_current
     key_row = db.get(UserAIKey, user.id)
     api_key = body.api_key.strip()
     if not api_key and key_row:
+        requested_base = ai_service.resolve_base_url(body.provider, body.base_url or key_row.base_url)
+        if body.provider != key_row.provider or requested_base != key_row.base_url:
+            raise ApiError(400, 40001, '切换服务商或地址时请重新填写API Key')
         api_key = crypto.decrypt(enc_secret(request), key_row.key_cipher, str(user.id))
     if not api_key:
         raise ApiError(400, 40001, '请先填写 API Key')
     base_url = ai_service.resolve_base_url(
         body.provider, body.base_url or (key_row.base_url if key_row else ''))
+    validate_ai_base(request.app.state.settings, base_url)
     cache_key = hashlib.sha256(f'{user.id}|{body.provider}|{base_url}|{api_key}'.encode()).hexdigest()
     cached = db.get(AIModelCache, cache_key)
     if cached and cached.fetched_at > utcnow() - timedelta(hours=24):
@@ -183,6 +188,7 @@ async def chat(body: ChatInput, request: Request, user=Depends(get_current_user)
     request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
     require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
+    validate_ai_base(request.app.state.settings, key_row.base_url if key_row else request.app.state.settings.volc_base_url)
 
     convo = None
     history = []
@@ -243,6 +249,7 @@ async def chat_stream(body: ChatInput, request: Request, user=Depends(get_curren
     request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
     require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
+    validate_ai_base(request.app.state.settings, key_row.base_url if key_row else request.app.state.settings.volc_base_url)
 
     convo = None
     history = []

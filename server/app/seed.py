@@ -17,7 +17,7 @@ def seed(db, settings: Settings, echo=print):
         'site_name': '研时',
         'exam_date': '2027-12-25',
         'exam_year': 2028,
-        'registration_open': True,  # 自助注册仍需有效邀请码
+        'registration_open': settings.registration_open,
     }
     for key, value in defaults.items():
         if db.get(Config, key) is None:

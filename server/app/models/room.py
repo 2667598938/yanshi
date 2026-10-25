@@ -21,6 +21,7 @@ class Room(Base):
     owner_id = Column(ForeignKey('users.id'), nullable=True)
     capacity = Column(Integer, default=4, server_default='4', nullable=False)
     visibility = Column(String(12), default='public', server_default='public', nullable=False)
+    room_type = Column(String(24), default='checkin_room', server_default='checkin_room', nullable=False)
     created_at = Column(DateTime, default=now, nullable=False)
     dissolved_at = Column(DateTime)
 

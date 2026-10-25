@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   ArrowLeft, Send, Sparkles, BookOpen, Users, Ellipsis, Crown, ChevronRight,
 } from 'lucide-vue-next'
@@ -10,6 +10,7 @@ import { fmtDateTime } from '../utils/time'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const { toast } = useToast()
 
@@ -24,9 +25,10 @@ const STATUS = {
   approved: { label: '已通过', cls: 'tag-approved' },
   rejected: { label: '已驳回', cls: 'tag-rejected' },
   withdrawn: { label: '已撤回', cls: 'tag-withdrawn' },
+  revoked: { label: '已撤销', cls: 'tag-rejected' },
 }
 
-const feature = ref('ai')
+const feature = ref(FEATURES.some(f => f.id === route.query.feature) ? route.query.feature : 'ai')
 const reason = ref('')
 const submitting = ref(false)
 const rows = ref([])

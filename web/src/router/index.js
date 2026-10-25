@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
+  { path: '/me/phone', name: 'phone-settings', component: () => import('../views/PhoneSettingsView.vue'), meta: { title: '绑定手机号', requiresAuth: true, hideTabbar: true } },
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: '今日' } },
   { path: '/stats', name: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计' } },
   { path: '/focus', name: 'focus', component: () => import('../views/FocusView.vue'), meta: { title: '专注' } },

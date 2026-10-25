@@ -11,10 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import BASE_DIR, Settings
 from .database import make_database
 from .errors import install_errors, ok
-from .services.transient import TransientStore
+from .services.persistent_transient import PersistentTransientStore
 from .routers import (
     auth, admin, public, sync, room, attachments, schools, ai, vip, error_types, oauth,
-    messages, resources, posts, inspirations, rooms,
+    messages, resources, posts, inspirations, rooms, phone,
 )
 
 
@@ -57,7 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = sessions
     app.state.secret = resolve_secret(settings)
-    app.state.transient = TransientStore()
+    app.state.transient = PersistentTransientStore(sessions, settings.ai_key_enc_secret or app.state.secret)
 
     install_errors(app)
     app.add_middleware(
@@ -81,6 +81,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health():
         return {'status': 'ok'}
 
+    @app.get('/health/ready')
+    def ready():
+        from fastapi.responses import JSONResponse
+        from .services.readiness import database_ready
+        healthy = database_ready(app.state.engine)
+        return JSONResponse({'status': 'ready' if healthy else 'not_ready'}, status_code=200 if healthy else 503)
+
     @app.get('/api/v1/ping')
     def ping():
         return ok({'site': '研时', 'version': '0.3.0'})
@@ -88,6 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(public.router)
     app.include_router(auth.router)
     app.include_router(oauth.router)
+    app.include_router(phone.router)
     app.include_router(sync.router)
     app.include_router(room.router)
     app.include_router(rooms.router)

@@ -80,6 +80,14 @@ class ProfileUpdate(Strict):
     notify_enabled: Optional[bool] = None
     privacy_mode: Optional[bool] = None
 
+    @field_validator('exam_date')
+    @classmethod
+    def valid_exam_date(cls, value):
+        if value:
+            parsed = datetime.strptime(value, '%Y-%m-%d')
+            if parsed.strftime('%Y-%m-%d') != value: raise ValueError('考试日期格式应为YYYY-MM-DD')
+        return value
+
 
 class ErrorTypeInput(Strict):
     name: str = Field(min_length=1, max_length=20)
@@ -92,6 +100,7 @@ class PhoneCodeInput(Strict):
 
 
 class PhoneVerifyInput(Strict):
+    accepted_terms: bool = False
     phone: str = Field(max_length=20)
     code: str = Field(pattern=r'^\d{6}$')
 

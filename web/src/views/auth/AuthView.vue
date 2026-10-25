@@ -62,7 +62,8 @@ async function thirdParty(id) {
     return
   }
   try {
-    const data = await authApi.oauthAuthorize(id)
+    if (!form.accepted) { error.value = '请先阅读并同意用户协议与隐私政策'; return }
+    const data = await authApi.oauthAuthorize(id, form.accepted)
     if (data.url) window.location.href = data.url
   } catch (e) {
     error.value = e.message
@@ -89,7 +90,8 @@ async function verifyPhone() {
   error.value = ''
   loading.value = true
   try {
-    await auth.phoneLogin(form.phone.trim(), form.code)
+    if (!form.accepted) { error.value = '请先阅读并同意用户协议与隐私政策'; return }
+    await auth.phoneLogin(form.phone.trim(), form.code, form.accepted)
     await initSyncForUser()
     router.replace(route.query.redirect || '/')
   } catch (e) {
@@ -199,7 +201,7 @@ function switchMode(m) {
 
 const isCodeLogin = computed(() => mode.value === 'login' && loginMode.value === 'code')
 const isPasswordField = computed(() => mode.value !== 'login' || loginMode.value === 'password')
-const showAgree = computed(() => mode.value === 'register' || isCodeLogin.value)
+const showAgree = computed(() => mode.value !== 'forgot')
 const submitLabel = computed(() => {
   if (mode.value === 'login') return isCodeLogin.value ? '登录 / 自动注册' : '登录'
   return mode.value === 'register' ? '注册' : '重置密码'
@@ -308,7 +310,7 @@ onMounted(async () => {
           <input v-model="form.password" :type="'password'" autocomplete="current-password"
                  placeholder="8-64 位，含字母和数字" />
         </label>
-        <label v-if="mode !== 'login'" class="field">
+        <label v-if="mode === 'register' || mode === 'forgot'" class="field">
           <span>确认密码</span>
           <input v-model="form.confirm" type="password" autocomplete="new-password" placeholder="再输入一次" />
         </label>

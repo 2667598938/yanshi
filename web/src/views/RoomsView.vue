@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   ArrowLeft, Plus, Users, Lock, Globe2, KeyRound, Copy, ChevronRight, Check,
 } from 'lucide-vue-next'
-import { roomApi } from '../api'
+import { roomApi, publicApi } from '../api'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import CopyFallback from '../components/CopyFallback.vue'
@@ -16,13 +16,21 @@ const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 const rows = ref([])
 const loading = ref(true)
 const sheet = ref(null)
-const form = ref({ name: '', intro: '', visibility: 'public' })
+const features = ref([])
+const roomTypes = [
+  { key: 'checkin_room', name: '打卡自习室' },
+  { key: 'video_small_room', name: '视频小房间' },
+  { key: 'cloud_video_room', name: '云端自习室' },
+]
+const form = ref({ name: '', intro: '', visibility: 'public', room_type: 'checkin_room' })
 const codeInput = ref('')
 const saving = ref(false)
 
 async function load() {
   loading.value = true
   try {
+    const config = await publicApi.config().catch(() => ({ features: [] }))
+    features.value = config.features || []
     rows.value = await roomApi.list()
   } catch (e) {
     toast(e.message)
@@ -35,8 +43,9 @@ function openRoom(row) {
   router.push(`/rooms/${row.id}`)
 }
 
-function openCreate() {
-  form.value = { name: '', intro: '', visibility: 'public' }
+function openCreate(type = 'checkin_room') {
+  if (!features.value.includes(type)) return toast('该房间类型暂未开放')
+  form.value = { name: '', intro: '', visibility: 'public', room_type: type }
   sheet.value = 'create'
 }
 
@@ -48,6 +57,7 @@ async function create() {
       name: form.value.name.trim(),
       intro: form.value.intro.trim(),
       visibility: form.value.visibility,
+      room_type: form.value.room_type,
     })
     toast('自习室已创建')
     sheet.value = null
@@ -91,7 +101,7 @@ onMounted(load)
       <button class="icon-btn" title="凭房间码加入" @click="codeInput = ''; sheet = 'join'">
         <KeyRound :size="17" />
       </button>
-      <button class="create-btn" @click="openCreate"><Plus :size="16" />创建</button>
+      <button class="create-btn" @click="openCreate()"><Plus :size="16" />创建</button>
     </div>
 
     <div class="page">
@@ -100,6 +110,12 @@ onMounted(load)
         <div class="hero-sub">公开房间可直接加入；私密房间凭 6 位房间码进入</div>
       </div>
 
+      <div class="card" style="margin-bottom:12px">
+        <button v-for="type in roomTypes" :key="type.key" class="btn btn-outline btn-sm" style="margin:4px" @click="openCreate(type.key)">
+          {{ type.name }} · {{ features.includes(type.key) ? '创建' : '暂未开放' }}
+        </button>
+        <button class="btn btn-ghost btn-sm" @click="router.push('/requests?feature=room')">申请房间权限</button>
+      </div>
       <div v-if="loading" class="empty">读取中…</div>
       <div v-else-if="!rows.length" class="empty">还没有自习室，创建一个</div>
       <div v-else class="room-list">
@@ -139,7 +155,7 @@ onMounted(load)
     <div v-if="sheet" class="mask" @click.self="sheet = null">
       <div class="sheet">
         <template v-if="sheet === 'create'">
-          <div class="sheet-title">创建自习室</div>
+          <div class="sheet-title">创建{{ roomTypes.find(t => t.key === form.room_type)?.name }}</div>
           <label class="sf">
             <span>房间名</span>
             <input v-model="form.name" maxlength="20" placeholder="如：冲刺 408 小组" />

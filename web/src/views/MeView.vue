@@ -104,7 +104,7 @@ async function manualSync() {
   }
 }
 
-const school = computed(() => SCHOOL_MAP[auth.user?.target_school || app.dreamSchool] || SCHOOL_MAP[app.dreamSchool])
+const school = computed(() => SCHOOL_MAP[auth.user?.target_school || app.dreamSchool] || SCHOOL_MAP[app.dreamSchool] || Object.values(SCHOOL_MAP)[0])
 const avatar = computed(() => auth.user?.avatar_key || '')
 const vipUntil = computed(() => auth.user?.vip_permanent ? '永久有效' : fmtDate(auth.user?.vip_until))
 const figure = computed(() => FIGURE_MAP[auth.user?.figure_id || 'figure-1'] || FIGURES[0])
@@ -476,6 +476,12 @@ onMounted(() => {
         </div>
       </div>
 
+      <div class="group">
+        <div class="group-title">账号安全</div>
+        <div class="card menu"><div class="row" @click="router.push('/me/phone')">
+          <span class="row-label">绑定手机号</span><span class="row-val">{{ auth.user?.phone ? '已绑定' : '未绑定' }}</span><ChevronRight :size="17" />
+        </div></div>
+      </div>
       <!-- 管理与账号 -->
       <div class="group" v-if="auth.isAdmin">
         <div class="group-title">管理</div>

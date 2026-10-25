@@ -32,6 +32,7 @@ class RoomCreate(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     name: str = Field(min_length=2, max_length=20)
+    room_type: Literal['checkin_room', 'video_small_room', 'cloud_video_room'] = 'checkin_room'
     intro: str = Field(default='', max_length=200)
     visibility: Literal['public', 'private'] = 'public'
 

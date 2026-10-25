@@ -104,6 +104,8 @@ def register(body: RegisterInput, request: Request, response: Response, db=Depen
                 invite.expires_at and invite.expires_at < now):
             raise ApiError(400, 40001, '邀请码无效、已使用或已过期')
 
+    from ..services.admission import check_capacity
+    check_capacity(db, request.app.state.settings)
     user = User(email=body.email, password_hash=hash_password(body.password),
                 nickname=body.nickname, daily_goal_min=300, exam_year=2028,
                 exam_date=config_get(db, 'exam_date', '2027-12-25'))
@@ -113,8 +115,9 @@ def register(body: RegisterInput, request: Request, response: Response, db=Depen
     except IntegrityError:
         raise ApiError(409, 40901, '该邮箱已注册') from None
     if invite:
-        invite.used_by = user.id
-        invite.used_at = now
+        claimed = db.execute(update(Invite).where(Invite.id == invite.id, Invite.used_by.is_(None),
+            Invite.revoked_at.is_(None)).values(used_by=user.id, used_at=now)).rowcount
+        if claimed != 1: raise ApiError(400, 40001, '邀请码已使用，请刷新后重试')
         if invite.vip_days:
             user.vip_until = now + timedelta(days=invite.vip_days)
     join_room_quietly(db, user)  # 房间满员不阻断注册
@@ -146,13 +149,15 @@ def email_login(body: EmailLoginInput, request: Request, response: Response,
     user = db.scalar(select(User).where(User.email == body.email, User.status != 'deleted'))
     registered = False
     if user is None:
-        if not config_get(db, 'registration_open', True):
+        if not config_get(db, 'registration_open', False):
             raise ApiError(403, 40301, '注册已关闭，请联系管理员创建账号')
         if not body.accepted_terms:
             raise ApiError(400, 40001, '请先同意用户协议与隐私政策')
         nickname = body.nickname.strip() or body.email.split('@')[0][:20] or '研友'
         if len(nickname) < 2:
             nickname = '研友'
+        from ..services.admission import check_capacity
+        check_capacity(db, request.app.state.settings)
         user = User(email=body.email, nickname=nickname,
                     password_hash=hash_password(secrets.token_urlsafe(18)),
                     daily_goal_min=300, exam_year=2028,

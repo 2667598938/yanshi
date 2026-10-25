@@ -9,6 +9,7 @@ from .time import utcnow
 
 def get_db(request: Request):
     db = request.app.state.session_factory()
+    db.info['settings'] = request.app.state.settings
     try:
         yield db
     finally:
@@ -52,6 +53,13 @@ def get_admin(user=Depends(get_current_user)):
     if user.role != 'admin':
         raise ApiError(403, 40301, '需要管理员权限')
     return user
+
+
+def require_enabled_feature(feature):
+    def check(request: Request):
+        if feature not in request.app.state.settings.enabled_features:
+            raise ApiError(403, 40310, '该功能暂未开放')
+    return check
 
 
 def audit(db, request: Request, action: str, user_id=None, detail=''):

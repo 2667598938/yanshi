@@ -96,6 +96,8 @@ def refresh_model_catalogs(session_factory, settings, secret):
             try:
                 plaintext = ai_key.decrypt(settings.ai_key_enc_secret or secret, key.key_cipher, str(user_id))
                 base = key.base_url or ai.resolve_base_url(key.provider)
+                from .outbound import validate_ai_base
+                validate_ai_base(settings, base)
                 cache_key = hashlib.sha256(f'{user_id}|{key.provider}|{base}|{plaintext}'.encode()).hexdigest()
                 cached = db.get(AIModelCache, cache_key)
                 if cached and cached.fetched_at > now - timedelta(days=7): continue
@@ -110,6 +112,12 @@ def refresh_model_catalogs(session_factory, settings, secret):
 
 
 def run_maintenance(session_factory, settings, secret=None):
+    import time
+    from sqlalchemy import delete
+    from .persistent_transient import TransientState
+    with session_factory() as db:
+        db.execute(delete(TransientState).where(TransientState.expires_at < time.time()))
+        db.commit()
     enqueue_expiry_notifications(session_factory, settings)
     deliver_email_jobs(session_factory, settings)
     if secret: refresh_model_catalogs(session_factory, settings, secret)

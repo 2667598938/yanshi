@@ -45,7 +45,7 @@ def _oauth_email(provider: str, uid: str) -> str:
     return f'{provider}_{safe}@oauth.local'
 
 
-def _get_or_create_user(db, request, provider, uid, nickname, avatar='', phone=None):
+def _get_or_create_user(db, request, provider, uid, nickname, avatar='', phone=None, accepted_terms=False):
     row = db.scalar(select(UserAuth).where(
         UserAuth.provider == provider, UserAuth.provider_uid == uid))
     if row:
@@ -53,12 +53,16 @@ def _get_or_create_user(db, request, provider, uid, nickname, avatar='', phone=N
         if not user or user.status in ('banned', 'deleted'):
             raise ApiError(403, 40302, '账号不可用', '请联系管理员')
         return user, False
-    if not config_get(db, 'registration_open', True):
+    if not config_get(db, 'registration_open', False):
         raise ApiError(403, 40301, '注册已关闭，请联系管理员创建账号')
 
+    if not accepted_terms:
+        raise ApiError(400, 40001, '新账号请先同意用户协议与隐私政策')
     name = (nickname or '').strip()[:40] or f'{PROVIDERS[provider]}用户'
     if len(name) < 2:
         name = '研友'
+    from ..services.admission import check_capacity
+    check_capacity(db, request.app.state.settings)
     user = User(email=_oauth_email(provider, uid), phone=phone, nickname=name,
                 password_hash=hash_password(secrets.token_urlsafe(18)),
                 daily_goal_min=300, exam_year=2028,
@@ -89,11 +93,11 @@ def _finish_login(db, request, user, provider, response):
 
 # ---------------------------------------------------------------- 授权入口
 @router.get('/oauth/{provider}/authorize')
-def authorize(provider: str, request: Request):
+def authorize(provider: str, request: Request, response: Response, accepted_terms: bool = False):
     _require_channel(request, provider)
     settings = request.app.state.settings
     state = secrets.token_urlsafe(16)
-    request.app.state.transient.set('oauth-state:' + digest(state), provider, 600)
+    request.app.state.transient.set('oauth-state:' + digest(state), json.dumps({'provider': provider, 'accepted_terms': accepted_terms}), 600)
     redirect_uri = _callback_url(request, provider)
 
     if provider == 'wechat':
@@ -110,6 +114,8 @@ def authorize(provider: str, request: Request):
                f'&redirect_uri={quote(redirect_uri, safe="")}&state={state}')
     else:
         raise ApiError(400, 40001, '手机号登录请使用短信接口')
+    response.set_cookie('yanshi_oauth_state', state, max_age=600, httponly=True,
+        secure=settings.environment == 'production', samesite='lax', path='/api/v1/auth/oauth')
     return ok({'url': url, 'state': state})
 
 
@@ -123,8 +129,12 @@ async def callback(request: Request, response: Response, provider: str, code: st
         raise ApiError(400, 40001, '缺少授权码')
 
     store = request.app.state.transient
-    expected = store.consume('oauth-state:' + digest(state)) if state else None
-    if state and expected != provider:
+    if not state or not secrets.compare_digest(request.cookies.get('yanshi_oauth_state', ''), state):
+        raise ApiError(400, 40001, '授权状态校验失败，请重新发起登录')
+    raw_state = store.consume('oauth-state:' + digest(state))
+    try: expected = json.loads(raw_state or '{}')
+    except ValueError: expected = {}
+    if expected.get('provider') != provider:
         raise ApiError(400, 40001, '授权状态校验失败，请重新发起登录')
 
     settings = request.app.state.settings
@@ -133,13 +143,14 @@ async def callback(request: Request, response: Response, provider: str, code: st
     else:
         uid, nickname, avatar = await _qq_profile(settings, code, _callback_url(request, provider))
 
-    user, _ = _get_or_create_user(db, request, provider, uid, nickname, avatar)
+    user, _ = _get_or_create_user(db, request, provider, uid, nickname, avatar, accepted_terms=bool(expected.get('accepted_terms')))
     if request.query_params.get('format') == 'json':
         return ok(_finish_login(db, request, user, provider, response))
     # 浏览器流程：用一次性 ticket 换 access token，refresh 已写入 httpOnly Cookie
     ticket = secrets.token_urlsafe(24)
     origin = request.app.state.settings.public_origin.rstrip('/')
     redirect = RedirectResponse(f'{origin}/login?oauth_ticket={ticket}')
+    redirect.delete_cookie('yanshi_oauth_state', path='/api/v1/auth/oauth')
     result = _finish_login(db, request, user, provider, redirect)
     request.app.state.transient.set('oauth-ticket:' + digest(ticket),
                                     json.dumps(result), 120)
@@ -166,9 +177,10 @@ def phone_send_code(body: PhoneCodeInput, request: Request):
     store = request.app.state.transient
     store.limit('phone-minute:' + digest(body.phone), 1, 60)
     store.limit('phone-day:' + digest(body.phone), 10, 86400)
+    store.limit('phone-ip:' + request.client.host, 20, 3600)
     code = f'{secrets.randbelow(1000000):06}'
-    store.set('phone-code:' + digest(body.phone), digest(code), 300)
     _send_sms(request.app.state.settings, body.phone, code)
+    store.set('phone-code:' + digest(body.phone), digest(code), 300)
     return ok({'sent': True})
 
 
@@ -192,7 +204,7 @@ def phone_verify_code(body: PhoneVerifyInput, request: Request, response: Respon
         if user is None:
             user, _ = _get_or_create_user(
                 db, request, 'phone', body.phone,
-                f'研友{body.phone[-4:]}', phone=body.phone)
+                f'研友{body.phone[-4:]}', phone=body.phone, accepted_terms=body.accepted_terms)
         else:
             db.add(UserAuth(user_id=user.id, provider='phone', provider_uid=body.phone))
     return ok(_finish_login(db, request, user, 'phone', response))
@@ -256,9 +268,5 @@ async def _qq_profile(settings, code, redirect_uri):
 
 
 def _send_sms(settings, phone, code):
-    """短信通道骨架：未接入服务商时打印到后端控制台（仅开发）。"""
-    text = f'【研时】登录验证码 {code}，5 分钟内有效。'
-    if not settings.sms_provider:
-        print(f'[SMS] {phone}: {text}')
-        return
-    raise ApiError(503, 50301, f'短信服务商 {settings.sms_provider} 尚未接入')
+    from ..services.sms import send_sms
+    return send_sms(settings, phone, code)

@@ -37,6 +37,8 @@ def room_write(fn):
                 for value in args:
                     if isinstance(value, Room):
                         db.refresh(value, with_for_update=True)
+                        actor = next((arg for arg in args if isinstance(arg, User)), None)
+                        guard_room_type(db, actor, value)
                         if value.dissolved_at is not None:
                             raise ApiError(404, 40401, '自习室已解散')
                 return fn(db, *args, **kwargs)
@@ -46,8 +48,18 @@ def room_write(fn):
     return guarded
 
 
+def guard_room_type(db, user, room):
+    settings = db.info.get('settings')
+    if not settings and room.room_type == 'checkin_room': return
+    if not settings or room.room_type not in settings.enabled_features:
+        raise ApiError(403, 40310, '该房间类型暂未开放')
+    if user and room.room_type != 'checkin_room':
+        from .features import require_feature
+        require_feature(db, user, 'room', '该房间类型需要VIP或房间审批授权')
+
+
 def get_default_room(db):
-    room = db.scalar(select(Room).where(Room.dissolved_at.is_(None)).order_by(Room.id).limit(1))
+    room = db.scalar(select(Room).where(Room.dissolved_at.is_(None), Room.room_type == 'checkin_room').order_by(Room.id).limit(1))
     if room is None:
         raise ApiError(500, 50001, '自习室尚未初始化，请联系管理员')
     return room
@@ -57,6 +69,7 @@ def get_room(db, room_id):
     room = db.get(Room, room_id)
     if room is None or room.dissolved_at is not None:
         raise ApiError(404, 40401, '自习室不存在或已解散')
+    guard_room_type(db, None, room)
     return room
 
 
@@ -66,6 +79,7 @@ def get_membership(db, room_id, user_id):
 
 
 def require_member(db, user, room):
+    guard_room_type(db, user, room)
     member = get_membership(db, room.id, user.id)
     if member is None:
         raise ApiError(403, 40301, '请先加入自习室')
@@ -95,7 +109,7 @@ def room_summary(db, room, user, member_count=None, online_count=None):
     owner = db.get(User, room.owner_id) if room.owner_id else None
     data = {
         'id': room.id, 'name': room.name, 'intro': room.intro or '',
-        'visibility': room.visibility, 'capacity': room.capacity,
+        'visibility': room.visibility, 'capacity': room.capacity, 'room_type': room.room_type,
         'member_count': int(member_count), 'online_count': int(online_count),
         'joined': membership is not None,
         'my_role': membership.role if membership else '',
@@ -113,7 +127,9 @@ def list_rooms(db, user):
     rooms = db.scalars(select(Room).where(
         Room.dissolved_at.is_(None)
     ).order_by(Room.id)).all()
-    visible = [r for r in rooms if r.visibility == 'public' or r.id in member_room_ids]
+    settings = db.info.get('settings')
+    enabled = settings.enabled_features if settings else ['checkin_room']
+    visible = [r for r in rooms if r.room_type in enabled and (r.visibility == 'public' or r.id in member_room_ids)]
     if not visible:
         return []
     ids = [r.id for r in visible]
@@ -132,9 +148,10 @@ def list_rooms(db, user):
 
 
 @room_write
-def create_room(db, user, name, intro, visibility):
+def create_room(db, user, name, intro, visibility, room_type='checkin_room'):
     room = Room(name=name.strip(), intro=(intro or '').strip(), code=_new_room_code(db),
-                owner_id=user.id, capacity=4, visibility=visibility)
+                owner_id=user.id, capacity=4, visibility=visibility, room_type=room_type)
+    guard_room_type(db, user, room)
     db.add(room)
     db.flush()
     db.add(RoomMember(room_id=room.id, user_id=user.id, role='owner'))
@@ -175,6 +192,7 @@ def latest_apply(db, room_id, user_id):
 
 
 def room_preview(db, user, room):
+    guard_room_type(db, user, room)
     """私密房间未加入也可看房间公开信息与自己的申请状态，成员数据仍不可见。"""
     membership = get_membership(db, room.id, user.id)
     apply_row = latest_apply(db, room.id, user.id)
@@ -339,6 +357,7 @@ def delete_room_members(room_id):
 
 def ensure_member(db, user, room=None, role='member', ignore_capacity=False):
     room = room or get_default_room(db)
+    guard_room_type(db, user, room)
     db.refresh(room, with_for_update=True)
     existing = db.scalar(select(RoomMember).where(
         RoomMember.room_id == room.id, RoomMember.user_id == user.id).with_for_update())
@@ -447,6 +466,7 @@ def _message_dict(row, user_map, current_id):
 
 def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
     room = room or get_default_room(db)
+    guard_room_type(db, current_user, room)
     membership = db.scalar(select(RoomMember).where(
         RoomMember.room_id == room.id, RoomMember.user_id == current_user.id))
     joined = membership is not None

@@ -28,6 +28,7 @@ def public_config(request: Request, db=Depends(get_db)):
         'exam_year': config_get(db, 'exam_year', 2028),
         'registration_open': config_get(db, 'registration_open', False),
         'enabled_auth_channels': request.app.state.settings.enabled_auth_channels,
+        'features': request.app.state.settings.enabled_features,
     })
 
 

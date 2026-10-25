@@ -29,6 +29,25 @@ from .vip import FEATURE_LABELS
 router = APIRouter(prefix='/api/v1/admin', tags=['admin'], dependencies=[Depends(get_admin)])
 
 
+@router.get('/diagnostics')
+def diagnostics(request: Request):
+    from ..services.readiness import database_ready
+    settings = request.app.state.settings
+    return ok({'environment': settings.environment, 'database_ready': database_ready(request.app.state.engine),
+        'database_kind': 'sqlite' if settings.is_sqlite else 'sql',
+        'features': settings.enabled_features, 'auth_channels': settings.enabled_auth_channels,
+        'account_max_users': settings.account_max_users, 'ai_daily_limit': settings.ai_daily_limit,
+        'image_storage': settings.image_storage,
+        'qiniu_configured': bool(settings.qiniu_access_key and settings.qiniu_secret_key and settings.qiniu_bucket),
+        'smtp_configured': bool(settings.smtp_host and settings.smtp_user and settings.smtp_password),
+        'sms_provider': settings.sms_provider,
+        'sms_configured': bool(settings.sms_provider == 'tencent' and settings.sms_secret_id and settings.sms_secret_key
+            and settings.sms_sdk_app_id and settings.sms_template_id and settings.sms_sign_name),
+        'wechat_configured': bool(settings.wechat_app_id and settings.wechat_app_secret),
+        'qq_configured': bool(settings.qq_app_id and settings.qq_app_secret),
+        'server_ai_configured': settings.ai_enabled})
+
+
 def config_get(db, key, default=None):
     row = db.get(Config, key)
     if row is None:
@@ -136,16 +155,14 @@ def list_members(db=Depends(get_db)):
 def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db)):
     if db.scalar(select(User).where(User.email == body.email)):
         raise ApiError(409, 40901, '该邮箱已被使用')
+    from ..services.admission import check_capacity
+    check_capacity(db, request.app.state.settings)
     room = room_service.get_default_room(db)
-    count = db.scalar(select(func.count()).select_from(RoomMember).where(
-        RoomMember.room_id == room.id))
-    if count >= room.capacity:
-        raise ApiError(403, 40301, '自习室已满（固定 4 人），不能再建号')
     user = User(email=body.email, nickname=body.nickname,
                 password_hash=hash_password(body.password), role='member')
     db.add(user)
     db.flush()
-    room_service.ensure_member(db, user, room)
+    room_service.join_room_quietly(db, user)
     audit(db, request, 'admin.create_member', user_id=user.id, detail=body.email)
     db.commit()
     db.refresh(user)

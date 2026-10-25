@@ -15,7 +15,7 @@ vi.mock('../src/composables/useToast', () => ({ useToast: () => ({ toast: mocks.
 vi.mock('../src/stores/timer', () => ({ useTimerStore: () => mocks.timer }))
 vi.mock('../src/stores/subjects', () => ({ useSubjectsStore: () => ({ byId: {} }) }))
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 2 }, isAdmin: false }) }))
-vi.mock('../src/api', () => ({ roomApi: { get: vi.fn(), list: vi.fn(), heartbeat: vi.fn(), putGoal: vi.fn(), leave: vi.fn() } }))
+vi.mock('../src/api', () => ({ publicApi: { config: vi.fn().mockResolvedValue({ features: ['checkin_room'] }) }, roomApi: { get: vi.fn(), list: vi.fn(), heartbeat: vi.fn(), putGoal: vi.fn(), leave: vi.fn() } }))
 
 let wrapper
 let originalClipboard

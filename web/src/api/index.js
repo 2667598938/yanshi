@@ -10,16 +10,18 @@ export const publicApi = {
 
 // ------------------------------------------------------------ 认证 / 账号
 export const authApi = {
+  bindPhoneCode: (phone) => http.post('/users/me/phone/send-code', { phone }),
+  bindPhone: (phone, code) => http.put('/users/me/phone', { phone, code }),
   sendCode: (email, scene = 'register') =>
     http.post('/auth/email-code', { email, scene }, { auth: false }),
   emailLogin: (body) => http.post('/auth/email-login', body, { auth: false }),
-  oauthAuthorize: (provider) =>
-    http.get(`/auth/oauth/${provider}/authorize`, { auth: false }),
+  oauthAuthorize: (provider, accepted = false) =>
+    http.get(`/auth/oauth/${provider}/authorize`, { auth: false, query: { accepted_terms: accepted } }),
   oauthExchange: (ticket) =>
     http.post('/auth/oauth/exchange', { ticket }, { auth: false }),
   phoneSendCode: (phone) => http.post('/auth/phone/send-code', { phone }, { auth: false }),
-  phoneVerify: (phone, code) =>
-    http.post('/auth/phone/verify-code', { phone, code }, { auth: false }),
+  phoneVerify: (phone, code, accepted = false) =>
+    http.post('/auth/phone/verify-code', { phone, code, accepted_terms: accepted }, { auth: false }),
   register: (body) => http.post('/auth/register', body, { auth: false }),
   login: (email, password) => http.post('/auth/login', { email, password }, { auth: false }),
   refresh: () => http.post('/auth/refresh', {}, { auth: false }),

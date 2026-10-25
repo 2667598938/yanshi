@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
-from ..deps import audit, get_current_user, get_db
+from ..deps import require_enabled_feature, audit, get_current_user, get_db
 from ..errors import ApiError, ok
 from ..models import Resource, ResourceFavorite, ResourceLike, User
 from ..schemas.content import FavoriteState, ResourceInput, ResourceUpdate
@@ -14,7 +14,7 @@ from ..services import features as feature_service
 from ..services.messages import create_message
 from ..time import utcnow
 
-router = APIRouter(prefix='/api/v1/resources', tags=['resources'])
+router = APIRouter(prefix='/api/v1/resources', tags=['resources'], dependencies=[Depends(require_enabled_feature('resource'))])
 
 
 def mask_url(url: str) -> str:

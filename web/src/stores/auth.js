@@ -67,8 +67,8 @@ export const useAuthStore = defineStore('auth', {
     async exchangeOAuth(ticket) {
       return this.authenticate(() => authApi.oauthExchange(ticket))
     },
-    async phoneLogin(phone, code) {
-      return this.authenticate(() => authApi.phoneVerify(phone, code))
+    async phoneLogin(phone, code, accepted = false) {
+      return this.authenticate(() => authApi.phoneVerify(phone, code, accepted))
     },
     async register(payload) {
       return this.authenticate(() => authApi.register(payload))

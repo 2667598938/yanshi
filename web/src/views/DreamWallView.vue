@@ -1,11 +1,41 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { schoolApi } from '../api'
+import { db } from '../db'
+import BlobImage from '../components/BlobImage.vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, MapPin, Quote, ChevronRight } from 'lucide-vue-next'
-import { SCHOOLS } from '../data/schools'
+import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 
 const router = useRouter()
+const schools = ref(SCHOOLS)
 const active = ref(null)
+const albumIndex = ref(0)
+const image = computed(() => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view)
+let interval
+let alive = true
+function merge(rows) {
+  if (!rows?.length) return
+  schools.value = rows.map((row) => {
+    const local = SCHOOL_MAP[row.key] || SCHOOLS[0]
+    return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
+      logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
+      album: row.album_keys?.length ? row.album_keys : [local.view] }
+  })
+}
+onMounted(async () => {
+  interval = setInterval(() => {
+    if (active.value && document.visibilityState === 'visible') albumIndex.value += 1
+  }, 5000)
+  try {
+    const cached = await db.kv.get('schools:catalog')
+    if (alive) merge(cached?.value)
+    const rows = await schoolApi.list()
+    if (!alive) return
+    merge(rows); await db.kv.put({ key: 'schools:catalog', value: rows })
+  } catch { /* 断网使用本机目录与七校素材 */ }
+})
+onBeforeUnmount(() => { alive = false; clearInterval(interval) })
 </script>
 
 <template>
@@ -23,15 +53,15 @@ const active = ref(null)
 
       <div class="school-grid">
         <button
-          v-for="s in SCHOOLS"
+          v-for="s in schools"
           :key="s.key"
           class="school-card"
           :style="{ '--sc': s.color }"
-          @click="active = s"
+          @click="active = s; albumIndex = 0"
         >
-          <img class="sc-view" :src="s.view" :alt="s.name" />
+          <BlobImage class="sc-view" :src="s.view" :alt="s.name" />
           <div class="sc-body">
-            <img class="sc-logo" :src="s.logo" :alt="s.name" />
+            <BlobImage class="sc-logo" :src="s.logo" :alt="s.name" />
             <div class="sc-main">
               <div class="sc-name">{{ s.name }}</div>
               <div class="sc-city"><MapPin :size="11" />{{ s.city }}</div>
@@ -44,13 +74,16 @@ const active = ref(null)
 
     <div v-if="active" class="mask" @click.self="active = null">
       <div class="sheet" :style="{ '--sc': active.color }">
-        <img class="big-view" :src="active.view" :alt="active.name" />
+        <BlobImage :key="image" class="big-view" :src="image" :alt="active.name" />
         <div class="big-body">
-          <img class="big-logo" :src="active.logo" :alt="active.name" />
+          <BlobImage class="big-logo" :src="active.logo" :alt="active.name" />
           <div>
             <div class="big-name">{{ active.name }}</div>
             <div class="big-city"><MapPin :size="12" />{{ active.city }}</div>
           </div>
+        </div>
+        <div v-if="active.album?.length > 1" class="motto">
+          <button v-for="(key, i) in active.album" :key="key" class="btn btn-outline btn-sm" @click="albumIndex = i">{{ i + 1 }}</button>
         </div>
         <div class="motto"><Quote :size="15" />{{ active.motto }}</div>
         <button class="btn btn-ghost btn-block" @click="active = null">收好，继续学</button>
