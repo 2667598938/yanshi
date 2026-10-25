@@ -7,11 +7,13 @@ import {
 import { resourceApi } from '../api'
 import { fmtDate } from '../utils/time'
 import { useToast } from '../composables/useToast'
+import { useAuthStore } from '../stores/auth'
 import { queueFavorite } from '../sync/community'
 import { scheduleSync } from '../sync/engine'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const { toast } = useToast()
 
 const row = ref(null)
@@ -79,9 +81,14 @@ function edit() {
 }
 
 async function remove() {
+  let reason = ''
+  if (auth.isAdmin && row.value.owner?.id !== auth.user?.id) {
+    reason = (prompt('删除原因（必填，会通知作者）') || '').trim()
+    if (!reason) return toast('管理员删除内容必须填写原因')
+  }
   if (!confirm(`删除「${row.value.title}」？删除后不可恢复。`)) return
   try {
-    await resourceApi.remove(id.value)
+    await resourceApi.remove(id.value, reason)
     toast('已删除')
     router.replace('/resources')
   } catch (e) {

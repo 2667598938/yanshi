@@ -169,13 +169,16 @@ def delete_resource(rid: int, request: Request, reason: str = '',
     is_owner = row.user_id == user.id
     if not is_owner and user.role != 'admin':
         raise ApiError(403, 40301, '只能删除自己发布的资料')
+    reason = (reason or '').strip()
+    if user.role == 'admin' and not is_owner and not reason:
+        raise ApiError(400, 40001, '管理员删除内容必须填写原因')
     row.deleted_at = utcnow()
     if not is_owner:
         owner = db.get(User, row.user_id)
         if owner:
             create_message(db, owner, 'content', '资料已被管理员删除',
                            f'你的资料「{row.title}」因违规被删除。'
-                           + (f'原因：{reason}' if reason else ''),
+                           + (f'原因：{reason[:200]}' if reason else ''),
                            link='/resources')
     audit(db, request, 'resource.delete', user_id=user.id, detail=str(rid))
     db.commit()
