@@ -16,13 +16,13 @@
 - **个人梦校与时间节点**：不限7所，自定义多图/排序；多个个人倒计时、节点寄语及随机文案
 - **资料库**：VIP 发布、非 VIP 链接脱敏、点赞与收藏
 - **社区**：动态与二级评论、励志区投稿审核、梦校墙
-- **AI 助教**：考研答疑 / 作文批改 / 计划 / 复盘；VIP或审批授权可用BYOK；图片输入、SSE、日预算、上下文设置、模型目录缓存、本人学习摘要、预览确认后批量导入任务；V1不开放DOM/通用工具
+- **AI 助教**：考研答疑 / 作文批改 / 计划 / 复盘；VIP或审批授权可用BYOK；图片输入、SSE、日预算、上下文设置、模型目录缓存、本人学习摘要、预览确认后批量导入任务；明确排除DOM/通用工具
 - **账号与会话**：邮箱验证码登录（5 分钟有效、5 次输错作废）；access token 仅驻内存，refresh token 只放 httpOnly Cookie；每个账号使用独立本地库，换号不串数据
 - **账号与后台**：忘记密码、站内消息、VIP / 邀请码、功能申请、内容审核、审计日志
 - **预留开关**：微信 / QQ / 手机号登录代码已实现，通过 `AUTH_CHANNELS` 控制，默认仅邮箱
 - **开放与运维**：首次初始化默认关闭注册、账号上限4人；房间类型由后端开关控制；手机号绑定、持久邮件重试、迁移就绪检查、校验备份与恢复到新目录
 
-完整功能范围、统一测试步骤及真实服务待验项见[统一验收清单](docs/acceptance-checklist.md)和[开发进度](docs/implementation-status.md)。视频小房间/云端自习室默认关闭，按PRD F-26不包含视频推流。
+当前尚有部分实现、未实现和缺陷，不能按全需求完成交付。有效规则见[当前规则](docs/design-2026-10-25/PRD-当前规则.md)；功能范围、统一测试步骤及真实服务待验项见[统一验收清单](docs/acceptance-checklist.md)和[开发进度](docs/implementation-status.md)。视频小房间/云端自习室默认关闭，按PRD F-26不包含视频推流。
 
 ## 目录结构
 
@@ -109,7 +109,7 @@ npm run dev
 | `VOLC_API_KEY` / `VOLC_MODEL` | 服务端兜底 AI Key（可选） |
 | `AI_KEY_ENC_SECRET` | VIP 自填 Key 的 AES-256-GCM 主密钥；留空回退 JWT_SECRET 派生 |
 | `AI_DAILY_LIMIT` / `AI_CUSTOM_HOSTS` | 每日请求预算与生产自定义AI网关精确域名白名单 |
-| `AI_VISION_ENABLED` | 图片站点开关；V1固定拒绝通用工具和搜索调用 |
+| `AI_VISION_ENABLED` | 图片站点开关；固定拒绝通用工具和搜索调用 |
 
 ## 数据库与迁移
 
@@ -138,7 +138,7 @@ npm run build
 - 前端回归测试使用 Vitest + fake-indexeddb，覆盖实际 Dexie 库、Pinia store、账号切换、图片补传与备份序列化。
 - CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）在 push / PR 到 `main`、`dev` 时执行：后端迁移可执行性 + 全量 pytest；前端 `npm ci` + `npm test` + `npm run build`。
 - 第 0 期修复范围、数据兼容规则与人工验收步骤见 [第 0 期修复说明](docs/phase0-acceptance.md)。
-- 最新自动回归：后端130项、前端82项；含图片权限、AI本人摘要/确认导入、共享验证码、原子兑换、并发座位、离线队列与恢复校验。真实SMTP/短信/OAuth/七牛/AI供应商另按统一清单验收。
+- 历史代码基线自动回归：后端130项、前端82项；含图片权限、AI本人摘要/确认导入、共享验证码、原子兑换、并发座位、离线队列与恢复校验。真实SMTP/短信/OAuth/七牛/AI供应商另按统一清单验收。
 
 ## 分支与提交规范
 
