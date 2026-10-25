@@ -9,7 +9,10 @@ from .config import BASE_DIR, Settings
 from .database import make_database
 from .errors import install_errors, ok
 from .services.transient import TransientStore
-from .routers import auth, admin, public, sync, room, attachments, schools, ai, vip
+from .routers import (
+    auth, admin, public, sync, room, attachments, schools, ai, vip, error_types, oauth,
+    messages, resources, posts, inspirations, rooms,
+)
 
 
 def resolve_secret(settings: Settings) -> str:
@@ -69,12 +72,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(public.router)
     app.include_router(auth.router)
+    app.include_router(oauth.router)
     app.include_router(sync.router)
     app.include_router(room.router)
+    app.include_router(rooms.router)
     app.include_router(attachments.router)
     app.include_router(schools.router)
     app.include_router(ai.router)
+    app.include_router(error_types.router)
     app.include_router(vip.router)
+    app.include_router(messages.router)
+    app.include_router(resources.router)
+    app.include_router(posts.router)
+    app.include_router(inspirations.router)
     app.include_router(admin.router)
     return app
 

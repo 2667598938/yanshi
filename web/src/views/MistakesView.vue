@@ -141,7 +141,7 @@ async function remove() {
           </div>
           <div v-if="m.content" class="mk-content">{{ m.content }}</div>
           <div class="mk-line2">
-            <span class="mk-reason">{{ REASON_MAP[m.reason]?.name }}</span>
+            <span class="mk-reason">{{ REASON_MAP[m.reason]?.name || m.reason }}</span>
             <span v-for="t in (m.tags || []).slice(0, 3)" :key="t" class="mk-tag">{{ t }}</span>
           </div>
         </div>
@@ -184,7 +184,7 @@ async function remove() {
       </div>
 
       <div class="reason-line">
-        {{ REASON_MAP[detail.reason]?.name }}
+        {{ REASON_MAP[detail.reason]?.name || detail.reason }}
         <span v-for="t in detail.tags" :key="t" class="dk-tag">{{ t }}</span>
       </div>
 

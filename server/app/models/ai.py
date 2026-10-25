@@ -27,4 +27,20 @@ class AIMessage(Base):
     conversation_id = Column(ForeignKey('ai_conversations.id'), nullable=False)
     role = Column(String(12), nullable=False)   # user | assistant
     content = Column(Text, nullable=False)
+    prompt_tokens = Column(Integer)
+    completion_tokens = Column(Integer)
+    latency_ms = Column(Integer)
     created_at = Column(DateTime, default=now, nullable=False)
+
+
+class UserAIKey(Base):
+    """VIP 用户自填的 AI Key：仅存 AES-GCM 密文，不落明文。"""
+    __tablename__ = 'user_ai_keys'
+
+    user_id = Column(ForeignKey('users.id'), primary_key=True)
+    provider = Column(String(24), nullable=False, default='deepseek')
+    base_url = Column(String(200), nullable=False, default='')
+    model = Column(String(120), default='', server_default='')
+    key_cipher = Column(Text, nullable=False)
+    key_mask = Column(String(40), nullable=False, default='', server_default='')
+    updated_at = Column(DateTime, default=now, nullable=False)

@@ -36,6 +36,12 @@ db.version(2).stores({
   syncMeta: 'key',
 })
 
+// v0.4 离线社区：本地待上传动态、待同步收藏状态
+db.version(3).stores({
+  localPosts: 'id, createdAt',
+  localFavs: 'resourceId, updatedAt',
+})
+
 // 首次启动：写入默认科目
 async function seedSubjects() {
   const count = await db.subjects.count()

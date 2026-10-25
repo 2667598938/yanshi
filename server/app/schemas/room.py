@@ -26,3 +26,25 @@ class GoalInput(BaseModel):
     target_school: str = Field(default='', max_length=80)
     target_score: str = Field(default='', max_length=80)
     words: str = Field(default='', max_length=200)
+
+
+class RoomCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+    name: str = Field(min_length=2, max_length=20)
+    intro: str = Field(default='', max_length=200)
+    visibility: Literal['public', 'private'] = 'public'
+
+
+class RoomUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+    name: Optional[str] = Field(default=None, min_length=2, max_length=20)
+    intro: Optional[str] = Field(default=None, max_length=200)
+    visibility: Optional[Literal['public', 'private']] = None
+
+
+class RoomJoin(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+    code: str = Field(default='', max_length=32)

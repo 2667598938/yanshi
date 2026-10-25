@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ChevronLeft, Check, ImagePlus, X, NotebookPen,
@@ -8,7 +8,7 @@ import BlobImage from '../components/BlobImage.vue'
 import { useMistakesStore } from '../stores/mistakes'
 import { useSubjectsStore } from '../stores/subjects'
 import { useAuthStore } from '../stores/auth'
-import { attachmentApi } from '../api'
+import { attachmentApi, errorTypeApi } from '../api'
 import { MISTAKE_REASONS, REVIEW_INTERVALS } from '../data/subjects'
 import { compressImage } from '../utils/image'
 import { todayKey } from '../utils/date'
@@ -34,6 +34,25 @@ const fDate = ref(todayKey())
 const sessionId = ref(null)
 const tagInput = ref('')
 const fileRef = ref(null)
+const customReasons = ref([])
+
+const reasonOptions = computed(() => {
+  const rows = MISTAKE_REASONS.map((r) => ({ value: r.id, name: r.name }))
+  for (const r of customReasons.value) rows.push({ value: r.name, name: r.name })
+  if (fReason.value && !rows.some((r) => r.value === fReason.value)) {
+    rows.push({ value: fReason.value, name: fReason.value })
+  }
+  return rows
+})
+
+onMounted(async () => {
+  try {
+    const data = await errorTypeApi.list()
+    customReasons.value = data.custom || []
+  } catch {
+    customReasons.value = []
+  }
+})
 
 onMounted(() => {
   const q = route.query
@@ -162,12 +181,12 @@ async function save() {
       <div class="f-label">错误原因</div>
       <div class="pill-row">
         <button
-          v-for="r in MISTAKE_REASONS"
-          :key="r.id"
+          v-for="r in reasonOptions"
+          :key="r.value"
           class="pill"
-          :class="{ active: fReason === r.id }"
-          :style="fReason === r.id ? { background: 'var(--tomato)' } : {}"
-          @click="fReason = r.id"
+          :class="{ active: fReason === r.value }"
+          :style="fReason === r.value ? { background: 'var(--tomato)' } : {}"
+          @click="fReason = r.value"
         >{{ r.name }}</button>
       </div>
     </div>

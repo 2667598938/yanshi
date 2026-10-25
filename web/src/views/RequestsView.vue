@@ -6,6 +6,7 @@ import {
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { requestApi } from '../api'
+import { fmtDateTime } from '../utils/time'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
@@ -34,7 +35,7 @@ const loading = ref(true)
 const isVip = computed(() => auth.isVip)
 
 function fmtDate(v) {
-  return v ? v.slice(0, 16).replace('T', ' ') : ''
+  return fmtDateTime(v)
 }
 
 async function load() {

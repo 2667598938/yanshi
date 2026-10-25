@@ -1,13 +1,16 @@
-"""AI 助教接口（独立 Tab）：场景化对话 + 历史会话，Key 仅服务端。"""
+"""AI 助教接口（独立 Tab）：VIP 自填 Key（BYOK）+ 服务端兜底 Key。"""
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import delete, select
 
 from ..deps import audit, get_current_user, get_db
 from ..errors import ApiError, ok
-from ..models import AIConversation, AIMessage
-from ..schemas.ai import ChatInput, ConversationCreate, ConversationUpdate
+from ..models import AIConversation, AIMessage, UserAIKey
+from ..schemas.ai import (
+    AIKeyInput, AIModelsInput, ChatInput, ConversationCreate, ConversationUpdate,
+)
 from ..serializers import iso
 from ..services import ai as ai_service
+from ..services import ai_key as crypto
 from ..time import utcnow
 
 router = APIRouter(prefix='/api/v1/ai', tags=['ai'])
@@ -28,7 +31,31 @@ def convo_dict(row):
 
 def msg_dict(row):
     return {'id': row.id, 'role': row.role, 'content': row.content,
+            'prompt_tokens': row.prompt_tokens, 'completion_tokens': row.completion_tokens,
+            'latency_ms': row.latency_ms,
             'created_at': iso(row.created_at)}
+
+
+def is_vip(user):
+    return bool(user.vip_until and user.vip_until > utcnow())
+
+
+def require_vip(user):
+    if not is_vip(user):
+        raise ApiError(403, 40301, '该功能需要 VIP')
+
+
+def key_dict(row):
+    return {'configured': row is not None,
+            'provider': row.provider if row else 'deepseek',
+            'base_url': row.base_url if row else '',
+            'model': row.model if row else '',
+            'key_mask': row.key_mask if row else '',
+            'updated_at': iso(row.updated_at) if row else None}
+
+
+def enc_secret(request):
+    return request.app.state.settings.ai_key_enc_secret or request.app.state.secret
 
 
 def get_owned_conversation(db, cid, user):
@@ -44,14 +71,79 @@ def scenes(user=Depends(get_current_user)):
 
 
 @router.get('/enabled')
-def enabled(request: Request, user=Depends(get_current_user)):
-    return ok({'enabled': request.app.state.settings.ai_enabled})
+def enabled(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
+    key_row = db.get(UserAIKey, user.id)
+    return ok({'enabled': bool(key_row) or request.app.state.settings.ai_enabled,
+               'byok': key_row is not None, 'vip': is_vip(user)})
+
+
+# ---------------------------------------------------------------- AI Key（VIP）
+@router.get('/key')
+def get_key(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
+    require_vip(user)
+    return ok(key_dict(db.get(UserAIKey, user.id)))
+
+
+@router.put('/key')
+def save_key(body: AIKeyInput, request: Request, user=Depends(get_current_user),
+             db=Depends(get_db)):
+    require_vip(user)
+    base_url = ai_service.resolve_base_url(body.provider, body.base_url)
+    model = body.model.strip() or ai_service.default_model(body.provider)
+    cipher_text = crypto.encrypt(enc_secret(request), body.api_key.strip(), str(user.id))
+    row = db.get(UserAIKey, user.id)
+    if row is None:
+        row = UserAIKey(user_id=user.id)
+        db.add(row)
+    row.provider = body.provider
+    row.base_url = base_url
+    row.model = model
+    row.key_cipher = cipher_text
+    row.key_mask = crypto.mask(body.api_key)
+    row.updated_at = utcnow()
+    audit(db, request, 'ai.save_key', user_id=user.id, detail=body.provider)
+    db.commit()
+    db.refresh(row)
+    return ok(key_dict(row))
+
+
+@router.delete('/key')
+def delete_key(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
+    row = db.get(UserAIKey, user.id)
+    if row:
+        db.delete(row)
+        audit(db, request, 'ai.delete_key', user_id=user.id)
+        db.commit()
+    return ok(key_dict(None))
+
+
+@router.post('/models')
+async def models(body: AIModelsInput, request: Request, user=Depends(get_current_user),
+                 db=Depends(get_db)):
+    require_vip(user)
+    key_row = db.get(UserAIKey, user.id)
+    api_key = body.api_key.strip()
+    if not api_key and key_row:
+        api_key = crypto.decrypt(enc_secret(request), key_row.key_cipher, str(user.id))
+    if not api_key:
+        raise ApiError(400, 40001, '请先填写 API Key')
+    base_url = ai_service.resolve_base_url(
+        body.provider, body.base_url or (key_row.base_url if key_row else ''))
+    items = await ai_service.fetch_models(base_url, api_key)
+    fallback = not items
+    if fallback and ai_service.default_model(body.provider):
+        items = [ai_service.default_model(body.provider)]
+    return ok({'models': items, 'fallback': fallback, 'provider': body.provider})
 
 
 @router.post('/chat')
 async def chat(body: ChatInput, request: Request, user=Depends(get_current_user),
                db=Depends(get_db)):
     request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
+    key_row = db.get(UserAIKey, user.id)
+    if key_row:
+        require_vip(user)
+
     convo = None
     history = []
     if body.conversation_id:
@@ -68,16 +160,32 @@ async def chat(body: ChatInput, request: Request, user=Depends(get_current_user)
         db.commit()
 
     messages = ai_service.build_messages(body.scene, history, body.content, body.context)
-    reply = await ai_service.call_ark(request.app.state.settings, messages)
+    if key_row:
+        api_key = crypto.decrypt(enc_secret(request), key_row.key_cipher, str(user.id))
+        result = await ai_service.call_openai(
+            key_row.base_url or ai_service.resolve_base_url(key_row.provider),
+            api_key, key_row.model or ai_service.default_model(key_row.provider),
+            messages, request.app.state.settings.ai_max_tokens)
+        reply = result['content']
+    else:
+        reply = await ai_service.call_ark(request.app.state.settings, messages)
+        result = {'content': reply, 'prompt_tokens': None,
+                  'completion_tokens': None, 'latency_ms': None}
 
-    result = {'reply': reply, 'scene': body.scene}
+    out = {'reply': reply, 'scene': body.scene,
+           'prompt_tokens': result['prompt_tokens'],
+           'completion_tokens': result['completion_tokens'],
+           'latency_ms': result['latency_ms']}
     if convo:
-        db.add(AIMessage(conversation_id=convo.id, role='assistant', content=reply))
+        db.add(AIMessage(conversation_id=convo.id, role='assistant', content=reply,
+                         prompt_tokens=result['prompt_tokens'],
+                         completion_tokens=result['completion_tokens'],
+                         latency_ms=result['latency_ms']))
         convo.updated_at = utcnow()
         db.commit()
-        result['conversation_id'] = convo.id
-        result['title'] = convo.title
-    return ok(result)
+        out['conversation_id'] = convo.id
+        out['title'] = convo.title
+    return ok(out)
 
 
 @router.get('/conversations')

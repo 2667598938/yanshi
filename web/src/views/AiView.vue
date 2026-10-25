@@ -1,15 +1,21 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Sparkles, MessageCircle, Send, Plus, History, Sigma, Cpu,
-  PenLine, CalendarClock, RotateCcw,
+  PenLine, CalendarClock, RotateCcw, Settings2, Crown, ChevronRight,
 } from 'lucide-vue-next'
 import { aiApi } from '../api'
+import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
 
+const router = useRouter()
+const auth = useAuthStore()
 const { toast } = useToast()
 
 const enabled = ref(true)
+const keyReady = ref(false)
+const vip = ref(false)
 const scenes = ref([
   { key: 'kaoyan', label: '考研答疑', icon: Cpu },
   { key: 'general', label: '通用问答', icon: MessageCircle },
@@ -42,11 +48,18 @@ async function scrollBottom() {
   if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight
 }
 
+const blocked = computed(() => {
+  if (!vip.value) return 'vip'
+  if (!keyReady.value) return 'key'
+  return ''
+})
+
 async function send() {
   const content = input.value.trim()
   if (!content || sending.value) return
+  if (blocked.value) return
   if (!enabled.value) {
-    toast('AI 未启用，请在后端配置火山方舟 Key')
+    toast('AI 未启用，请先在 AI 设置中配置 Key')
     return
   }
   messages.value.push({ role: 'user', content })
@@ -59,7 +72,9 @@ async function send() {
       content,
       conversation_id: conversationId.value || undefined,
     })
-    messages.value.push({ role: 'assistant', content: data.reply })
+    messages.value.push({ role: 'assistant', content: data.reply,
+      prompt_tokens: data.prompt_tokens, completion_tokens: data.completion_tokens,
+      latency_ms: data.latency_ms })
     if (data.conversation_id) {
       conversationId.value = data.conversation_id
       if (data.title) conversationTitle.value = data.title
@@ -95,7 +110,11 @@ async function openConversation(id) {
     conversationId.value = data.id
     conversationTitle.value = data.title
     scene.value = data.scene || 'general'
-    messages.value = (data.messages || []).map((m) => ({ role: m.role, content: m.content }))
+    messages.value = (data.messages || []).map((m) => ({
+      role: m.role, content: m.content,
+      prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens,
+      latency_ms: m.latency_ms,
+    }))
     showHistory.value = false
     scrollBottom()
   } catch (e) {
@@ -115,8 +134,14 @@ async function removeConversation(id) {
 
 onMounted(async () => {
   try {
+    await auth.fetchMe().catch(() => {})
     const cfg = await aiApi.enabled()
     enabled.value = cfg.enabled
+    vip.value = !!cfg.vip
+    if (cfg.vip) {
+      const k = await aiApi.key()
+      keyReady.value = !!k.configured
+    }
     const sc = await aiApi.scenes()
     if (Array.isArray(sc) && sc.length) {
       const iconMap = {
@@ -139,6 +164,7 @@ onMounted(async () => {
         <div class="nav-sub">{{ conversationTitle || '考研专项答疑' }}</div>
       </div>
       <div class="nav-actions">
+        <button class="icon-btn" title="AI 设置" @click="router.push('/ai/settings')"><Settings2 :size="19" /></button>
         <button class="icon-btn" @click="newChat()"><Plus :size="19" /></button>
         <button class="icon-btn" @click="loadHistory"><History :size="19" /></button>
       </div>
@@ -156,7 +182,35 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div ref="scrollEl" class="chat-scroll">
+    <div v-if="blocked" class="ai-guide">
+      <div class="guide-badge"><Crown :size="26" /></div>
+      <div class="guide-title">
+        {{ blocked === 'vip' ? 'AI 是 VIP 专属功能' : '还差一步：配置你的 API Key' }}
+      </div>
+      <div class="guide-desc">
+        <template v-if="blocked === 'vip'">
+          AI 问答需要 VIP 权限，并填写你自己的模型 API Key。开通后站内不会保存明文 Key。
+        </template>
+        <template v-else>
+          你已是 VIP。前往 AI 设置填写自己的 API Key，即可开始对话；Key 使用 AES-256-GCM 加密存储。
+        </template>
+      </div>
+      <button
+        v-if="blocked === 'vip'"
+        class="btn btn-accent btn-block"
+        @click="router.push('/vip')"
+      >
+        <Crown :size="17" />开通 VIP
+      </button>
+      <button v-else class="btn btn-primary btn-block" @click="router.push('/ai/settings')">
+        <Settings2 :size="17" />去配置 Key
+      </button>
+      <button class="guide-link" @click="router.push('/requests')">
+        没有邀请码？提交功能申请<ChevronRight :size="15" />
+      </button>
+    </div>
+
+    <div v-else ref="scrollEl" class="chat-scroll">
       <div v-if="!messages.length" class="chat-empty">
         <div class="empty-badge"><Sparkles :size="26" /></div>
         <div class="empty-title">{{ scenes.find((x) => x.key === scene)?.label }}</div>
@@ -164,7 +218,16 @@ onMounted(async () => {
       </div>
       <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
         <div v-if="m.role === 'assistant'" class="msg-ava"><Sparkles :size="16" /></div>
-        <div class="bubble">{{ m.content }}</div>
+        <div class="msg-main">
+          <div class="bubble">{{ m.content }}</div>
+          <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
+            <template v-if="m.prompt_tokens || m.completion_tokens">
+              {{ (m.prompt_tokens || 0) + (m.completion_tokens || 0) }} tokens
+            </template>
+            <template v-if="m.prompt_tokens || m.completion_tokens"> · </template>
+            {{ ((m.latency_ms || 0) / 1000).toFixed(1) }}s
+          </div>
+        </div>
       </div>
       <div v-if="sending" class="chat-msg assistant">
         <div class="msg-ava"><Sparkles :size="16" /></div>
@@ -172,7 +235,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="composer">
+    <div v-if="!blocked" class="composer">
       <input
         v-model="input"
         :placeholder="enabled ? '输入你的问题…' : 'AI 未启用'"
@@ -241,6 +304,44 @@ onMounted(async () => {
 .chat-msg.assistant .bubble { background: #fff; border-top-left-radius: 4px; }
 .chat-msg.user .bubble { background: var(--primary); color: #fff; border-top-right-radius: 4px; }
 .typing { color: var(--faint); }
+.msg-main { display: flex; flex-direction: column; min-width: 0; max-width: 78%; }
+.msg-main .bubble { max-width: 100%; }
+.msg-usage { font-size: 10.5px; color: var(--faint); margin-top: 4px; padding-left: 2px; }
+
+.ai-guide {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 26px 30px 40px;
+  text-align: center;
+}
+.guide-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 17px;
+  background: #fff3df;
+  color: var(--accent-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.guide-title { font-size: 17px; font-weight: 800; color: var(--ink); }
+.guide-desc { font-size: 12.5px; color: var(--sub); line-height: 1.75; margin: 9px 0 18px; max-width: 320px; }
+.guide-link {
+  margin-top: 12px;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
 
 .composer { display: flex; gap: 9px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: #fff; }
 .composer input { flex: 1; height: 46px; border: 1px solid var(--line); border-radius: 999px; padding: 0 18px; font-size: 15px; background: #fafbfe; }

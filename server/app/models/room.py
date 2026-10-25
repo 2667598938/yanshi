@@ -20,6 +20,7 @@ class Room(Base):
     intro = Column(String(500), default='', server_default='')
     owner_id = Column(ForeignKey('users.id'), nullable=True)
     capacity = Column(Integer, default=4, server_default='4', nullable=False)
+    visibility = Column(String(12), default='public', server_default='public', nullable=False)
     created_at = Column(DateTime, default=now, nullable=False)
     dissolved_at = Column(DateTime)
 

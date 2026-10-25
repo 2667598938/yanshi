@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { Lock, Users, Send, Trash2, Flag, Trophy, Flame } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
+import { Lock, Users, Send, Trash2, Flag, Trophy, Flame, ArrowLeft, Copy, LogIn, Settings, UserMinus } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useSubjectsStore } from '../stores/subjects'
 import { useAuthStore } from '../stores/auth'
@@ -13,8 +14,12 @@ const timer = useTimerStore()
 const subjects = useSubjectsStore()
 const auth = useAuthStore()
 const { toast } = useToast()
+const route = useRoute()
+const router = useRouter()
+const roomId = computed(() => (route.params.id ? Number(route.params.id) : null))
 
 const room = ref(null)
+const joined = ref(true)
 const members = ref([])
 const ranking = ref({ today: [], week: [], all: [] })
 const messages = ref([])
@@ -23,6 +28,9 @@ const loading = ref(false)
 const msgInput = ref('')
 const showGoal = ref(false)
 const goalDraft = ref({ target_school: '', target_score: '', words: '' })
+const showManage = ref(false)
+const manageForm = ref({ name: '', intro: '', visibility: 'public' })
+const isOwner = computed(() => room.value?.my_role === 'owner' || auth.isAdmin)
 
 function schoolLogo(key) {
   return SCHOOL_MAP[key]?.logo || ''
@@ -63,6 +71,7 @@ const seats = computed(() => {
 
 const todayTotal = computed(() => members.value.reduce((a, m) => a + (m.today_sec || 0), 0))
 const onlineCount = computed(() => members.value.filter((m) => m.online).length)
+const isFull = computed(() => members.value.length >= (room.value?.capacity || 4))
 
 const rankList = computed(() => {
   const ids = ranking.value[rankTab.value] || []
@@ -83,18 +92,49 @@ function buildHeartbeat() {
       focus_started_at: c.startedAt,
     }
   }
-  return { status: 'online', subject_client_id: null, subject_name: null, activity_type: null, mode: null, focus_started_at: null }
+  return { status: 'online', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null }
 }
 
 async function fetchRoom() {
   try {
-    const data = await roomApi.get()
+    const data = await roomApi.get(roomId.value)
     room.value = data.room
+    joined.value = data.joined !== false
     members.value = data.members || []
     ranking.value = data.ranking || { today: [], week: [], all: [] }
     messages.value = data.messages || []
   } catch (e) {
-    // 静默，轮询下次再试
+    if (e.status === 403 || e.status === 404) {
+      toast(e.message)
+      router.replace('/rooms')
+    }
+  }
+}
+
+let beatTimer = null
+function startBeating() {
+  if (beatTimer) return
+  beat('online')
+  beatTimer = setInterval(() => beat(), 20000)
+}
+
+async function join() {
+  try {
+    await roomApi.join(roomId.value)
+    toast('已加入自习室')
+    await fetchRoom()
+    startBeating()
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(room.value?.code || '')
+    toast('房间码已复制，发给研友')
+  } catch {
+    toast('复制失败')
   }
 }
 
@@ -102,7 +142,7 @@ async function beat(statusOverride) {
   try {
     const body = buildHeartbeat()
     if (statusOverride) body.status = statusOverride
-    await roomApi.heartbeat(body)
+    await roomApi.heartbeat(body, roomId.value)
   } catch {
     /* 忽略单次心跳失败 */
   }
@@ -112,7 +152,7 @@ async function sendMessage() {
   const content = msgInput.value.trim()
   if (!content) return
   try {
-    await roomApi.postMessage(content)
+    await roomApi.postMessage(content, roomId.value)
     msgInput.value = ''
     await fetchRoom()
   } catch (e) {
@@ -122,7 +162,7 @@ async function sendMessage() {
 
 async function removeMessage(id) {
   try {
-    await roomApi.deleteMessage(id)
+    await roomApi.deleteMessage(id, roomId.value)
     messages.value = messages.value.filter((m) => m.id !== id)
   } catch (e) {
     toast(e.message)
@@ -145,7 +185,7 @@ async function saveGoal() {
       target_school: goalDraft.value.target_school || null,
       target_score: goalDraft.value.target_score ? Number(goalDraft.value.target_score) : null,
       words: goalDraft.value.words || null,
-    })
+    }, roomId.value)
     showGoal.value = false
     toast('目标已更新')
     await fetchRoom()
@@ -154,29 +194,85 @@ async function saveGoal() {
   }
 }
 
+function openManage() {
+  manageForm.value = {
+    name: room.value?.name || '',
+    intro: room.value?.intro || '',
+    visibility: room.value?.visibility || 'public',
+  }
+  showManage.value = true
+}
+
+async function saveManage() {
+  try {
+    await roomApi.update(roomId.value, {
+      name: manageForm.value.name.trim(),
+      intro: manageForm.value.intro.trim(),
+      visibility: manageForm.value.visibility,
+    })
+    showManage.value = false
+    toast('房间信息已更新')
+    await fetchRoom()
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function changeCode() {
+  if (!confirm('更换房间码？旧码会立即失效。')) return
+  try {
+    const next = await roomApi.newCode(roomId.value)
+    room.value = { ...room.value, ...next }
+    toast(`新房间码：${next.code}`)
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function dissolve() {
+  if (!confirm('解散后成员会被移出，且不可恢复，确定解散？')) return
+  try {
+    await roomApi.dissolve(roomId.value)
+    toast('自习室已解散')
+    router.replace('/rooms')
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function kick(member) {
+  if (!confirm(`将「${member.nickname}」移出自习室？`)) return
+  try {
+    await roomApi.kick(roomId.value, member.user_id)
+    toast('已移出')
+    await fetchRoom()
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
 let pollTimer = null
-let beatTimer = null
 onMounted(async () => {
   loading.value = true
   await fetchRoom()
   loading.value = false
-  beat('online')
+  if (joined.value) startBeating()
   pollTimer = setInterval(fetchRoom, 15000)
-  beatTimer = setInterval(() => beat(), 20000)
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('beforeunload', onLeave)
 })
 
 function onVisibility() {
+  if (!joined.value) return
   beat(document.visibilityState === 'visible' ? (timer.current ? 'focusing' : 'online') : 'offline')
 }
 function onLeave() {
   // 页面关闭尽力上报 offline
   try {
-    const token = auth.accessToken
-    const payload = JSON.stringify({ status: 'offline', subject_client_id: null, subject_name: null, activity_type: null, mode: null, focus_started_at: null })
+    const url = roomId.value ? `/api/v1/rooms/${roomId.value}/heartbeat` : '/api/v1/room/heartbeat'
+    const payload = JSON.stringify({ status: 'offline', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null })
     navigator.sendBeacon &&
-      navigator.sendBeacon('/api/v1/room/heartbeat', new Blob([payload], { type: 'application/json' }))
+      navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }))
   } catch {
     /* 关闭页面无法保证 */
   }
@@ -186,17 +282,20 @@ onBeforeUnmount(() => {
   clearInterval(beatTimer)
   document.removeEventListener('visibilitychange', onVisibility)
   window.removeEventListener('beforeunload', onLeave)
-  beat('offline')
+  if (joined.value) beat('offline')
 })
 </script>
 
 <template>
   <div>
     <div class="nav">
+      <button class="back" @click="router.push('/rooms')"><ArrowLeft :size="20" /></button>
       <div>
-        <div class="nav-title">四人自习室</div>
+        <div class="nav-title">{{ room?.name || '四人自习室' }}</div>
         <div class="nav-sub">大雪深埋，与同道并肩</div>
       </div>
+      <button v-if="isOwner" class="switch-btn gear" @click="openManage"><Settings :size="15" /></button>
+      <button class="switch-btn" @click="router.push('/rooms')">换房间</button>
     </div>
 
     <div class="page">
@@ -207,8 +306,13 @@ onBeforeUnmount(() => {
           <div class="room-meta">
             <div class="room-name">{{ room?.name || '研时 · 四人自习室' }}</div>
             <div class="room-private">
-              <Lock :size="11" :stroke-width="2.5" />私密 · 仅四人可见 · 无摄像头 · 不对外开放
+              <Lock v-if="room?.visibility === 'private'" :size="11" :stroke-width="2.5" />
+              {{ room?.visibility === 'private' ? '私密 · 凭房间码加入' : '公开 · 欢迎同频研友' }}
+              · 无摄像头 · 状态同步
             </div>
+            <button v-if="joined && room?.code" class="room-code" @click="copyCode">
+              房间码 {{ room.code }}<Copy :size="11" />
+            </button>
           </div>
         </div>
         <div class="room-stat">
@@ -222,6 +326,20 @@ onBeforeUnmount(() => {
             <div class="rs-label">今日房间总时长</div>
           </div>
         </div>
+      </div>
+
+      <!-- 未加入 -->
+      <div v-if="!joined" class="full-banner">
+        <Users :size="18" />
+        <div v-if="isFull">
+          <div class="fb-title">自习室已满（{{ members.length }} / {{ room?.capacity || 4 }}）</div>
+          <div class="fb-sub">暂时没有座位，可以换一个自习室，或等国主扩容。</div>
+        </div>
+        <div v-else>
+          <div class="fb-title">你还未加入这个自习室</div>
+          <div class="fb-sub">加入后即可同步在线状态、留言和目标墙。</div>
+        </div>
+        <button v-if="!isFull" class="join-btn" @click="join"><LogIn :size="14" />加入</button>
       </div>
 
       <!-- 座位 -->
@@ -247,6 +365,12 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="seat-min tnum">{{ fmtSec(seat.today_sec) }}</div>
+            <button
+              v-if="isOwner && seat.user_id !== auth.user?.id && seat.role !== 'owner'"
+              class="kick-btn"
+              title="移出成员"
+              @click.stop="kick(seat)"
+            ><UserMinus :size="13" /></button>
           </template>
           <template v-else>
             <div class="seat-empty-ic"><Users :size="22" :stroke-width="1.8" /></div>
@@ -279,7 +403,7 @@ onBeforeUnmount(() => {
       <div class="card goal-wall">
         <div class="wall-head">
           <span class="rank-title"><Flag :size="16" />目标墙</span>
-          <button class="link-btn" @click="openGoal">填写我的目标</button>
+          <button v-if="joined" class="link-btn" @click="openGoal">填写我的目标</button>
         </div>
         <div v-for="m in members" :key="m.user_id" class="goal-row">
           <BlobImage class="g-avatar" :src="m.avatar_key" :fallback="schoolLogo(m.target_school)" />
@@ -299,7 +423,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 留言板 -->
-      <div class="card msg-card">
+      <div v-if="joined" class="card msg-card">
         <div class="rank-title"><Flame :size="16" />互相打气留言板</div>
         <div class="msg-list">
           <div v-for="m in messages" :key="m.id" class="msg" :class="{ mine: m.mine }">
@@ -318,10 +442,33 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="!messages.length" class="rank-empty">还没有留言，说句加油吧</div>
         </div>
-        <div class="msg-input">
+        <div v-if="joined" class="msg-input">
           <input v-model="msgInput" maxlength="500" placeholder="给大家留句打气的话…" @keyup.enter="sendMessage" />
           <button @click="sendMessage"><Send :size="17" /></button>
         </div>
+      </div>
+    </div>
+
+    <!-- 房主管理 -->
+    <div v-if="showManage" class="mask" @click.self="showManage = false">
+      <div class="sheet">
+        <div class="sheet-title">房间管理</div>
+        <label class="sf"><span>房间名</span>
+          <input v-model="manageForm.name" maxlength="20" />
+        </label>
+        <label class="sf"><span>简介</span>
+          <input v-model="manageForm.intro" maxlength="200" />
+        </label>
+        <label class="sf"><span>可见性</span>
+          <div class="vis-row">
+            <button :class="{ on: manageForm.visibility === 'public' }" @click="manageForm.visibility = 'public'">公开</button>
+            <button :class="{ on: manageForm.visibility === 'private' }" @click="manageForm.visibility = 'private'">私密（凭码）</button>
+          </div>
+        </label>
+        <button class="btn btn-primary btn-block mt16" @click="saveManage">保存</button>
+        <button class="btn btn-outline btn-block mt8" @click="changeCode">更换房间码</button>
+        <button class="btn btn-danger btn-block mt8" @click="dissolve">解散自习室</button>
+        <button class="btn btn-ghost btn-block mt8" @click="showManage = false">取消</button>
       </div>
     </div>
 
@@ -364,6 +511,22 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center;
 }
 .room-name { font-size: 17px; font-weight: 800; }
+.full-banner {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: #fff3df;
+  color: #8a5a00;
+}
+.fb-title { font-size: 14px; font-weight: 800; }
+.fb-sub { font-size: 11.5px; line-height: 1.65; margin-top: 3px; }
+.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 9px; background: #b06000; color: #fff; font-size: 12.5px; font-weight: 600; padding: 8px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.nav .back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
+.switch-btn { margin-left: auto; border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 9px; padding: 8px 11px; font-size: 12px; cursor: pointer; }
+.room-code { margin-top: 6px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 7px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .room-private { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: rgba(255,255,255,.72); margin-top: 3px; }
 .room-stat { display: flex; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.14); }
 .room-stat > div { flex: 1; text-align: center; }
@@ -387,6 +550,13 @@ onBeforeUnmount(() => {
 .seat-card.filled .seat-state { justify-content: center; }
 .state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .seat-min { font-size: 13px; font-weight: 700; color: var(--primary); }
+.seat-card { position: relative; }
+.kick-btn { position: absolute; right: 8px; bottom: 8px; border: 1px solid var(--line); background: #fff; color: var(--faint); width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.switch-btn.gear { margin-left: auto; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.switch-btn.gear + .switch-btn { margin-left: 6px; }
+.vis-row { display: flex; gap: 8px; }
+.vis-row button { flex: 1; height: 40px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; color: var(--sub); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.vis-row button.on { border-color: transparent; background: var(--primary); color: #fff; }
 .seat-card.empty { border: 1.5px dashed #d3deea; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px; }
 .seat-empty-ic { color: #c2cfdf; margin-bottom: 8px; }
 .seat-empty-txt { font-size: 14px; font-weight: 700; color: var(--faint); }

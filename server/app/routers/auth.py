@@ -10,10 +10,10 @@ from ..deps import audit, clock, decode, get_current_user, get_db
 from ..errors import ApiError, ok
 from ..models import Config, Invite, LoginLog, RefreshToken, User
 from ..schemas.account import (
-    ChangePasswordInput, EmailCodeInput, LoginInput, ProfileUpdate,
+    ChangePasswordInput, EmailCodeInput, EmailLoginInput, LoginInput, ProfileUpdate,
     RegisterInput, ResetVerifyInput, TokenInput,
 )
-from ..services.room import ensure_member
+from ..services.room import join_room_quietly
 from ..services.security import hash_password, issue_tokens, user_payload, verify_password
 from ..services.transient import deliver, digest
 from .public import config_get
@@ -43,7 +43,8 @@ def email_code(body: EmailCodeInput, request: Request):
 
         value = f'{secrets.randbelow(1000000):06}'
         store.set(f'{body.scene}-code:' + digest(email), digest(value), 600)
-        title = '注册验证码' if body.scene == 'register' else '重置密码验证码'
+        title = {'register': '注册验证码', 'reset': '重置密码验证码',
+                 'login': '登录验证码'}[body.scene]
         deliver(settings, email, f'研时 · {title}',
                 f'你的验证码是 {value}，10 分钟内有效。如非本人操作请忽略。')
         return ok({'sent': True})
@@ -70,10 +71,13 @@ def register(body: RegisterInput, request: Request, db=Depends(get_db)):
         raise ApiError(409, 40901, '该邮箱已注册')
 
     now = clock(request)
-    code_hash = digest(body.invite_code.strip().upper())
-    invite = db.scalar(select(Invite).where(Invite.code_hash == code_hash))
-    if not invite or invite.used_by or invite.revoked_at or (invite.expires_at and invite.expires_at < now):
-        raise ApiError(400, 40001, '邀请码无效、已使用或已过期')
+    invite = None
+    if body.invite_code.strip():
+        code_hash = digest(body.invite_code.strip().upper())
+        invite = db.scalar(select(Invite).where(Invite.code_hash == code_hash))
+        if not invite or invite.used_by or invite.revoked_at or (
+                invite.expires_at and invite.expires_at < now):
+            raise ApiError(400, 40001, '邀请码无效、已使用或已过期')
 
     user = User(email=body.email, password_hash=hash_password(body.password),
                 nickname=body.nickname, daily_goal_min=300, exam_year=2028,
@@ -83,11 +87,12 @@ def register(body: RegisterInput, request: Request, db=Depends(get_db)):
         db.flush()
     except IntegrityError:
         raise ApiError(409, 40901, '该邮箱已注册') from None
-    invite.used_by = user.id
-    invite.used_at = now
-    if invite.vip_days:
-        user.vip_until = now + timedelta(days=invite.vip_days)
-    ensure_member(db, user)  # 注册后自动加入固定四人自习室（满员则拒绝）
+    if invite:
+        invite.used_by = user.id
+        invite.used_at = now
+        if invite.vip_days:
+            user.vip_until = now + timedelta(days=invite.vip_days)
+    join_room_quietly(db, user)  # 房间满员不阻断注册
 
     audit(db, request, 'auth.register', user_id=user.id)
     db.add(LoginLog(user_id=user.id, email=body.email, result='success',
@@ -96,6 +101,58 @@ def register(body: RegisterInput, request: Request, db=Depends(get_db)):
     result = issue_tokens(request, db, user, now)
     db.commit()
     return ok({**result, 'user': user_payload(user)})
+
+
+# ----------------------------- 验证码登录 / 自动注册 -----------------------------
+
+@router.post('/auth/email-login')
+def email_login(body: EmailLoginInput, request: Request, db=Depends(get_db)):
+    store = request.app.state.transient
+    store.limit('email-login-ip:' + request.client.host, 30, 3600)
+    store.limit('email-login:' + digest(body.email), 10, 900)
+
+    expected = store.consume('login-code:' + digest(body.email))
+    if not expected or not secrets.compare_digest(expected, digest(body.code)):
+        raise ApiError(400, 40001, '验证码错误或过期')
+
+    now = clock(request)
+    ua = request.headers.get('user-agent', '')
+    user = db.scalar(select(User).where(User.email == body.email, User.status != 'deleted'))
+    registered = False
+    if user is None:
+        if not config_get(db, 'registration_open', True):
+            raise ApiError(403, 40301, '注册已关闭，请联系管理员创建账号')
+        if not body.accepted_terms:
+            raise ApiError(400, 40001, '请先同意用户协议与隐私政策')
+        nickname = body.nickname.strip() or body.email.split('@')[0][:20] or '研友'
+        if len(nickname) < 2:
+            nickname = '研友'
+        user = User(email=body.email, nickname=nickname,
+                    password_hash=hash_password(secrets.token_urlsafe(18)),
+                    daily_goal_min=300, exam_year=2028,
+                    exam_date=config_get(db, 'exam_date', '2027-12-25'))
+        try:
+            db.add(user)
+            db.flush()
+        except IntegrityError:
+            raise ApiError(409, 40901, '该邮箱已注册') from None
+        join_room_quietly(db, user)
+        registered = True
+    if user.status in ('banned', 'deleted'):
+        db.add(LoginLog(user_id=user.id, email=body.email, result='banned',
+                        ip=request.client.host, user_agent=ua))
+        db.commit()
+        raise ApiError(403, 40302, '账号不可用', user.status_reason or '请联系管理员')
+
+    user.last_login_at = now
+    db.add(LoginLog(user_id=user.id, email=body.email, result='success',
+                    ip=request.client.host, user_agent=ua))
+    audit(db, request, 'auth.email_login', user_id=user.id,
+          detail='register' if registered else 'login')
+    db.commit()
+    result = issue_tokens(request, db, user, now)
+    db.commit()
+    return ok({**result, 'user': user_payload(user), 'registered': registered})
 
 
 # ----------------------------- 登录 -----------------------------

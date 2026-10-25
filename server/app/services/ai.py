@@ -1,9 +1,24 @@
-"""AI 助教服务：火山方舟豆包（服务端持有 Key，非流式，会话历史落库）。"""
+"""AI 助教服务：VIP 用户自填 Key（OpenAI 兼容），保留服务端兜底 Key。"""
 import json
+import time
 
 import httpx
 
 from ..errors import ApiError
+
+PROVIDERS = {
+    'deepseek': {'label': 'DeepSeek', 'base_url': 'https://api.deepseek.com/v1',
+                 'default_model': 'deepseek-chat'},
+    'moonshot': {'label': 'Kimi', 'base_url': 'https://api.moonshot.cn/v1',
+                 'default_model': 'moonshot-v1-8k'},
+    'zhipu': {'label': '智谱 GLM', 'base_url': 'https://open.bigmodel.cn/api/paas/v4',
+              'default_model': 'glm-4-flash'},
+    'siliconflow': {'label': '硅基流动', 'base_url': 'https://api.siliconflow.cn/v1',
+                    'default_model': 'Qwen/Qwen2.5-7B-Instruct'},
+    'openai': {'label': 'OpenAI', 'base_url': 'https://api.openai.com/v1',
+               'default_model': 'gpt-4o-mini'},
+    'custom': {'label': '自定义', 'base_url': '', 'default_model': ''},
+}
 
 BASE_PERSONA = """你是「研时」为考研学生打造的 AI 助教，服务于一个 4 人互助学习小组。
 职责：
@@ -63,3 +78,69 @@ async def call_ark(settings, messages):
         return data['choices'][0]['message']['content'].strip()
     except Exception:
         raise ApiError(502, 50201, 'AI 返回内容解析失败') from None
+
+
+def resolve_base_url(provider: str, base_url: str = '') -> str:
+    base = (base_url or PROVIDERS.get(provider, {}).get('base_url', '')).strip().rstrip('/')
+    if not base.startswith(('http://', 'https://')):
+        raise ApiError(400, 40001, '服务商地址无效')
+    return base
+
+
+def default_model(provider: str) -> str:
+    return PROVIDERS.get(provider, {}).get('default_model', '')
+
+
+async def call_openai(base_url: str, api_key: str, model: str, messages: list,
+                      max_tokens: int = 1200) -> dict:
+    """OpenAI 兼容 /chat/completions，返回内容与用量。"""
+    started = time.monotonic()
+    url = base_url + '/chat/completions'
+    payload = {'model': model, 'messages': messages, 'temperature': 0.3,
+               'max_tokens': max_tokens, 'stream': False}
+    headers = {'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=15),
+                                     trust_env=False) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+    except httpx.HTTPError:
+        raise ApiError(502, 50201, 'AI 服务连接失败，请检查网络或服务商地址') from None
+    if resp.status_code != 200:
+        hint = {401: 'API Key 无效或已失效', 403: '模型权限不足',
+                404: '模型不可用，请检查模型名', 429: '调用频率超限或额度不足'}.get(resp.status_code)
+        raise ApiError(502, 50201, hint or 'AI 服务暂时不可用，请稍后重试')
+    try:
+        data = resp.json()
+        content = data['choices'][0]['message']['content'].strip()
+        usage = data.get('usage') or {}
+    except Exception:
+        raise ApiError(502, 50201, 'AI 返回内容解析失败') from None
+    return {
+        'content': content,
+        'prompt_tokens': usage.get('prompt_tokens'),
+        'completion_tokens': usage.get('completion_tokens'),
+        'latency_ms': int((time.monotonic() - started) * 1000),
+    }
+
+
+async def fetch_models(base_url: str, api_key: str) -> list:
+    """用用户 Key 实时拉取模型列表；失败由调用方降级为手填。"""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=8),
+                                     trust_env=False) as client:
+            resp = await client.get(base_url + '/models',
+                                    headers={'Authorization': 'Bearer ' + api_key})
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        rows = data.get('data') if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            return []
+        models = []
+        for row in rows:
+            mid = row.get('id') if isinstance(row, dict) else None
+            if mid and mid not in models:
+                models.append(mid)
+        return models[:200]
+    except (httpx.HTTPError, ValueError):
+        return []

@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     public_origin: str = 'http://localhost:27341'
     cors_origins: str = 'http://localhost:27341,http://127.0.0.1:27341,http://localhost:5173,http://127.0.0.1:5173'
 
+    # 登录渠道：一期只开 email；wechat / qq / phone 代码完整但开关关闭
+    auth_channels: str = 'email'          # 逗号分隔：email,wechat,qq,phone
+    wechat_app_id: str = ''
+    wechat_app_secret: str = ''
+    qq_app_id: str = ''
+    qq_app_secret: str = ''
+    sms_provider: str = ''                # 留空 = 未接入短信服务
+
     # 邮件（QQ SMTP 465 SSL；留空且 mail_console=true 时验证码打印到控制台）
     mail_console: bool = True
     smtp_host: str = ''
@@ -52,10 +60,16 @@ class Settings(BaseSettings):
     volc_model: str = 'doubao-seed-2-1-pro-260915'
     volc_base_url: str = 'https://ark.cn-beijing.volces.com/api/v3'
     ai_max_tokens: int = 1200
+    # 用户自填 AI Key 的加密主密钥（AES-256-GCM）；留空时退回 JWT secret 派生
+    ai_key_enc_secret: str = ''
 
     @property
     def ai_enabled(self):
         return bool(self.volc_api_key)
+
+    @property
+    def enabled_auth_channels(self) -> list:
+        return [x.strip() for x in self.auth_channels.split(',') if x.strip()]
 
     @property
     def cors_list(self):

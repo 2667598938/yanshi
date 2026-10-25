@@ -4,6 +4,8 @@
 在线 / 正在学由心跳维持（room_presence），与学习记录解耦。
 """
 import json
+import secrets
+import string
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -24,10 +26,171 @@ MESSAGE_LIMIT = 50
 
 
 def get_default_room(db):
-    room = db.scalar(select(Room).order_by(Room.id).limit(1))
+    room = db.scalar(select(Room).where(Room.dissolved_at.is_(None)).order_by(Room.id).limit(1))
     if room is None:
         raise ApiError(500, 50001, '自习室尚未初始化，请联系管理员')
     return room
+
+
+def get_room(db, room_id):
+    room = db.get(Room, room_id)
+    if room is None or room.dissolved_at is not None:
+        raise ApiError(404, 40401, '自习室不存在或已解散')
+    return room
+
+
+def get_membership(db, room_id, user_id):
+    return db.scalar(select(RoomMember).where(
+        RoomMember.room_id == room_id, RoomMember.user_id == user_id))
+
+
+def _new_room_code(db):
+    alphabet = string.ascii_uppercase + string.digits
+    for _ in range(50):
+        code = ''.join(secrets.choice(alphabet) for _ in range(6))
+        if not db.scalar(select(Room.id).where(Room.code == code)):
+            return code
+    raise ApiError(500, 50001, '房间码生成失败，请重试')
+
+
+def room_summary(db, room, user, member_count=None, online_count=None):
+    membership = get_membership(db, room.id, user.id)
+    if member_count is None:
+        member_count = db.scalar(select(func.count()).select_from(RoomMember).where(
+            RoomMember.room_id == room.id)) or 0
+    if online_count is None:
+        cutoff = utcnow() - timedelta(seconds=ONLINE_WINDOW_SEC)
+        online_count = db.scalar(select(func.count()).select_from(RoomPresence).where(
+            RoomPresence.room_id == room.id,
+            RoomPresence.status != 'offline',
+            RoomPresence.last_heartbeat_at >= cutoff)) or 0
+    owner = db.get(User, room.owner_id) if room.owner_id else None
+    data = {
+        'id': room.id, 'name': room.name, 'intro': room.intro or '',
+        'visibility': room.visibility, 'capacity': room.capacity,
+        'member_count': int(member_count), 'online_count': int(online_count),
+        'joined': membership is not None,
+        'my_role': membership.role if membership else '',
+        'owner': {'id': owner.id, 'nickname': owner.nickname} if owner else None,
+        'created_at': iso(room.created_at),
+    }
+    # 房间码只给成员看；私密房间非成员完全看不到
+    data['code'] = room.code if membership else ''
+    return data
+
+
+def list_rooms(db, user):
+    member_room_ids = set(db.scalars(select(RoomMember.room_id).where(
+        RoomMember.user_id == user.id)).all())
+    rooms = db.scalars(select(Room).where(
+        Room.dissolved_at.is_(None)
+    ).order_by(Room.id)).all()
+    visible = [r for r in rooms if r.visibility == 'public' or r.id in member_room_ids]
+    if not visible:
+        return []
+    ids = [r.id for r in visible]
+    counts = dict(db.execute(
+        select(RoomMember.room_id, func.count()).where(
+            RoomMember.room_id.in_(ids)).group_by(RoomMember.room_id)).all())
+    cutoff = utcnow() - timedelta(seconds=ONLINE_WINDOW_SEC)
+    online = dict(db.execute(
+        select(RoomPresence.room_id, func.count()).where(
+            RoomPresence.room_id.in_(ids),
+            RoomPresence.status != 'offline',
+            RoomPresence.last_heartbeat_at >= cutoff,
+        ).group_by(RoomPresence.room_id)).all())
+    return [room_summary(db, r, user, counts.get(r.id, 0), online.get(r.id, 0))
+            for r in visible]
+
+
+def create_room(db, user, name, intro, visibility):
+    room = Room(name=name.strip(), intro=(intro or '').strip(), code=_new_room_code(db),
+                owner_id=user.id, capacity=4, visibility=visibility)
+    db.add(room)
+    db.flush()
+    db.add(RoomMember(room_id=room.id, user_id=user.id, role='owner'))
+    db.commit()
+    db.refresh(room)
+    return room
+
+
+def join_room(db, user, room, code=''):
+    if room.visibility == 'private':
+        if code.strip().upper() != room.code.upper():
+            raise ApiError(403, 40301, '房间码不正确')
+    ensure_member(db, user, room)
+    db.commit()
+    return room_state(db, user, room)
+
+
+def leave_room(db, user, room):
+    member = get_membership(db, room.id, user.id)
+    if member is None:
+        raise ApiError(400, 40001, '你还不在这个自习室')
+    if member.role == 'owner':
+        raise ApiError(400, 40001, '房主不能直接退出，请先解散房间')
+    db.delete(member)
+    presence = db.scalar(select(RoomPresence).where(
+        RoomPresence.room_id == room.id, RoomPresence.user_id == user.id))
+    if presence:
+        db.delete(presence)
+    db.commit()
+    return {'left': True}
+
+
+def update_room(db, user, room, name=None, intro=None, visibility=None):
+    if room.owner_id != user.id and user.role != 'admin':
+        raise ApiError(403, 40301, '只有房主可以修改房间')
+    if name is not None:
+        room.name = name.strip()
+    if intro is not None:
+        room.intro = intro.strip()
+    if visibility is not None:
+        room.visibility = visibility
+    db.commit()
+    db.refresh(room)
+    return room_summary(db, room, user)
+
+
+def kick_member(db, user, room, target_user_id):
+    if room.owner_id != user.id and user.role != 'admin':
+        raise ApiError(403, 40301, '只有房主可以移除成员')
+    target = get_membership(db, room.id, target_user_id)
+    if target is None:
+        raise ApiError(404, 40401, '该成员不在房间内')
+    if target_user_id == room.owner_id:
+        raise ApiError(400, 40001, '不能移除房主')
+    db.delete(target)
+    presence = db.scalar(select(RoomPresence).where(
+        RoomPresence.room_id == room.id, RoomPresence.user_id == target_user_id))
+    if presence:
+        db.delete(presence)
+    db.commit()
+    return {'removed': target_user_id}
+
+
+def regenerate_code(db, user, room):
+    if room.owner_id != user.id and user.role != 'admin':
+        raise ApiError(403, 40301, '只有房主可以更换房间码')
+    room.code = _new_room_code(db)
+    db.commit()
+    return room_summary(db, room, user)
+
+
+def dissolve_room(db, user, room):
+    if room.owner_id != user.id and user.role != 'admin':
+        raise ApiError(403, 40301, '只有房主可以解散房间')
+    if room.id == get_default_room(db).id:
+        raise ApiError(400, 40001, '默认自习室不能解散')
+    room.dissolved_at = utcnow()
+    db.execute(delete_room_members(room.id))
+    db.commit()
+    return {'dissolved': True}
+
+
+def delete_room_members(room_id):
+    from sqlalchemy import delete
+    return delete(RoomMember).where(RoomMember.room_id == room_id)
 
 
 def ensure_member(db, user, room=None, role='member', ignore_capacity=False):
@@ -45,6 +208,14 @@ def ensure_member(db, user, room=None, role='member', ignore_capacity=False):
     db.add(member)
     db.flush()
     return member
+
+
+def join_room_quietly(db, user):
+    """开放注册后房间可能已满：账号照常创建，但不强制占位。"""
+    try:
+        ensure_member(db, user)
+    except ApiError:
+        pass
 
 
 def _cn_bounds():
@@ -100,8 +271,8 @@ def _streak(dates: set, today_str: str) -> int:
     return streak
 
 
-def heartbeat(db, user, payload):
-    room = get_default_room(db)
+def heartbeat(db, user, payload, room=None):
+    room = room or get_default_room(db)
     ensure_member(db, user, room)
     presence = db.scalar(select(RoomPresence).where(
         RoomPresence.room_id == room.id, RoomPresence.user_id == user.id))
@@ -129,9 +300,13 @@ def _message_dict(row, user_map, current_id):
     }
 
 
-def room_state(db, current_user, limit_messages=MESSAGE_LIMIT):
-    room = get_default_room(db)
-    ensure_member(db, current_user, room)
+def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
+    room = room or get_default_room(db)
+    membership = db.scalar(select(RoomMember).where(
+        RoomMember.room_id == room.id, RoomMember.user_id == current_user.id))
+    joined = membership is not None
+    if room.visibility == 'private' and not joined:
+        raise ApiError(403, 40301, '私密自习室，请输入房间码加入')
 
     members = db.scalars(
         select(RoomMember).where(RoomMember.room_id == room.id).order_by(RoomMember.id)
@@ -170,6 +345,7 @@ def room_state(db, current_user, limit_messages=MESSAGE_LIMIT):
         g = goals.get(m.user_id)
         member_payload.append({
             'user_id': u.id, 'nickname': u.nickname, 'avatar_key': u.avatar_key or '',
+            'figure_id': u.figure_id or 'figure-1',
             'role': m.role, 'target_school': u.target_school or '', 'exam_year': u.exam_year,
             'online': online,
             'presence': {
@@ -196,28 +372,28 @@ def room_state(db, current_user, limit_messages=MESSAGE_LIMIT):
                       key=lambda x: x['sec'], reverse=True),
     }
 
-    messages = db.scalars(
-        select(RoomMessage).where(
-            RoomMessage.room_id == room.id, RoomMessage.deleted_at.is_(None))
-        .order_by(RoomMessage.created_at.desc()).limit(limit_messages)
-    ).all()
+    messages = []
+    if joined:
+        messages = db.scalars(
+            select(RoomMessage).where(
+                RoomMessage.room_id == room.id, RoomMessage.deleted_at.is_(None))
+            .order_by(RoomMessage.created_at.desc()).limit(limit_messages)
+        ).all()
     user_map = {uid: u.nickname for uid, u in users.items()}
     message_payload = [_message_dict(row, user_map, current_user.id) for row in reversed(messages)]
 
     return {
-        'room': {
-            'id': room.id, 'name': room.name, 'intro': room.intro, 'code': room.code,
-            'capacity': room.capacity, 'member_count': len(member_payload),
-            'online_count': online_count,
-        },
+        'room': room_summary(db, room, current_user, len(member_payload), online_count),
+        'joined': joined,
+        'my_role': membership.role if membership else '',
         'members': member_payload,
         'ranking': ranking,
         'messages': message_payload,
     }
 
 
-def add_message(db, user, content: str):
-    room = get_default_room(db)
+def add_message(db, user, content: str, room=None):
+    room = room or get_default_room(db)
     ensure_member(db, user, room)
     row = RoomMessage(room_id=room.id, user_id=user.id, content=content[:500])
     db.add(row)
@@ -227,8 +403,8 @@ def add_message(db, user, content: str):
             'content': row.content, 'mine': True, 'created_at': iso(row.created_at)}
 
 
-def delete_message(db, user, message_id: int, is_admin: bool):
-    room = get_default_room(db)
+def delete_message(db, user, message_id: int, is_admin: bool, room=None):
+    room = room or get_default_room(db)
     row = db.get(RoomMessage, message_id)
     if not row or row.room_id != room.id or row.deleted_at:
         raise ApiError(404, 40401, '留言不存在')
@@ -239,8 +415,8 @@ def delete_message(db, user, message_id: int, is_admin: bool):
     return {'id': message_id}
 
 
-def upsert_goal(db, user, payload):
-    room = get_default_room(db)
+def upsert_goal(db, user, payload, room=None):
+    room = room or get_default_room(db)
     ensure_member(db, user, room)
     goal = db.scalar(select(RoomGoal).where(
         RoomGoal.room_id == room.id, RoomGoal.user_id == user.id))

@@ -2,10 +2,25 @@
 // - 本地写库后 enqueueRecord/enqueueDelete，进入 outbox（同一条记录的多次改动合并为一条）
 // - syncNow：先 push outbox（expectedRevision 乐观并发 + operationId 幂等），再 pull 全量按 revision 合并
 // - 错题图片 Blob 不进同步体，只同步附件 key（图片上传见 api/attachment）
-import { reactive } from 'vue'
+import { reactive, toRaw } from 'vue'
 import { db, uid } from '../db'
 import { syncApi } from '../api'
+import { flushCommunity } from './community'
 import { useAuthStore } from '../stores/auth'
+
+// Vue 的 reactive 会把对象包成 Proxy，IndexedDB 无法克隆 Proxy（DataCloneError）。
+// 写入 Dexie 前统一还原成纯对象/数组，保证可结构化克隆。
+function plain(value) {
+  const raw = toRaw(value)
+  if (Array.isArray(raw)) return raw.map(plain)
+  if (raw && typeof raw === 'object') {
+    if (raw instanceof Date || raw instanceof Blob || raw instanceof ArrayBuffer) return raw
+    const out = {}
+    for (const key of Object.keys(raw)) out[key] = plain(raw[key])
+    return out
+  }
+  return raw
+}
 
 const TYPE_BY_TABLE = {
   subjects: 'subject',
@@ -21,6 +36,8 @@ const TABLE_BY_TYPE = {
   userSchool: null, // 梦校关系存 kv，不进分表
 }
 const SYNCABLE_TABLES = ['subjects', 'sessions', 'tasks', 'mistakes']
+// 帖子/收藏走各自的服务端接口，不能混入学习数据的通用同步命令
+const COMMUNITY_TYPES = new Set(['post', 'favorite'])
 const TYPE_LABEL = {
   subject: '科目',
   session: '专注记录',
@@ -45,15 +62,16 @@ function stripLocal(row, type) {
 }
 
 async function upsertOutbox(recordId, type, expectedRevision, record) {
+  const clean = record ? plain(record) : null
   const existing = await db.outbox.where('recordId').equals(recordId).first()
   if (existing) {
-    await db.outbox.update(existing, { record, expectedRevision: existing.expectedRevision })
+    await db.outbox.update(existing, { record: clean, expectedRevision })
   } else {
     await db.outbox.add({
       recordId,
       type,
       expectedRevision,
-      record,
+      record: clean,
       opId: '',
       createdAt: Date.now(),
     })
@@ -167,7 +185,8 @@ async function applyServerRecord(id, revision, record) {
   if (record) {
     const table = TABLE_BY_TYPE[record.type]
     if (table) {
-      const { type: _t, ...rest } = record
+      const rest = plain(record)
+      delete rest.type
       rest._rev = revision
       await db[table].put(rest)
     }
@@ -180,7 +199,8 @@ async function applyServerRecord(id, revision, record) {
 }
 
 async function pushOutbox() {
-  const items = await db.outbox.orderBy('createdAt').limit(200).toArray()
+  const all = await db.outbox.orderBy('createdAt').limit(200).toArray()
+  const items = all.filter((it) => !COMMUNITY_TYPES.has(it.type))
   if (!items.length) return
   const changes = items.map((it) => ({
     id: it.recordId,
@@ -302,12 +322,15 @@ export async function syncNow() {
   }
   syncing = true
   try {
+    await flushCommunity()
     await pushOutbox()
     const changed = await pullAll()
     if (changed) await reloadStores()
     await db.syncMeta.put({ key: 'lastSyncAt', value: Date.now() })
+    return true
   } catch (e) {
     console.warn('同步失败，下次再试', e?.message || e)
+    return false
   } finally {
     syncing = false
     if (queued) {
@@ -348,6 +371,8 @@ export async function initSyncForUser() {
 export async function resetSyncState() {
   await db.outbox.clear()
   await db.syncMeta.clear()
+  await db.localPosts.clear()
+  await db.localFavs.clear()
   heldIds.clear()
   syncState.pendingConflicts.splice(0, syncState.pendingConflicts.length)
 }

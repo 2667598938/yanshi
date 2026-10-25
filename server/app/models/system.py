@@ -1,4 +1,5 @@
-from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, Text)
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, Text,
+                        UniqueConstraint)
 from ..database import Base
 from ..time import utcnow
 
@@ -60,4 +61,22 @@ class FeatureRequest(Base):
     review_note = Column(String(300), default='', server_default='')
     reviewed_by = Column(ForeignKey('users.id'), nullable=True)
     reviewed_at = Column(DateTime)
+    created_at = Column(DateTime, default=now, nullable=False, index=True)
+
+
+class Message(Base):
+    """站内消息：审批结果、VIP 调整、内容处理等通知。"""
+    __tablename__ = 'messages'
+    __table_args__ = (
+        UniqueConstraint('user_id', 'dedupe_key', name='uq_messages_user_dedupe'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    kind = Column(String(24), nullable=False, default='system')  # system|apply|vip|content
+    title = Column(String(80), nullable=False)
+    content = Column(String(500), nullable=False, default='', server_default='')
+    link = Column(String(200), default='', server_default='')
+    is_read = Column(Boolean, default=False, server_default='0', nullable=False)
+    dedupe_key = Column(String(120), nullable=True)
     created_at = Column(DateTime, default=now, nullable=False, index=True)

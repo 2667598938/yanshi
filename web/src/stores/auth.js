@@ -49,6 +49,21 @@ export const useAuthStore = defineStore('auth', {
       this.setSession(data)
       return data
     },
+    async emailLogin(payload) {
+      const data = await authApi.emailLogin(payload)
+      this.setSession(data)
+      return data
+    },
+    async exchangeOAuth(ticket) {
+      const data = await authApi.oauthExchange(ticket)
+      this.setSession(data)
+      return data
+    },
+    async phoneLogin(phone, code) {
+      const data = await authApi.phoneVerify(phone, code)
+      this.setSession(data)
+      return data
+    },
     async register(payload) {
       const data = await authApi.register(payload)
       this.setSession(data)

@@ -10,10 +10,15 @@ const tabs = [
   { to: '/', label: '今日', icon: Home },
   { to: '/stats', label: '统计', icon: BarChart3 },
   { to: '/focus', label: '专注', icon: Timer, focus: true },
-  { to: '/room', label: '自习室', icon: Users },
+  { to: '/rooms', label: '自习室', icon: Users },
   { to: '/ai', label: 'AI', icon: Sparkles },
   { to: '/me', label: '我的', icon: User },
 ]
+
+function isActive(t) {
+  if (t.to === '/') return route.path === '/'
+  return route.path === t.to || route.path.startsWith(t.to + '/')
+}
 </script>
 
 <template>
@@ -23,7 +28,7 @@ const tabs = [
       :key="t.to"
       :to="t.to"
       class="tab-item"
-      :class="[t.focus ? 'tab-focus' : '', route.path === t.to ? 'is-active' : '']"
+      :class="[t.focus ? 'tab-focus' : '', isActive(t) ? 'is-active' : '']"
     >
       <span v-if="t.focus" class="tab-fab">
         <component :is="t.icon" :size="25" :stroke-width="2.4" />

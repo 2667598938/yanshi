@@ -19,6 +19,7 @@ from ..schemas.account import (
 )
 from ..serializers import iso
 from ..services import room as room_service
+from ..services.messages import create_message
 from ..services.security import hash_password, new_invite_code
 from ..services.transient import digest
 from ..time import utcnow
@@ -185,6 +186,16 @@ def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depend
             user.vip_until = base + timedelta(days=days)
         else:
             user.vip_until = None
+        if body.vip_action != 'revoke':
+            until = user.vip_until.date().isoformat() if user.vip_until else '长期'
+            title = 'VIP 已开通' if body.vip_action == 'grant' else 'VIP 已续期'
+            content = f'管理员已为你{"开通" if body.vip_action == "grant" else "续期"} VIP，有效期至 {until}。'
+        else:
+            title = 'VIP 已降级'
+            content = '管理员已将你的 VIP 降级，相关权益已停止；已保存的 AI Key 会保留。'
+        create_message(db, user, 'vip', title, content, link='/vip',
+                       email=body.vip_action != 'revoke',
+                       settings=request.app.state.settings)
     audit(db, request, 'admin.update_member', user_id=uid,
           detail=body.model_dump_json(exclude_none=True))
     db.commit()
@@ -298,10 +309,20 @@ def review_request(rid: int, body: FeatureRequestReview, request: Request,
     row.review_note = body.note.strip()
     row.reviewed_by = admin.id
     row.reviewed_at = utcnow()
+    user = db.get(User, row.user_id)
+    label = FEATURE_LABELS.get(row.feature, row.feature)
+    if row.status == 'approved':
+        title = '功能申请已通过'
+        content = f'你申请的「{label}」已通过。' + (f'备注：{row.review_note}' if row.review_note else '')
+    else:
+        title = '功能申请被驳回'
+        content = f'你申请的「{label}」被驳回。原因：{row.review_note or "未填写"}'
+    create_message(db, user, 'apply', title, content, link='/requests',
+                   dedupe_key=f'apply:{rid}', email=True,
+                   settings=request.app.state.settings)
     audit(db, request, 'admin.review_request', user_id=row.user_id,
           detail=f'{rid} {row.status} {row.review_note}'.strip())
     db.commit()
-    user = db.get(User, row.user_id)
     return ok(admin_request_dict(row, user))
 
 

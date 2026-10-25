@@ -3,6 +3,13 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 EMAIL_RE = re.compile(r'^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$')
+PHONE_RE = re.compile(r'^1[3-9]\d{9}$')
+
+
+def phone_value(v: str) -> str:
+    if not PHONE_RE.fullmatch(v):
+        raise ValueError('手机号格式不正确')
+    return v
 
 
 class Strict(BaseModel):
@@ -24,7 +31,7 @@ def password_value(v: str) -> str:
 
 class EmailCodeInput(Strict):
     email: str = Field(max_length=254)
-    scene: Literal['register', 'reset'] = 'register'
+    scene: Literal['register', 'reset', 'login'] = 'register'
 
     _email = field_validator('email')(email_value)
 
@@ -34,11 +41,20 @@ class RegisterInput(Strict):
     code: str = Field(pattern=r'^\d{6}$')
     password: str = Field(min_length=8, max_length=64)
     nickname: str = Field(min_length=2, max_length=40)
-    invite_code: str = Field(min_length=1, max_length=32)
+    invite_code: str = Field(default='', max_length=32)
     accepted_terms: bool = False
 
     _email = field_validator('email')(email_value)
     _password = field_validator('password')(password_value)
+
+
+class EmailLoginInput(Strict):
+    email: str = Field(max_length=254)
+    code: str = Field(pattern=r'^\d{6}$')
+    nickname: str = Field(default='', max_length=40)
+    accepted_terms: bool = False
+
+    _email = field_validator('email')(email_value)
 
 
 class LoginInput(Strict):
@@ -55,9 +71,32 @@ class TokenInput(Strict):
 class ProfileUpdate(Strict):
     nickname: Optional[str] = Field(default=None, min_length=2, max_length=40)
     target_school: Optional[str] = Field(default=None, max_length=32)
+    signature: Optional[str] = Field(default=None, max_length=80)
+    figure_id: Optional[str] = Field(default=None, max_length=24)
     daily_goal_min: Optional[int] = Field(default=None, ge=1, le=1440)
     exam_date: Optional[str] = Field(default=None, max_length=10)
     notify_enabled: Optional[bool] = None
+
+
+class ErrorTypeInput(Strict):
+    name: str = Field(min_length=1, max_length=20)
+
+
+class PhoneCodeInput(Strict):
+    phone: str = Field(max_length=20)
+
+    _phone = field_validator('phone')(phone_value)
+
+
+class PhoneVerifyInput(Strict):
+    phone: str = Field(max_length=20)
+    code: str = Field(pattern=r'^\d{6}$')
+
+    _phone = field_validator('phone')(phone_value)
+
+
+class OAuthTicketInput(Strict):
+    ticket: str = Field(min_length=8, max_length=128)
 
 
 class ChangePasswordInput(Strict):

@@ -6,6 +6,7 @@ import {
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { vipApi } from '../api'
+import { fmtDate } from '../utils/time'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
@@ -17,7 +18,7 @@ const loading = ref(true)
 
 const isVip = computed(() => status.value?.is_vip || false)
 const untilText = computed(() =>
-  status.value?.vip_until ? status.value.vip_until.slice(0, 10) : ''
+  status.value?.vip_until ? fmtDate(status.value.vip_until) : ''
 )
 
 const benefits = [

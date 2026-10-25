@@ -15,6 +15,8 @@ import {
   NotebookPen,
   AlarmClock,
   Plus,
+  BookOpen,
+  MessageSquare,
 } from 'lucide-vue-next'
 import SubjectIcon from '../components/SubjectIcon.vue'
 import SchoolHero from '../components/SchoolHero.vue'
@@ -200,11 +202,27 @@ const encourage = computed(() => {
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
-        <router-link to="/room" class="quick-card">
+        <router-link to="/rooms" class="quick-card">
           <div class="quick-ic q2"><Users :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">四人自习室</div>
             <div class="quick-sub">并肩打卡 · 互相监督</div>
+          </div>
+          <ChevronRight :size="18" class="quick-arrow" />
+        </router-link>
+        <router-link to="/resources" class="quick-card">
+          <div class="quick-ic q5"><BookOpen :size="20" /></div>
+          <div class="quick-txt">
+            <div class="quick-name">资料库</div>
+            <div class="quick-sub">网盘分享 · VIP 完整链接</div>
+          </div>
+          <ChevronRight :size="18" class="quick-arrow" />
+        </router-link>
+        <router-link to="/posts" class="quick-card">
+          <div class="quick-ic q6"><MessageSquare :size="20" /></div>
+          <div class="quick-txt">
+            <div class="quick-name">研友动态</div>
+            <div class="quick-sub">记录 · 评论 · 互相打气</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -482,6 +500,14 @@ const encourage = computed(() => {
 .quick-ic.q4 {
   background: #eef0fe;
   color: var(--purple);
+}
+.quick-ic.q5 {
+  background: #e6f7fb;
+  color: #0d8a9e;
+}
+.quick-ic.q6 {
+  background: #fdf0e8;
+  color: #d97706;
 }
 .quick-txt {
   flex: 1;

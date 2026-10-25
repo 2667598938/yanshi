@@ -3,10 +3,12 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowLeft, Copy, Plus, UserPlus, Megaphone, Users, Trash2, Ban, KeyRound,
-  Crown, ClipboardCheck, Check, X,
+  Crown, ClipboardCheck, Check, X, Sparkles,
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
-import { adminApi } from '../api'
+import { adminApi, inspirationApi } from '../api'
+import BlobImage from '../components/BlobImage.vue'
+import { fmtDate, fmtShort, fmtDateTime } from '../utils/time'
 import { SCHOOL_MAP } from '../data/schools'
 import { useToast } from '../composables/useToast'
 
@@ -20,6 +22,10 @@ const invites = ref([])
 const announcements = ref([])
 const requests = ref([])
 const requestFilter = ref('pending')
+const inspirations = ref([])
+const inspFilter = ref('pending')
+const inspTarget = ref(null)
+const inspNote = ref('')
 const tab = ref('invite')
 
 const sheet = ref(null)
@@ -65,9 +71,50 @@ async function loadRequests(status = requestFilter.value) {
   }
 }
 
+async function loadInspirations(status = inspFilter.value) {
+  inspFilter.value = status
+  try {
+    inspirations.value = await inspirationApi.adminList(status)
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function approveInspiration(row) {
+  try {
+    const next = await inspirationApi.adminReview(row.id, { action: 'approve', note: '' })
+    Object.assign(row, next)
+    toast('已通过')
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+function openInspReject(row) {
+  inspTarget.value = row
+  inspNote.value = ''
+  sheet.value = 'insp-reject'
+}
+
+async function rejectInspiration() {
+  if (!inspNote.value.trim()) return toast('请填写驳回原因')
+  try {
+    const next = await inspirationApi.adminReview(inspTarget.value.id, {
+      action: 'reject', note: inspNote.value.trim(),
+    })
+    Object.assign(inspTarget.value, next)
+    toast('已驳回')
+    sheet.value = null
+    inspTarget.value = null
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
 function switchTab(next) {
   tab.value = next
   if (next === 'request') loadRequests('pending')
+  if (next === 'content') loadInspirations('pending')
 }
 
 function openVip(m) {
@@ -261,6 +308,7 @@ onMounted(() => {
         <button :class="{ on: tab === 'invite' }" @click="switchTab('invite')">邀请码</button>
         <button :class="{ on: tab === 'member' }" @click="switchTab('member')">成员</button>
         <button :class="{ on: tab === 'request' }" @click="switchTab('request')">审批</button>
+        <button :class="{ on: tab === 'content' }" @click="switchTab('content')">内容</button>
         <button :class="{ on: tab === 'announce' }" @click="switchTab('announce')">公告</button>
       </div>
 
@@ -275,7 +323,7 @@ onMounted(() => {
               <span v-else class="tag tag-new">可用</span>
               <span v-if="c.vip_days" class="tag tag-vip">VIP +{{ c.vip_days }}天</span>
               {{ c.remark || '无备注' }}
-              <span v-if="c.expires_at"> · 有效期至 {{ c.expires_at.slice(0, 10) }}</span>
+              <span v-if="c.expires_at"> · 有效期至 {{ fmtDate(c.expires_at) }}</span>
             </div>
           </div>
           <button class="mini" @click="copyCode(c.code)"><Copy :size="15" /></button>
@@ -298,7 +346,7 @@ onMounted(() => {
             </div>
             <div class="member-sub">
               {{ m.email }} · {{ SCHOOL_MAP[m.target_school]?.short || '未填梦校' }}
-              <span v-if="m.is_vip"> · 到期 {{ m.vip_until?.slice(0, 10) }}</span>
+              <span v-if="m.is_vip"> · 到期 {{ fmtDate(m.vip_until) }}</span>
             </div>
           </div>
           <div class="member-actions">
@@ -323,7 +371,7 @@ onMounted(() => {
             <span class="req-avatar">{{ r.user.nickname.slice(0, 1) }}</span>
             <div class="req-user">
               <div class="req-nick">{{ r.user.nickname }}</div>
-              <div class="req-time">{{ r.created_at?.slice(5, 16).replace('T', ' ') }}</div>
+              <div class="req-time">{{ fmtShort(r.created_at) }}</div>
             </div>
             <span class="tag tag-feature">{{ r.feature_label }}</span>
           </div>
@@ -334,7 +382,36 @@ onMounted(() => {
             <button class="req-approve" @click="approveRequest(r)"><Check :size="14" />通过</button>
           </div>
           <div v-else class="req-status">
-            {{ r.status === 'approved' ? '已通过' : '已驳回' }} · {{ r.reviewed_at?.slice(0, 10) }}
+            {{ r.status === 'approved' ? '已通过' : '已驳回' }} · {{ fmtDate(r.reviewed_at) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 内容审核（励志区） -->
+      <div v-if="tab === 'content'" class="card">
+        <div class="seg">
+          <button :class="{ on: inspFilter === 'pending' }" @click="loadInspirations('pending')">待审核</button>
+          <button :class="{ on: inspFilter === 'approved' }" @click="loadInspirations('approved')">已通过</button>
+          <button :class="{ on: inspFilter === 'rejected' }" @click="loadInspirations('rejected')">已驳回</button>
+        </div>
+        <div v-if="!inspirations.length" class="empty">暂无投稿</div>
+        <div v-for="it in inspirations" :key="it.id" class="req-card">
+          <div class="req-top">
+            <span class="req-avatar"><Sparkles :size="14" /></span>
+            <div class="req-user">
+              <div class="req-nick">{{ it.user?.nickname }}</div>
+              <div class="req-time">{{ fmtShort(it.created_at) }}</div>
+            </div>
+            <span class="tag" :class="it.status === 'approved' ? 'tag-new' : it.status === 'rejected' ? 'tag-ban' : 'tag-used'">
+              {{ it.status_label }}
+            </span>
+          </div>
+          <BlobImage v-if="it.image_key" class="insp-thumb" :src="it.image_key" alt="" />
+          <div class="req-body">{{ it.content }}</div>
+          <div v-if="it.review_note" class="req-note">审核备注：{{ it.review_note }}</div>
+          <div v-if="it.status === 'pending'" class="req-actions">
+            <button class="req-reject" @click="openInspReject(it)"><X :size="14" />驳回</button>
+            <button class="req-approve" @click="approveInspiration(it)"><Check :size="14" />通过</button>
           </div>
         </div>
       </div>
@@ -345,7 +422,7 @@ onMounted(() => {
         <div v-for="a in announcements" :key="a.id" class="ann-row">
           <div class="ann-content">{{ a.content }}</div>
           <div class="ann-foot">
-            <span>{{ a.created_at?.slice(0, 16).replace('T', ' ') }}</span>
+            <span>{{ fmtDateTime(a.created_at) }}</span>
             <span v-if="!a.is_active" class="tag tag-used">已停用</span>
             <button class="mini danger" @click="removeAnnouncement(a.id)"><Trash2 :size="14" /></button>
           </div>
@@ -385,7 +462,7 @@ onMounted(() => {
         <template v-else-if="sheet === 'vip'">
           <div class="sheet-title">会员调整 · {{ vipTarget?.nickname }}</div>
           <div class="vip-current">
-            当前状态：{{ vipTarget?.is_vip ? `VIP · ${vipTarget.vip_until?.slice(0, 10)} 到期` : '未开通' }}
+            当前状态：{{ vipTarget?.is_vip ? `VIP · ${fmtDate(vipTarget.vip_until)} 到期` : '未开通' }}
           </div>
           <div class="seg" style="margin-bottom: 12px">
             <button :class="{ on: vipForm.action === 'grant' }" @click="vipForm.action = 'grant'">开通</button>
@@ -412,6 +489,17 @@ onMounted(() => {
             <textarea v-model="reviewNote" class="ta" rows="3" maxlength="300" placeholder="写清楚原因，申请人可见"></textarea>
           </label>
           <button class="btn btn-danger btn-block mt16" @click="submitReject">确认驳回</button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
+        </template>
+
+        <template v-else-if="sheet === 'insp-reject'">
+          <div class="sheet-title">驳回励志投稿</div>
+          <div class="vip-current">{{ inspTarget?.user?.nickname }}：{{ inspTarget?.content }}</div>
+          <label class="sf">
+            <span>驳回原因</span>
+            <textarea v-model="inspNote" class="ta" rows="3" maxlength="300" placeholder="写清楚原因，投稿人可见"></textarea>
+          </label>
+          <button class="btn btn-danger btn-block mt16" @click="rejectInspiration">确认驳回</button>
           <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
         </template>
 
@@ -464,6 +552,7 @@ onMounted(() => {
 .req-nick { font-size: 13.5px; font-weight: 700; }
 .req-time { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
 .req-body { margin-top: 9px; font-size: 12.5px; color: var(--sub); line-height: 1.65; background: #f6f9fd; border-radius: 9px; padding: 8px 10px; }
+.insp-thumb { width: 100%; max-height: 150px; object-fit: cover; border-radius: 10px; margin-top: 9px; }
 .req-note { margin-top: 7px; font-size: 11.5px; color: var(--primary-deep); }
 .req-actions { display: flex; gap: 8px; margin-top: 10px; }
 .req-reject, .req-approve { flex: 1; height: 34px; border: none; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12.5px; font-weight: 600; cursor: pointer; }

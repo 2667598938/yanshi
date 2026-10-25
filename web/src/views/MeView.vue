@@ -4,17 +4,20 @@ import { useRouter } from 'vue-router'
 import {
   ChevronRight, Pencil, Target, Clock3, Bell, NotebookPen,
   Sparkles, Trash2, Info, Check, ListChecks, Download, Camera,
-  LogOut, ShieldCheck, FileText, BookMarked, Crown, ClipboardCheck,
+  LogOut, ShieldCheck, FileText, BookMarked, Crown, ClipboardCheck, Shapes,
+  BookOpen, Star, MessagesSquare, MessageSquare, School, RefreshCw,
 } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
 import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
+import { fmtDate } from '../utils/time'
+import { FIGURES, FIGURE_MAP } from '../data/figures'
 import { db } from '../db'
-import { resetSyncState } from '../sync/engine'
+import { resetSyncState, syncNow } from '../sync/engine'
 import { blobToDataUrl } from '../utils/image'
 import { fmtMinutes, todayKey } from '../utils/date'
-import { authApi, publicApi, attachmentApi } from '../api'
+import { authApi, publicApi, attachmentApi, messageApi } from '../api'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 
@@ -26,15 +29,44 @@ const { toast } = useToast()
 
 const sheetType = ref(null)
 const nickDraft = ref(app.nickname)
+const signatureDraft = ref('')
+const figureDraft = ref('figure-1')
+const unread = ref(0)
 const uploading = ref(false)
 const fileInput = ref(null)
 const showLegal = ref(false)
 const legal = ref(null)
 const legalTab = ref('terms')
+const syncing = ref(false)
+const lastSyncAt = ref(0)
+
+const lastSyncText = computed(() => {
+  if (!lastSyncAt.value) return '离线优先'
+  const d = new Date(lastSyncAt.value)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `最近 ${hh}:${mm}`
+})
+
+async function manualSync() {
+  if (syncing.value) return
+  syncing.value = true
+  try {
+    const ok = await syncNow()
+    const meta = await db.syncMeta.get('lastSyncAt')
+    lastSyncAt.value = meta?.value || 0
+    toast(ok === false ? '同步失败，请稍后再试' : '已同步')
+  } catch {
+    toast('同步失败，请稍后再试')
+  } finally {
+    syncing.value = false
+  }
+}
 
 const school = computed(() => SCHOOL_MAP[auth.user?.target_school || app.dreamSchool] || SCHOOL_MAP[app.dreamSchool])
 const avatar = computed(() => auth.user?.avatar_key || '')
-const vipUntil = computed(() => auth.user?.vip_until?.slice(0, 10) || '')
+const vipUntil = computed(() => fmtDate(auth.user?.vip_until))
+const figure = computed(() => FIGURE_MAP[auth.user?.figure_id || 'figure-1'] || FIGURES[0])
 
 const goals = [
   { min: 120, label: '2 小时' },
@@ -45,22 +77,33 @@ const goals = [
 ]
 
 function open(type) {
-  if (type === 'nickname') nickDraft.value = auth.user?.nickname || app.nickname
+  if (type === 'nickname' || type === 'profile') {
+    nickDraft.value = auth.user?.nickname || app.nickname
+    signatureDraft.value = auth.user?.signature || ''
+    figureDraft.value = auth.user?.figure_id || 'figure-1'
+    sheetType.value = 'profile'
+    return
+  }
   sheetType.value = type
 }
 function close() {
   sheetType.value = null
 }
 
-async function saveNickname() {
+async function saveProfile() {
   const name = nickDraft.value.trim()
   if (name.length < 2) return toast('昵称至少 2 个字')
+  if (signatureDraft.value.trim().length > 80) return toast('签名最多 80 个字')
   try {
-    const user = await authApi.updateMe({ nickname: name })
+    const user = await authApi.updateMe({
+      nickname: name,
+      signature: signatureDraft.value.trim(),
+      figure_id: figureDraft.value,
+    })
     auth.setUser(user)
     app.setNickname(name)
     close()
-    toast('昵称已更新')
+    toast('资料已更新')
   } catch (e) {
     toast(e.message)
   }
@@ -192,6 +235,8 @@ async function toggleNotify() {
 
 onMounted(() => {
   auth.fetchMe().catch(() => {})
+  messageApi.unread().then((d) => { unread.value = d.count || 0 }).catch(() => {})
+  db.syncMeta.get('lastSyncAt').then((m) => { lastSyncAt.value = m?.value || 0 }).catch(() => {})
   if (auth.user) {
     app.setNickname(auth.user.nickname)
     if (auth.user.target_school) app.setDreamSchool(auth.user.target_school)
@@ -211,14 +256,16 @@ onMounted(() => {
         <div class="pf-main">
           <div class="avatar-wrap" @click="pickAvatar">
             <BlobImage class="pf-avatar" :src="avatar" :fallback="school.logo" :alt="auth.user?.nickname" />
+            <span class="figure-chip" :style="{ background: figure.bg }">{{ figure.emoji }}</span>
             <span class="cam"><Camera :size="15" /></span>
           </div>
           <div class="pf-meta">
-            <div class="pf-name" @click="open('nickname')">
+            <div class="pf-name" @click="open('profile')">
               {{ auth.user?.nickname || app.nickname }}
               <span v-if="auth.isVip" class="pf-vip"><Crown :size="11" />VIP</span>
               <Pencil :size="14" class="edit-ic" />
             </div>
+            <div class="pf-sign">{{ auth.user?.signature || '点此编辑昵称、签名与形象' }}</div>
             <div class="pf-email">{{ auth.user?.email }}</div>
             <div class="pf-school">{{ school.name }} · {{ school.motto }}</div>
           </div>
@@ -265,6 +312,12 @@ onMounted(() => {
       <div class="group">
         <div class="group-title">学习工具</div>
         <div class="card menu">
+          <div class="row" @click="manualSync">
+            <span class="row-ic c-blue"><RefreshCw :size="18" /></span>
+            <span class="row-label">立即同步</span>
+            <span class="row-val">{{ syncing ? '同步中…' : lastSyncText }}</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
           <div class="row" @click="router.push('/tasks')">
             <span class="row-ic c-blue"><ListChecks :size="18" /></span>
             <span class="row-label">任务清单</span>
@@ -277,9 +330,58 @@ onMounted(() => {
             <span class="row-val">艾宾浩斯复习</span>
             <ChevronRight :size="17" class="row-arrow" />
           </div>
+          <div class="row" @click="router.push('/error-types')">
+            <span class="row-ic c-purple"><Shapes :size="18" /></span>
+            <span class="row-label">错误类型管理</span>
+            <span class="row-val">自定义 / 增删改</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
           <div class="row" @click="router.push('/ai')">
             <span class="row-ic c-ink"><Sparkles :size="18" /></span>
             <span class="row-label">AI 助教</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 资料与消息 -->
+      <div class="group">
+        <div class="group-title">资料与消息</div>
+        <div class="card menu">
+          <div class="row" @click="router.push('/resources')">
+            <span class="row-ic c-blue"><BookOpen :size="18" /></span>
+            <span class="row-label">资料库</span>
+            <span class="row-val">{{ auth.isVip ? '可发布' : 'VIP 可发布' }}</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/resources?tab=fav')">
+            <span class="row-ic c-gold"><Star :size="18" /></span>
+            <span class="row-label">我的收藏</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/messages')">
+            <span class="row-ic c-purple"><MessagesSquare :size="18" /></span>
+            <span class="row-label">消息中心</span>
+            <span v-if="unread" class="unread-badge">{{ unread > 99 ? '99+' : unread }}</span>
+            <span v-else class="row-val">暂无未读</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/posts')">
+            <span class="row-ic c-blue"><MessageSquare :size="18" /></span>
+            <span class="row-label">研友动态</span>
+            <span class="row-val">发帖 · 评论</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/inspirations')">
+            <span class="row-ic c-gold"><Sparkles :size="18" /></span>
+            <span class="row-label">励志区</span>
+            <span class="row-val">投稿轮播</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/dream-wall')">
+            <span class="row-ic c-purple"><School :size="18" /></span>
+            <span class="row-label">梦校墙</span>
+            <span class="row-val">七所梦校</span>
             <ChevronRight :size="17" class="row-arrow" />
           </div>
         </div>
@@ -336,6 +438,11 @@ onMounted(() => {
             <span class="row-label">隐私政策</span>
             <ChevronRight :size="17" class="row-arrow" />
           </div>
+          <div class="row" @click="openLegal('disclaimer')">
+            <span class="row-ic c-blue"><FileText :size="18" /></span>
+            <span class="row-label">免责声明</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </div>
           <div class="row" @click="open('about')">
             <span class="row-ic c-blue"><Info :size="18" /></span>
             <span class="row-label">关于研时</span>
@@ -360,10 +467,28 @@ onMounted(() => {
     <!-- 弹层 -->
     <div v-if="sheetType" class="mask" @click.self="close">
       <div class="sheet">
-        <template v-if="sheetType === 'nickname'">
-          <div class="sheet-title">修改昵称</div>
-          <input v-model="nickDraft" class="input mt12" maxlength="40" placeholder="给自己起个名字" />
-          <button class="btn btn-primary btn-block mt16" @click="saveNickname"><Check :size="17" />保存</button>
+        <template v-if="sheetType === 'profile'">
+          <div class="sheet-title">编辑资料</div>
+          <label class="edit-label">昵称</label>
+          <input v-model="nickDraft" class="input" maxlength="40" placeholder="给自己起个名字" />
+          <label class="edit-label">个性签名</label>
+          <input v-model="signatureDraft" class="input" maxlength="80" placeholder="一句话介绍自己" />
+          <label class="edit-label">虚拟形象</label>
+          <div class="figure-grid">
+            <button
+              v-for="f in FIGURES"
+              :key="f.id"
+              class="figure-cell"
+              :class="{ on: figureDraft === f.id }"
+              :style="{ background: f.bg }"
+              @click="figureDraft = f.id"
+            >
+              <span class="figure-emoji">{{ f.emoji }}</span>
+              <span class="figure-name">{{ f.name }}</span>
+              <Check v-if="figureDraft === f.id" :size="12" class="figure-tick" />
+            </button>
+          </div>
+          <button class="btn btn-primary btn-block mt16" @click="saveProfile"><Check :size="17" />保存</button>
           <button class="btn btn-ghost btn-block mt8" @click="close">取消</button>
         </template>
 
@@ -415,10 +540,10 @@ onMounted(() => {
     <div v-if="showLegal" class="modal-mask" @click.self="showLegal = false">
       <div class="modal">
         <div class="modal-head">
-          <h3>{{ legalTab === 'terms' ? '用户协议' : '隐私政策' }}</h3>
+          <h3>{{ legalTab === 'terms' ? '用户协议' : legalTab === 'privacy' ? '隐私政策' : '免责声明' }}</h3>
           <button @click="showLegal = false">关闭</button>
         </div>
-        <pre class="modal-body">{{ legalTab === 'terms' ? legal?.terms : legal?.privacy }}</pre>
+        <pre class="modal-body">{{ legalTab === 'terms' ? legal?.terms : legalTab === 'privacy' ? legal?.privacy : legal?.disclaimer }}</pre>
       </div>
     </div>
   </div>
@@ -439,6 +564,55 @@ onMounted(() => {
 .avatar-wrap { position: relative; flex-shrink: 0; cursor: pointer; }
 .pf-avatar { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid rgba(255,255,255,.8); display: block; }
 .cam { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
+.figure-chip {
+  position: absolute;
+  left: -4px;
+  bottom: -4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+}
+.edit-label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--sub);
+  margin: 12px 2px 6px;
+}
+.figure-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+.figure-cell {
+  position: relative;
+  border: 1.5px solid transparent;
+  border-radius: 13px;
+  padding: 10px 4px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.figure-cell.on {
+  border-color: var(--primary);
+}
+.figure-emoji { font-size: 22px; line-height: 1; }
+.figure-name { font-size: 10.5px; color: var(--sub); }
+.figure-tick {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: var(--primary);
+  background: #fff;
+  border-radius: 50%;
+}
 .pf-meta { flex: 1; min-width: 0; }
 .pf-name { font-size: 20px; font-weight: 800; display: inline-flex; align-items: center; gap: 7px; }
 .pf-vip {
@@ -454,6 +628,7 @@ onMounted(() => {
 }
 .edit-ic { color: rgba(255,255,255,.6); }
 .pf-email { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 2px; }
+.pf-sign { font-size: 12px; color: rgba(255,255,255,.86); margin-top: 3px; font-style: italic; }
 .pf-school { font-size: 12px; color: rgba(255,255,255,.66); margin-top: 2px; }
 .pf-stats { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.14); text-align: center; }
 .ps-num { font-size: 17px; font-weight: 800; }
@@ -475,6 +650,19 @@ onMounted(() => {
 .c-gray { background: #f1f4f8; color: var(--faint); }
 .row-label { flex: 1; font-size: 15px; font-weight: 600; }
 .row-val { font-size: 13px; color: var(--faint); }
+.unread-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--tomato);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .row-arrow { color: var(--faint); flex-shrink: 0; }
 .row.danger .row-label { color: var(--red); }
 

@@ -50,8 +50,10 @@ def issue_tokens(request, db, user, now=None):
 def user_payload(user):
     return {
         'id': user.id, 'email': user.email, 'nickname': user.nickname,
-        'avatar_key': user.avatar_key, 'role': user.role, 'status': user.status,
+        'phone': user.phone or '', 'avatar_key': user.avatar_key, 'role': user.role,
+        'status': user.status,
         'target_school': user.target_school, 'exam_year': user.exam_year,
+        'signature': user.signature or '', 'figure_id': user.figure_id or 'figure-1',
         'daily_goal_min': user.daily_goal_min, 'exam_date': user.exam_date,
         'notify_enabled': user.notify_enabled,
         'vip_until': iso(user.vip_until),
