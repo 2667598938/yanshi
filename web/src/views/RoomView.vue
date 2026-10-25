@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Lock, Users, Send, Trash2, Flag, Trophy, Flame, ArrowLeft, Copy, LogIn, Settings, UserMinus } from 'lucide-vue-next'
+import { Lock, Users, Send, Trash2, Flag, Trophy, Flame, ArrowLeft, Copy, LogIn, Settings, UserMinus, Check, X } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useSubjectsStore } from '../stores/subjects'
 import { useAuthStore } from '../stores/auth'
@@ -31,6 +31,14 @@ const goalDraft = ref({ target_school: '', target_score: '', words: '' })
 const showManage = ref(false)
 const manageForm = ref({ name: '', intro: '', visibility: 'public' })
 const isOwner = computed(() => room.value?.my_role === 'owner' || auth.isAdmin)
+const preview = ref(null)
+const joinCode = ref('')
+const applyDraft = ref('')
+const applying = ref(false)
+const applies = ref([])
+const applyBusyId = ref(0)
+const joinRequired = computed(() => !!preview.value?.join_required)
+const myApply = computed(() => preview.value?.apply || null)
 
 function schoolLogo(key) {
   return SCHOOL_MAP[key]?.logo || ''
@@ -71,7 +79,8 @@ const seats = computed(() => {
 
 const todayTotal = computed(() => members.value.reduce((a, m) => a + (m.today_sec || 0), 0))
 const onlineCount = computed(() => members.value.filter((m) => m.online).length)
-const isFull = computed(() => members.value.length >= (room.value?.capacity || 4))
+const isFull = computed(() =>
+  Math.max(room.value?.member_count || 0, members.value.length) >= (room.value?.capacity || 4))
 
 const rankList = computed(() => {
   const ids = ranking.value[rankTab.value] || []
@@ -96,18 +105,42 @@ function buildHeartbeat() {
 }
 
 async function fetchRoom() {
+  // 私密房间未加入：轮询预览，房主通过后自动切换到正式房间状态
+  if (!joined.value && preview.value) return loadPreview()
   try {
     const data = await roomApi.get(roomId.value)
     room.value = data.room
     joined.value = data.joined !== false
+    preview.value = null
     members.value = data.members || []
     ranking.value = data.ranking || { today: [], week: [], all: [] }
     messages.value = data.messages || []
   } catch (e) {
-    if (e.status === 403 || e.status === 404) {
+    if (e.status === 403) return loadPreview()
+    if (e.status === 404) {
       toast(e.message)
       router.replace('/rooms')
     }
+  }
+}
+
+async function loadPreview() {
+  try {
+    const data = await roomApi.preview(roomId.value)
+    if (data.joined) {
+      preview.value = null
+      joined.value = true
+      return fetchRoom()
+    }
+    room.value = data.room
+    joined.value = false
+    preview.value = data
+    members.value = []
+    ranking.value = { today: [], week: [], all: [] }
+    messages.value = []
+  } catch (e) {
+    toast(e.message)
+    router.replace('/rooms')
   }
 }
 
@@ -115,17 +148,59 @@ let beatTimer = null
 function startBeating() {
   if (beatTimer) return
   beat('online')
-  beatTimer = setInterval(() => beat(), 20000)
+  beatTimer = setInterval(() => beat(), 30000)
 }
 
 async function join() {
   try {
-    await roomApi.join(roomId.value)
+    await roomApi.join(roomId.value, joinCode.value.trim())
     toast('已加入自习室')
+    applyDraft.value = ''
+    preview.value = null
     await fetchRoom()
     startBeating()
   } catch (e) {
     toast(e.message)
+  }
+}
+
+async function applyJoin() {
+  if (applying.value || myApply.value?.status === 'pending') return
+  applying.value = true
+  try {
+    await roomApi.apply(roomId.value, applyDraft.value.trim())
+    toast('申请已提交，等待房主审批')
+    await loadPreview()
+  } catch (e) {
+    toast(e.message)
+  } finally {
+    applying.value = false
+  }
+}
+
+async function loadApplies() {
+  applies.value = []
+  if (!isOwner.value) return
+  try {
+    const data = await roomApi.applies(roomId.value)
+    applies.value = data.items || []
+  } catch {
+    applies.value = []
+  }
+}
+
+async function reviewApply(row, approve) {
+  if (applyBusyId.value) return
+  applyBusyId.value = row.id
+  try {
+    await roomApi.reviewApply(roomId.value, row.id, approve)
+    toast(approve ? `已通过，${row.nickname} 已加入` : '已驳回该申请')
+    applies.value = applies.value.filter((x) => x.id !== row.id)
+    if (approve) await fetchRoom()
+  } catch (e) {
+    toast(e.message)
+  } finally {
+    applyBusyId.value = 0
   }
 }
 
@@ -200,6 +275,7 @@ function openManage() {
     intro: room.value?.intro || '',
     visibility: room.value?.visibility || 'public',
   }
+  loadApplies()
   showManage.value = true
 }
 
@@ -330,20 +406,58 @@ onBeforeUnmount(() => {
 
       <!-- 未加入 -->
       <div v-if="!joined" class="full-banner">
-        <Users :size="18" />
+        <component :is="joinRequired ? Lock : Users" :size="18" />
         <div v-if="isFull">
-          <div class="fb-title">自习室已满（{{ members.length }} / {{ room?.capacity || 4 }}）</div>
+          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || 4 }}）</div>
           <div class="fb-sub">暂时没有座位，可以换一个自习室，或等国主扩容。</div>
+        </div>
+        <div v-else-if="joinRequired">
+          <div class="fb-title">私密自习室 · 需房主通过</div>
+          <div class="fb-sub">
+            <template v-if="myApply?.status === 'pending'">申请已提交，等待房主审批，通过后自动进入。</template>
+            <template v-else-if="myApply?.status === 'rejected'">上次申请未通过，可以补充说明后再次申请。</template>
+            <template v-else>有房间码可直接加入；没有房间码可提交申请，由房主审核。</template>
+          </div>
         </div>
         <div v-else>
           <div class="fb-title">你还未加入这个自习室</div>
           <div class="fb-sub">加入后即可同步在线状态、留言和目标墙。</div>
         </div>
-        <button v-if="!isFull" class="join-btn" @click="join"><LogIn :size="14" />加入</button>
+        <button v-if="!isFull && !joinRequired" class="join-btn" @click="join"><LogIn :size="14" />加入</button>
+      </div>
+
+      <!-- 私密房：房间码直入 / 申请加入 -->
+      <div v-if="!joined && joinRequired" class="card apply-card">
+        <div class="ac-title"><Lock :size="14" /> 凭房间码直接加入</div>
+        <div class="ac-code-row">
+          <input v-model="joinCode" maxlength="32" placeholder="输入 6 位房间码" @keyup.enter="join" />
+          <button class="cc-btn" @click="join">加入</button>
+        </div>
+        <div class="ac-divider"></div>
+        <div class="ac-title">没有房间码？申请加入</div>
+        <template v-if="myApply?.status === 'pending'">
+          <div class="ac-pending">
+            <span class="ac-dot"></span>
+            申请已提交（{{ fmtTime(myApply.created_at) }}），等待房主审批
+          </div>
+          <div v-if="myApply.message" class="ac-quote">「{{ myApply.message }}」</div>
+        </template>
+        <template v-else>
+          <textarea
+            v-model="applyDraft"
+            maxlength="200"
+            rows="2"
+            placeholder="简单说明来意，方便房主判断（选填）"
+          ></textarea>
+          <div v-if="myApply?.status === 'rejected'" class="ac-reject">上次申请未通过，可补充说明后再次申请。</div>
+          <button class="btn btn-primary btn-block mt8" :disabled="applying" @click="applyJoin">
+            {{ applying ? '提交中…' : '提交入房申请' }}
+          </button>
+        </template>
       </div>
 
       <!-- 座位 -->
-      <div class="seat-grid">
+      <div v-if="joined || !joinRequired" class="seat-grid">
         <div
           v-for="(seat, i) in seats"
           :key="i"
@@ -381,7 +495,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 排行榜 -->
-      <div class="card rank-card">
+      <div v-if="joined || !joinRequired" class="card rank-card">
         <div class="rank-head">
           <span class="rank-title"><Trophy :size="16" />专注排行榜</span>
           <div class="rank-tabs">
@@ -400,7 +514,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 目标墙 -->
-      <div class="card goal-wall">
+      <div v-if="joined || !joinRequired" class="card goal-wall">
         <div class="wall-head">
           <span class="rank-title"><Flag :size="16" />目标墙</span>
           <button v-if="joined" class="link-btn" @click="openGoal">填写我的目标</button>
@@ -453,6 +567,24 @@ onBeforeUnmount(() => {
     <div v-if="showManage" class="mask" @click.self="showManage = false">
       <div class="sheet">
         <div class="sheet-title">房间管理</div>
+        <div v-if="isOwner" class="am-box">
+          <div class="am-head">
+            入房申请
+            <span v-if="applies.length" class="am-count">{{ applies.length }}</span>
+          </div>
+          <div v-if="!applies.length" class="am-empty">暂无待审申请</div>
+          <div v-for="a in applies" :key="a.id" class="am-row">
+            <div class="am-info">
+              <div class="am-name">
+                {{ a.nickname }}<span class="am-time">{{ fmtTime(a.created_at) }}</span>
+              </div>
+              <div v-if="a.target_school" class="am-school">目标 {{ schoolName(a.target_school) }}</div>
+              <div v-if="a.message" class="am-msg">{{ a.message }}</div>
+            </div>
+            <button class="am-btn ok" :disabled="applyBusyId === a.id" @click="reviewApply(a, true)">通过</button>
+            <button class="am-btn no" :disabled="applyBusyId === a.id" @click="reviewApply(a, false)">驳回</button>
+          </div>
+        </div>
         <label class="sf"><span>房间名</span>
           <input v-model="manageForm.name" maxlength="20" />
         </label>
@@ -601,10 +733,42 @@ onBeforeUnmount(() => {
 .msg-input button { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 
 .mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
-.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
+.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
 .sheet-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 14px; }
 .sf { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .sf span { font-size: 13px; color: var(--sub); }
 .sf input, .sf select { height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 15px; background: #fafbfe; }
 .sf input:focus, .sf select:focus { outline: none; border-color: var(--primary); background: #fff; }
+
+/* 私密房：房间码 / 入房申请 */
+.apply-card { margin-top: 12px; padding: 16px; }
+.ac-title { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; }
+.ac-code-row { display: flex; gap: 8px; margin-top: 10px; }
+.ac-code-row input { flex: 1; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 14px; background: #fafbfe; letter-spacing: 2px; min-width: 0; }
+.ac-code-row input:focus { outline: none; border-color: var(--primary); background: #fff; }
+.cc-btn { border: none; background: var(--primary); color: #fff; border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ac-divider { height: 1px; background: var(--line); margin: 14px 0; }
+.apply-card textarea { width: 100%; margin-top: 9px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical; background: #fafbfe; box-sizing: border-box; }
+.apply-card textarea:focus { outline: none; border-color: var(--primary); background: #fff; }
+.ac-pending { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 13px; color: #8a5a00; background: #fff3df; border-radius: 10px; padding: 10px 12px; }
+.ac-dot { width: 7px; height: 7px; border-radius: 50%; background: #e8a33d; flex-shrink: 0; }
+.ac-quote { margin-top: 8px; font-size: 12.5px; color: var(--sub); }
+.ac-reject { margin-top: 8px; font-size: 12px; color: #c0392b; }
+
+/* 房主待审列表 */
+.am-box { background: #f7f9fd; border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+.am-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.am-count { background: var(--primary); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; }
+.am-empty { font-size: 12px; color: var(--faint); margin-top: 8px; }
+.am-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.am-row:last-child { border-bottom: none; }
+.am-info { flex: 1; min-width: 0; }
+.am-name { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
+.am-time { font-size: 10.5px; color: var(--faint); font-weight: 400; }
+.am-school { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
+.am-msg { font-size: 12px; color: var(--sub); margin-top: 2px; word-break: break-word; }
+.am-btn { border: none; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 10px; cursor: pointer; flex-shrink: 0; }
+.am-btn.ok { background: var(--primary); color: #fff; }
+.am-btn.no { background: #fff; color: var(--sub); border: 1px solid var(--line); }
+.am-btn:disabled { opacity: .6; cursor: default; }
 </style>

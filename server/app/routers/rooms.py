@@ -7,7 +7,10 @@ from sqlalchemy import select
 from ..deps import audit, get_current_user, get_db
 from ..errors import ApiError, ok
 from ..models import Room, User
-from ..schemas.room import GoalInput, HeartbeatInput, MessageInput, RoomCreate, RoomJoin, RoomUpdate
+from ..schemas.room import (
+    ApplyReviewInput, GoalInput, HeartbeatInput, MessageInput, RoomApplyInput,
+    RoomCreate, RoomJoin, RoomUpdate,
+)
 from ..services import room as room_service
 
 router = APIRouter(prefix='/api/v1/rooms', tags=['rooms'])
@@ -63,6 +66,42 @@ def join_room(room_id: int, body: RoomJoin, request: Request, db=Depends(get_db)
 @router.post('/{room_id}/leave')
 def leave_room(room_id: int, db=Depends(get_db), user: User = Depends(get_current_user)):
     return ok(room_service.leave_room(db, user, room_service.get_room(db, room_id)))
+
+
+@router.get('/{room_id}/preview')
+def preview_room(room_id: int, db=Depends(get_db), user: User = Depends(get_current_user)):
+    """私密房间未加入时的公开预览：只给房间信息与本人申请状态。"""
+    room = room_service.get_room(db, room_id)
+    return ok(room_service.room_preview(db, user, room))
+
+
+@router.post('/{room_id}/apply')
+def apply_room(room_id: int, body: RoomApplyInput, request: Request, db=Depends(get_db),
+               user: User = Depends(get_current_user)):
+    request.app.state.transient.limit(f'room-apply:{user.id}', 10, 3600)
+    room = room_service.get_room(db, room_id)
+    row = room_service.apply_join(db, user, room, body.message)
+    audit(db, request, 'room.apply', user_id=user.id, detail=f'{room_id} {row["id"]}')
+    db.commit()
+    return ok(row)
+
+
+@router.get('/{room_id}/applies')
+def list_applies(room_id: int, status: Literal['pending', 'approved', 'rejected'] = 'pending',
+                 db=Depends(get_db), user: User = Depends(get_current_user)):
+    room = room_service.get_room(db, room_id)
+    return ok(room_service.list_applies(db, user, room, status))
+
+
+@router.post('/{room_id}/applies/{apply_id}/review')
+def review_apply(room_id: int, apply_id: int, body: ApplyReviewInput, request: Request,
+                 db=Depends(get_db), user: User = Depends(get_current_user)):
+    room = room_service.get_room(db, room_id)
+    row = room_service.review_apply(db, user, room, apply_id, body.approve)
+    audit(db, request, 'room.apply.review', user_id=user.id,
+          detail=f'{room_id} {apply_id} {row["status"]}')
+    db.commit()
+    return ok(row)
 
 
 @router.patch('/{room_id}')

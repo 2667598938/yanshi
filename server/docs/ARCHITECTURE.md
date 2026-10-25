@@ -47,7 +47,8 @@
 ## 5. 自习室（F-20/F-21/F-23/F-25）
 
 - 多房间：公开 / 私密；6 位房间码；房主可改名、改简介、换码、踢人、解散。
-- 私密房间凭码免审加入；陌生人可提交加入申请，房主审批（目标契约）。
+- 私密房间凭码免审加入；未加入者仅能读取预览（房间名/简介/人数/房主），可提交入房申请，由房主通过或驳回。
+  同一房间同一人只保留一条 `pending`（`pending_key` 唯一），驳回后可再次申请；通过后立即写入成员并发送站内消息。
 - 心跳 30 秒/次，连续 90 秒无心跳判离线；成员展示虚拟形象、状态、今日时长（隐私模式除外）。
 - 留言板仅在线发布，不入同步队列；排行榜按当前房间成员当日专注时长排序，并排除隐私用户。
 
@@ -65,7 +66,7 @@
 |---|---|
 | 账号 | `users`、`user_auth`、`refresh_tokens`、`login_logs`、`audit_logs` |
 | 学习同步 | `learning_records`、`learning_operations` |
-| 自习室 | `rooms`、`room_members`、`room_presence`、`room_messages`、`room_goals` |
+| 自习室 | `rooms`、`room_members`、`room_presence`、`room_join_applies`、`room_messages`、`room_goals` |
 | 资料 | `resources`、`resource_likes`、`resource_favorites` |
 | 社区 | `posts`、`comments`、`inspirations` |
 | 消息/审批 | `messages`、`feature_requests`、`invites`（目标新增 `user_feature_grants`） |

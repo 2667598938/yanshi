@@ -53,6 +53,11 @@ export const roomApi = {
   create: (body) => http.post('/rooms', body),
   join: (id, code = '') => http.post(`/rooms/${id}/join`, { code }),
   joinByCode: (code) => http.post('/rooms/join-by-code', { code }),
+  preview: (id) => http.get(`/rooms/${id}/preview`),
+  apply: (id, message = '') => http.post(`/rooms/${id}/apply`, { message }),
+  applies: (id, status = 'pending') => http.get(`/rooms/${id}/applies`, { query: { status } }),
+  reviewApply: (id, applyId, approve) =>
+    http.post(`/rooms/${id}/applies/${applyId}/review`, { approve }),
   leave: (id) => http.post(`/rooms/${id}/leave`, {}),
   update: (id, body) => http.patch(`/rooms/${id}`, body),
   newCode: (id) => http.post(`/rooms/${id}/code`, {}),

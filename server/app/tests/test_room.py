@@ -180,7 +180,7 @@ def _admin_create_member(client, ah, email, name):
 
 
 def test_offline_after_heartbeat_window(client):
-    """心跳后超过 45 秒未续约即判离线：把 last_heartbeat_at 回拨 60 秒验证。"""
+    """心跳后超过 90 秒未续约即判离线：把 last_heartbeat_at 回拨 120 秒验证。"""
     from datetime import timedelta
     from sqlalchemy import select
     from app.models import RoomPresence
@@ -200,10 +200,10 @@ def test_offline_after_heartbeat_window(client):
     me = find_member(state, '心跳同学')
     assert me['online'] is True
 
-    # 把心跳时间回拨 60 秒（>45 秒窗口），模拟离线
+    # 把心跳时间回拨 120 秒（>90 秒窗口），模拟离线
     with client.app.state.session_factory() as db:
         p = db.scalar(select(RoomPresence).where(RoomPresence.user_id == uid))
-        p.last_heartbeat_at = utcnow() - timedelta(seconds=60)
+        p.last_heartbeat_at = utcnow() - timedelta(seconds=120)
         db.commit()
     state = client.get('/api/v1/room', headers=ah).json()['data']
     me = find_member(state, '心跳同学')
