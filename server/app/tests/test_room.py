@@ -33,8 +33,8 @@ def session_record(rid, sec, day=None):
     now_ms = int(time.time() * 1000)
     return {'id': rid, 'type': 'session', 'subjectId': 'math', 'mode': 'timer',
             'activityType': 'practice', 'plannedMin': 25, 'actualSec': sec, 'status': 'done',
-            'startedAt': now_ms, 'endedAt': now_ms, 'date': day or today(),
-            'note': '', 'createdAt': now_ms}
+            'startedAt': now_ms - sec * 1000, 'endedAt': now_ms,
+            'date': day or today(), 'note': '', 'createdAt': now_ms}
 
 
 def find_member(state, nickname):
