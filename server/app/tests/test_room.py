@@ -37,6 +37,42 @@ def session_record(rid, sec, day=None):
             'date': day or today(), 'note': '', 'createdAt': now_ms}
 
 
+def test_privacy_mode_anonymizes_and_excludes_ranking(client):
+    """隐私模式：他人视角匿名占位、隐藏时长，排行榜排除；本人仍可见自己。"""
+    admin = login(client, **ADMIN)
+    ah = auth_header(admin['access_token'])
+    fh = register_friend(client, ah, 'privacy@test.com', '隐私同学')
+
+    client.post('/api/v1/room/heartbeat', headers=fh, json={
+        'status': 'focusing', 'subject_client_id': 'math', 'subject_name': '数学',
+        'activity_type': 'practice', 'mode': 'timer',
+        'focus_started_at': int(time.time() * 1000) - 120_000})
+    state = client.get('/api/v1/room', headers=ah).json()['data']
+    friend_id = find_member(state, '隐私同学')['user_id']
+
+    r = client.put('/api/v1/users/me', headers=fh, json={'privacy_mode': True})
+    assert r.status_code == 200, r.text
+    assert r.json()['data']['privacy_mode'] is True
+
+    other = client.get('/api/v1/room', headers=ah).json()['data']
+    hidden = next(m for m in other['members'] if m['user_id'] == friend_id)
+    assert hidden['nickname'] == '匿名研友'
+    assert hidden['avatar_key'] == ''
+    assert hidden['privacy'] is True
+    assert hidden['online'] is True          # 仍计入在线
+    assert hidden['presence']['status'] == 'offline'
+    assert hidden['today_sec'] == 0 and hidden['total_sec'] == 0
+
+    ranking = client.get('/api/v1/room/ranking', headers=ah).json()['data']
+    assert all(x['user_id'] != friend_id for x in ranking['items'])
+
+    # 本人仍看到自己的真实信息
+    mine = client.get('/api/v1/room', headers=fh).json()['data']
+    self_row = next(m for m in mine['members'] if m['user_id'] == friend_id)
+    assert self_row['nickname'] == '隐私同学'
+    assert self_row['privacy'] is True
+
+
 def find_member(state, nickname):
     return next(m for m in state['members'] if m['nickname'] == nickname)
 

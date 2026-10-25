@@ -14,6 +14,7 @@ from ..schemas.ai import (
 from ..serializers import iso
 from ..services import ai as ai_service
 from ..services import ai_key as crypto
+from ..services import features as feature_service
 from ..time import utcnow
 
 router = APIRouter(prefix='/api/v1/ai', tags=['ai'])
@@ -43,9 +44,8 @@ def is_vip(user):
     return bool(user.vip_until and user.vip_until > utcnow())
 
 
-def require_vip(user):
-    if not is_vip(user):
-        raise ApiError(403, 40301, '该功能需要 VIP')
+def require_ai(db, user):
+    feature_service.require_feature(db, user, 'ai', 'AI 功能需要 VIP 或审批授权')
 
 
 def key_dict(row):
@@ -77,20 +77,21 @@ def scenes(user=Depends(get_current_user)):
 def enabled(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
     key_row = db.get(UserAIKey, user.id)
     return ok({'enabled': bool(key_row) or request.app.state.settings.ai_enabled,
-               'byok': key_row is not None, 'vip': is_vip(user)})
+               'byok': key_row is not None, 'vip': is_vip(user),
+               'access': is_vip(user) or feature_service.has_feature(db, user, 'ai')})
 
 
 # ---------------------------------------------------------------- AI Key（VIP）
 @router.get('/key')
 def get_key(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
-    require_vip(user)
+    require_ai(db, user)
     return ok(key_dict(db.get(UserAIKey, user.id)))
 
 
 @router.put('/key')
 def save_key(body: AIKeyInput, request: Request, user=Depends(get_current_user),
              db=Depends(get_db)):
-    require_vip(user)
+    require_ai(db, user)
     base_url = ai_service.resolve_base_url(body.provider, body.base_url)
     model = body.model.strip() or ai_service.default_model(body.provider)
     cipher_text = crypto.encrypt(enc_secret(request), body.api_key.strip(), str(user.id))
@@ -123,7 +124,7 @@ def delete_key(request: Request, user=Depends(get_current_user), db=Depends(get_
 @router.post('/models')
 async def models(body: AIModelsInput, request: Request, user=Depends(get_current_user),
                  db=Depends(get_db)):
-    require_vip(user)
+    require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
     api_key = body.api_key.strip()
     if not api_key and key_row:
@@ -143,9 +144,8 @@ async def models(body: AIModelsInput, request: Request, user=Depends(get_current
 async def chat(body: ChatInput, request: Request, user=Depends(get_current_user),
                db=Depends(get_db)):
     request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
+    require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
-    if key_row:
-        require_vip(user)
 
     convo = None
     history = []
@@ -196,9 +196,8 @@ async def chat_stream(body: ChatInput, request: Request, user=Depends(get_curren
                       db=Depends(get_db)):
     """SSE 流式对话：逐字返回 delta，结束时落库并回传会话信息。"""
     request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
+    require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
-    if key_row:
-        require_vip(user)
 
     convo = None
     history = []

@@ -15,7 +15,7 @@ const { toast } = useToast()
 
 const enabled = ref(true)
 const keyReady = ref(false)
-const vip = ref(false)
+const access = ref(true)
 const scenes = ref([
   { key: 'kaoyan', label: '考研答疑', icon: Cpu },
   { key: 'general', label: '通用问答', icon: MessageCircle },
@@ -49,7 +49,7 @@ async function scrollBottom() {
 }
 
 const blocked = computed(() => {
-  if (!vip.value) return 'vip'
+  if (!access.value) return 'vip'
   if (!keyReady.value) return 'key'
   return ''
 })
@@ -153,8 +153,8 @@ onMounted(async () => {
     await auth.fetchMe().catch(() => {})
     const cfg = await aiApi.enabled()
     enabled.value = cfg.enabled
-    vip.value = !!cfg.vip
-    if (cfg.vip) {
+    access.value = cfg.access !== false
+    if (access.value) {
       const k = await aiApi.key()
       keyReady.value = !!k.configured
     }
@@ -201,14 +201,14 @@ onMounted(async () => {
     <div v-if="blocked" class="ai-guide">
       <div class="guide-badge"><Crown :size="26" /></div>
       <div class="guide-title">
-        {{ blocked === 'vip' ? 'AI 是 VIP 专属功能' : '还差一步：配置你的 API Key' }}
+        {{ blocked === 'vip' ? 'AI 需要 VIP 或审批授权' : '还差一步：配置你的 API Key' }}
       </div>
       <div class="guide-desc">
         <template v-if="blocked === 'vip'">
-          AI 问答需要 VIP 权限，并填写你自己的模型 API Key。开通后站内不会保存明文 Key。
+          AI 问答需要 VIP 权限，或申请「AI 问答权限」并通过审批；使用时可填写你自己的模型 API Key，站内不会保存明文。
         </template>
         <template v-else>
-          你已是 VIP。前往 AI 设置填写自己的 API Key，即可开始对话；Key 使用 AES-256-GCM 加密存储。
+          你已获得 AI 权限。前往 AI 设置填写自己的 API Key，即可开始对话；Key 使用 AES-256-GCM 加密存储。
         </template>
       </div>
       <button

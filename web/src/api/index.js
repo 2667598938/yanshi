@@ -171,6 +171,7 @@ export const adminApi = {
   deleteMember: (id) => http.del(`/admin/members/${id}`),
   requests: (status = 'pending') => http.get('/admin/requests', { query: { status } }),
   reviewRequest: (id, body) => http.post(`/admin/requests/${id}/review`, body),
+  revokeRequest: (id) => http.post(`/admin/requests/${id}/revoke`, {}),
   invites: () => http.get('/admin/invites'),
   createInvite: (body) => http.post('/admin/invites', body),
   deleteInvite: (id) => http.del(`/admin/invites/${id}`),

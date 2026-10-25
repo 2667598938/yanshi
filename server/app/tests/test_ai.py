@@ -18,6 +18,12 @@ def friend(client):
     ah = h(admin['access_token'])
     client.post('/api/v1/admin/members', headers=ah,
                 json={'email': 'ai1@test.com', 'nickname': 'AI同学', 'password': 'Friend2028'})
+    # 新基线：AI 需要 VIP 或审批授权；测试给该成员开通 VIP
+    members = client.get('/api/v1/admin/members', headers=ah).json()['data']
+    uid = next(x['id'] for x in members if x['email'] == 'ai1@test.com')
+    r = client.put(f'/api/v1/admin/members/{uid}', headers=ah,
+                   json={'vip_action': 'grant', 'vip_days': 30, 'note': '测试开通 VIP'})
+    assert r.status_code == 200, r.text
     return h(login(client, 'ai1@test.com', 'Friend2028')['access_token'])
 
 

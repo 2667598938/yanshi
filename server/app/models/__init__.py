@@ -1,5 +1,6 @@
 from .account import User, RefreshToken, Invite, LoginLog, UserErrorType, UserAuth
-from .system import Config, Announcement, OfficialEvent, Audit, FeatureRequest, Message
+from .system import (Config, Announcement, OfficialEvent, Audit, FeatureRequest,
+                     UserFeatureGrant, Message)
 from .learning import LearningRecord, LearningOperation
 from .room import Room, RoomMember, RoomPresence, RoomMessage, RoomGoal
 from .attachment import Attachment, School
@@ -9,7 +10,8 @@ from .community import Post, Comment, Inspiration
 
 __all__ = [
     'User', 'RefreshToken', 'Invite', 'LoginLog', 'UserErrorType', 'UserAuth',
-    'Config', 'Announcement', 'OfficialEvent', 'Audit', 'FeatureRequest', 'Message',
+    'Config', 'Announcement', 'OfficialEvent', 'Audit', 'FeatureRequest',
+    'UserFeatureGrant', 'Message',
     'LearningRecord', 'LearningOperation',
     'Room', 'RoomMember', 'RoomPresence', 'RoomMessage', 'RoomGoal',
     'Attachment', 'School',

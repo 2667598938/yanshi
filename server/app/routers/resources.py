@@ -10,6 +10,7 @@ from ..errors import ApiError, ok
 from ..models import Resource, ResourceFavorite, ResourceLike, User
 from ..schemas.content import FavoriteState, ResourceInput, ResourceUpdate
 from ..serializers import iso
+from ..services import features as feature_service
 from ..services.messages import create_message
 from ..time import utcnow
 
@@ -32,8 +33,8 @@ def is_vip(user):
     return bool(user.vip_until and user.vip_until > utcnow())
 
 
-def _resource_dict(row, owner, user, like_count, liked, favorited):
-    vip = is_vip(user)
+def _resource_dict(row, owner, user, like_count, liked, favorited, full_link=None):
+    vip = is_vip(user) if full_link is None else full_link
     return {
         'id': row.id,
         'title': row.title,
@@ -66,8 +67,10 @@ def _lists(db, user, rows):
     favorited = set(db.scalars(select(ResourceFavorite.resource_id).where(
         ResourceFavorite.user_id == user.id,
         ResourceFavorite.resource_id.in_(ids))).all())
+    full_link = feature_service.has_feature(db, user, 'materials')
     payload = [_resource_dict(r, owners.get(r.user_id), user, int(counts.get(r.id, 0)),
-                              r.id in liked, r.id in favorited) for r in rows]
+                              r.id in liked, r.id in favorited, full_link)
+               for r in rows]
     return payload, owners, liked, favorited
 
 
@@ -133,7 +136,8 @@ def create_resource(body: ResourceInput, request: Request,
     audit(db, request, 'resource.create', user_id=user.id, detail=row.title)
     db.commit()
     db.refresh(row)
-    return ok(_resource_dict(row, user, user, 0, False, False))
+    return ok(_resource_dict(row, user, user, 0, False, False,
+                             feature_service.has_feature(db, user, 'materials')))
 
 
 @router.put('/{rid}')
@@ -152,7 +156,8 @@ def update_resource(rid: int, body: ResourceUpdate, request: Request,
     audit(db, request, 'resource.update', user_id=user.id, detail=str(rid))
     db.commit()
     owner = db.get(User, row.user_id)
-    return ok(_resource_dict(row, owner, user, 0, False, False))
+    return ok(_resource_dict(row, owner, user, 0, False, False,
+                             feature_service.has_feature(db, user, 'materials')))
 
 
 @router.delete('/{rid}')

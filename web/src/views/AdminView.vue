@@ -152,6 +152,19 @@ async function approveRequest(r) {
   }
 }
 
+async function revokeRequest(r) {
+  try {
+    const row = await adminApi.revokeRequest(r.id)
+    Object.assign(r, row)
+    if (requestFilter.value !== row.status) {
+      requests.value = requests.value.filter((x) => x.id !== row.id)
+    }
+    toast('已撤销授权')
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
 function openReject(r) {
   reviewTarget.value = r
   reviewNote.value = ''
@@ -364,6 +377,7 @@ onMounted(() => {
           <button :class="{ on: requestFilter === 'pending' }" @click="loadRequests('pending')">待审核</button>
           <button :class="{ on: requestFilter === 'approved' }" @click="loadRequests('approved')">已通过</button>
           <button :class="{ on: requestFilter === 'rejected' }" @click="loadRequests('rejected')">已驳回</button>
+          <button :class="{ on: requestFilter === 'revoked' }" @click="loadRequests('revoked')">已撤销</button>
         </div>
         <div v-if="!requests.length" class="empty">暂无记录</div>
         <div v-for="r in requests" :key="r.id" class="req-card">
@@ -382,7 +396,8 @@ onMounted(() => {
             <button class="req-approve" @click="approveRequest(r)"><Check :size="14" />通过</button>
           </div>
           <div v-else class="req-status">
-            {{ r.status === 'approved' ? '已通过' : '已驳回' }} · {{ fmtDate(r.reviewed_at) }}
+            {{ r.status === 'approved' ? '已通过' : r.status === 'revoked' ? '已撤销' : '已驳回' }} · {{ fmtDate(r.reviewed_at) }}
+            <button v-if="r.status === 'approved'" class="req-revoke" @click="revokeRequest(r)">撤销授权</button>
           </div>
         </div>
       </div>
@@ -559,6 +574,7 @@ onMounted(() => {
 .req-reject { background: #f1f4fa; color: var(--sub); }
 .req-approve { background: var(--primary); color: #fff; }
 .req-status { margin-top: 8px; font-size: 11.5px; color: var(--faint); }
+.req-revoke { margin-left: 8px; border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 7px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
 .vip-current { font-size: 12.5px; color: var(--sub); margin-bottom: 12px; line-height: 1.6; }
 .ann-content { font-size: 14px; line-height: 1.6; color: var(--ink); }
 .ann-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--faint); }

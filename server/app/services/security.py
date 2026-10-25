@@ -81,6 +81,7 @@ def user_payload(user):
         'signature': user.signature or '', 'figure_id': user.figure_id or 'figure-1',
         'daily_goal_min': user.daily_goal_min, 'exam_date': user.exam_date,
         'notify_enabled': user.notify_enabled,
+        'privacy_mode': bool(user.privacy_mode),
         'vip_until': iso(user.vip_until),
         'is_vip': bool(user.vip_until and user.vip_until > utcnow()),
     }
