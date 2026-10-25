@@ -65,23 +65,39 @@ async function send() {
   messages.value.push({ role: 'user', content })
   input.value = ''
   sending.value = true
+  const reply = { role: 'assistant', content: '', streaming: true }
+  messages.value.push(reply)
   scrollBottom()
   try {
-    const data = await aiApi.chat({
-      scene: scene.value,
-      content,
-      conversation_id: conversationId.value || undefined,
-    })
-    messages.value.push({ role: 'assistant', content: data.reply,
-      prompt_tokens: data.prompt_tokens, completion_tokens: data.completion_tokens,
-      latency_ms: data.latency_ms })
-    if (data.conversation_id) {
-      conversationId.value = data.conversation_id
-      if (data.title) conversationTitle.value = data.title
-    }
+    await aiApi.chatStream(
+      {
+        scene: scene.value,
+        content,
+        conversation_id: conversationId.value || undefined,
+      },
+      (evt) => {
+        if (evt.type === 'delta') {
+          reply.content += evt.text
+          scrollBottom()
+        } else if (evt.type === 'error') {
+          reply.content += (reply.content ? '\n\n' : '') + `出错了：${evt.message}`
+        } else if (evt.type === 'done') {
+          reply.streaming = false
+          reply.prompt_tokens = evt.prompt_tokens
+          reply.completion_tokens = evt.completion_tokens
+          reply.latency_ms = evt.latency_ms
+          if (evt.conversation_id) {
+            conversationId.value = evt.conversation_id
+            if (evt.title) conversationTitle.value = evt.title
+          }
+        }
+      }
+    )
   } catch (e) {
-    messages.value.push({ role: 'assistant', content: `出错了：${e.message}，稍后再试。` })
+    if (!reply.content) reply.content = `出错了：${e.message}，稍后再试。`
+    else reply.content += `\n\n（连接中断：${e.message}）`
   } finally {
+    reply.streaming = false
     sending.value = false
     scrollBottom()
   }
@@ -219,7 +235,7 @@ onMounted(async () => {
       <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
         <div v-if="m.role === 'assistant'" class="msg-ava"><Sparkles :size="16" /></div>
         <div class="msg-main">
-          <div class="bubble">{{ m.content }}</div>
+          <div class="bubble">{{ m.content }}<span v-if="m.streaming" class="caret">▍</span></div>
           <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
             <template v-if="m.prompt_tokens || m.completion_tokens">
               {{ (m.prompt_tokens || 0) + (m.completion_tokens || 0) }} tokens
@@ -228,10 +244,6 @@ onMounted(async () => {
             {{ ((m.latency_ms || 0) / 1000).toFixed(1) }}s
           </div>
         </div>
-      </div>
-      <div v-if="sending" class="chat-msg assistant">
-        <div class="msg-ava"><Sparkles :size="16" /></div>
-        <div class="bubble typing">思考中…</div>
       </div>
     </div>
 
@@ -303,7 +315,8 @@ onMounted(async () => {
 .bubble { max-width: 78%; padding: 10px 13px; border-radius: 14px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; box-shadow: var(--shadow-soft); }
 .chat-msg.assistant .bubble { background: #fff; border-top-left-radius: 4px; }
 .chat-msg.user .bubble { background: var(--primary); color: #fff; border-top-right-radius: 4px; }
-.typing { color: var(--faint); }
+.caret { display: inline-block; margin-left: 1px; color: var(--primary); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
 .msg-main { display: flex; flex-direction: column; min-width: 0; max-width: 78%; }
 .msg-main .bubble { max-width: 100%; }
 .msg-usage { font-size: 10.5px; color: var(--faint); margin-top: 4px; padding-left: 2px; }

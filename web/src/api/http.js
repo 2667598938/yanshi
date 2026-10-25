@@ -76,6 +76,80 @@ async function request(method, path, { body, query, auth = true, raw = false } =
   return data.data
 }
 
+// 流式 POST（SSE）：逐条解析 data: {...} 事件；401 时自动刷新一次后重试
+export async function streamPost(path, body, onEvent, { signal } = {}) {
+  const authStore = useAuthStore()
+  const url = BASE + path
+  const doFetch = (token) =>
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: 'Bearer ' + token } : {}),
+      },
+      body: JSON.stringify(body),
+      signal,
+    })
+
+  let res = await doFetch(authStore.accessToken)
+  if (res.status === 401 && authStore.refreshToken) {
+    refreshPromise = refreshPromise || authStore.tryRefresh()
+    const ok = await refreshPromise
+    refreshPromise = null
+    if (ok) res = await doFetch(authStore.accessToken)
+  }
+  if (!res.ok) {
+    let data = null
+    try {
+      data = await res.json()
+    } catch {
+      /* 非 JSON 错误体 */
+    }
+    const err = new Error(data?.message || `请求失败（${res.status}）`)
+    err.code = data?.code
+    err.status = res.status
+    throw err
+  }
+  if (!res.body) throw new Error('当前浏览器不支持流式响应')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const blocks = buffer.split('\n\n')
+      buffer = blocks.pop() || ''
+      for (const block of blocks) {
+        const line = block.split('\n').find((x) => x.startsWith('data:'))
+        if (!line) continue
+        const payload = line.slice(5).trim()
+        if (!payload) continue
+        let event = null
+        try {
+          event = JSON.parse(payload)
+        } catch {
+          continue // 忽略无法解析的心跳/空事件
+        }
+        onEvent(event)
+      }
+    }
+    // 刷新末尾未以空行收尾的事件
+    const tail = buffer.split('\n').find((x) => x.startsWith('data:'))
+    if (tail) {
+      try {
+        onEvent(JSON.parse(tail.slice(5).trim()))
+      } catch {
+        /* 忽略不完整事件 */
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 export const http = {
   get: (path, opts) => request('GET', path, opts),
   post: (path, body, opts) => request('POST', path, { ...opts, body }),

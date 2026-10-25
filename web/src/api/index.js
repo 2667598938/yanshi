@@ -1,5 +1,5 @@
 // 后端接口集中封装（统一前缀 /api/v1）。所有方法返回 data 部分。
-import { http } from './http'
+import { http, streamPost } from './http'
 
 // ------------------------------------------------------------ 公共
 export const publicApi = {
@@ -90,6 +90,7 @@ export const aiApi = {
   enabled: () => http.get('/ai/enabled'),
   scenes: () => http.get('/ai/scenes'),
   chat: (body) => http.post('/ai/chat', body),
+  chatStream: (body, onEvent, opts) => streamPost('/ai/chat/stream', body, onEvent, opts),
   key: () => http.get('/ai/key'),
   saveKey: (body) => http.put('/ai/key', body),
   deleteKey: () => http.del('/ai/key'),
