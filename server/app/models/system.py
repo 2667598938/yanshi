@@ -55,6 +55,8 @@ class FeatureRequest(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
     feature = Column(String(40), nullable=False)
+    active_key = Column(String(80), unique=True, nullable=True)
+    approval_source = Column(String(12), nullable=False, default='manual', server_default='manual')
     reason = Column(String(500), nullable=False)
     status = Column(String(16), nullable=False, default='pending', server_default='pending',
                     index=True)   # pending | approved | rejected | revoked | withdrawn
@@ -96,3 +98,21 @@ class Message(Base):
     is_read = Column(Boolean, default=False, server_default='0', nullable=False)
     dedupe_key = Column(String(120), nullable=True)
     created_at = Column(DateTime, default=now, nullable=False, index=True)
+
+
+class EmailJob(Base):
+    __tablename__ = 'email_jobs'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    message_id = Column(ForeignKey('messages.id'), nullable=False, unique=True)
+    recipient = Column(String(254), nullable=False)
+    subject = Column(String(160), nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, default='pending', server_default='pending')
+    attempts = Column(Integer, nullable=False, default=0, server_default='0')
+    next_attempt_at = Column(DateTime, nullable=False, default=now)
+    locked_at = Column(DateTime)
+    lease_token = Column(String(64))
+    last_error = Column(String(300), default='', server_default='')
+    sent_at = Column(DateTime)
+    created_at = Column(DateTime, nullable=False, default=now)

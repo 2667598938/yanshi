@@ -7,8 +7,10 @@ import {
 import { messageApi } from '../api'
 import { fmtShort, fmtDateTime } from '../utils/time'
 import { useToast } from '../composables/useToast'
+import { useNotificationsStore } from '../stores/notifications'
 
 const router = useRouter()
+const notifications = useNotificationsStore()
 const { toast } = useToast()
 
 const rows = ref([])
@@ -42,6 +44,7 @@ async function open(row) {
     try {
       const next = await messageApi.read(row.id)
       Object.assign(row, next)
+      await notifications.refresh()
     } catch {
       /* 已读失败不阻断查看 */
     }
@@ -52,6 +55,7 @@ async function readAll() {
   try {
     await messageApi.readAll()
     rows.value.forEach((r) => { r.is_read = true })
+    await notifications.refresh()
     toast('已全部标为已读')
   } catch (e) {
     toast(e.message)

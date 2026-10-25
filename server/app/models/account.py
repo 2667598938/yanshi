@@ -31,6 +31,9 @@ class User(Base):
     privacy_mode = Column(Boolean, default=False, server_default='0', nullable=False)
 
     vip_until = Column(DateTime)
+    vip_permanent = Column(Boolean, nullable=False, default=False, server_default='0')
+    vip_expiry_notified_until = Column(DateTime)
+    ai_context_turns = Column(Integer, nullable=False, default=10, server_default='10')
 
     token_version = Column(Integer, nullable=False, default=0, server_default='0')
     last_login_at = Column(DateTime)

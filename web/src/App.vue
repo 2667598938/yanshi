@@ -1,5 +1,5 @@
 <script setup>
-import { watch } from 'vue'
+import { watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import TabBar from './components/TabBar.vue'
 import ToastLayer from './components/ToastLayer.vue'
@@ -8,11 +8,17 @@ import OfflineBanner from './components/OfflineBanner.vue'
 import { useTimerStore } from './stores/timer'
 import { useAppStore } from './stores/app'
 import { useSubjectsStore } from './stores/subjects'
+import { useAuthStore } from './stores/auth'
+import { useNotificationsStore } from './stores/notifications'
 
 const timer = useTimerStore()
 const app = useAppStore()
 const subjects = useSubjectsStore()
 const route = useRoute()
+const auth = useAuthStore()
+const notifications = useNotificationsStore()
+watch(() => auth.user?.id, (id) => { if (id) notifications.start(); else notifications.stop() }, { immediate: true })
+onBeforeUnmount(() => notifications.stop())
 
 // 番茄完成提示音（Web Audio 合成，无需音频文件）
 function playChime() {

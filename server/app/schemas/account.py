@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -151,8 +152,9 @@ class AdminMemberUpdate(Strict):
     target_school: Optional[str] = Field(default=None, max_length=32)
     daily_goal_min: Optional[int] = Field(default=None, ge=1, le=1440)
     status: Optional[Literal['active', 'banned']] = None
-    vip_action: Optional[Literal['grant', 'renew', 'revoke']] = None
+    vip_action: Optional[Literal['grant', 'renew', 'revoke', 'permanent', 'set_expiry']] = None
     vip_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    vip_until: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=300)
 
 

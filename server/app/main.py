@@ -1,4 +1,7 @@
 import secrets
+import asyncio
+import logging
+from contextlib import suppress
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,7 +32,19 @@ def resolve_secret(settings: Settings) -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    async def maintenance_loop():
+        from .services.maintenance import run_maintenance
+        while True:
+            try:
+                await asyncio.to_thread(run_maintenance, app.state.session_factory, app.state.settings, app.state.secret)
+            except Exception:
+                logging.getLogger('yanshi.maintenance').exception('Maintenance cycle failed')
+            await asyncio.sleep(30)
+    job = asyncio.create_task(maintenance_loop())
+    try: yield
+    finally:
+        job.cancel()
+        with suppress(asyncio.CancelledError): await job
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

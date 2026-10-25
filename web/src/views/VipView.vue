@@ -22,7 +22,7 @@ const untilText = computed(() =>
 )
 
 const benefits = [
-  { icon: Sparkles, title: 'AI 问答权限', sub: '随时向助教提问，不受次数限制' },
+  { icon: Sparkles, title: 'AI 问答权限', sub: '按配置额度使用AI助教，可查看当日用量' },
   { icon: ShieldCheck, title: '功能申请免审核', sub: '提交即开通，无需等待审批' },
   { icon: Crown, title: 'VIP 专属标识', sub: '个人中心展示会员身份' },
   { icon: Ticket, title: '邀请码优先发放', sub: '可向管理员申请邀请码赠送给研友' },
@@ -36,6 +36,7 @@ async function load() {
         ...auth.user,
         is_vip: status.value.is_vip,
         vip_until: status.value.vip_until,
+        vip_permanent: status.value.vip_permanent,
       })
     }
   } catch (e) {
@@ -64,6 +65,7 @@ onMounted(load)
         </div>
         <div class="vh-state">
           <template v-if="loading">读取中…</template>
+          <template v-else-if="status?.vip_permanent">永久VIP</template>
           <template v-else-if="isVip">VIP 有效期至 {{ untilText }} · 剩余 {{ status.days_left }} 天</template>
           <template v-else>尚未开通 VIP</template>
         </div>

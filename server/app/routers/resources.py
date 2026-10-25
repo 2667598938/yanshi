@@ -30,7 +30,7 @@ def mask_url(url: str) -> str:
 
 
 def is_vip(user):
-    return bool(user.vip_until and user.vip_until > utcnow())
+    return feature_service.is_vip(user)
 
 
 def _resource_dict(row, owner, user, like_count, liked, favorited, full_link=None):

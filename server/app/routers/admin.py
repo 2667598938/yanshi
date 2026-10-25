@@ -1,6 +1,6 @@
 """后台管理接口（仅管理员）：概览、成员、邀请码、配置、公告、审计、数据导出。"""
 import json
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -11,7 +11,7 @@ from ..errors import ApiError, ok
 from ..models import (
     AIConversation, AIMessage, Announcement, Attachment, Audit, Config, FeatureRequest,
     Invite, LearningOperation, LearningRecord, RefreshToken, Room, RoomGoal, RoomMember,
-    RoomMessage, RoomPresence, User,
+    RoomMessage, RoomPresence, User, EmailJob,
 )
 from ..schemas.account import (
     AdminCreateMember, AdminMemberUpdate, AdminResetPassword, AnnouncementInput,
@@ -56,7 +56,8 @@ def member_dict(row):
         'status': row.status, 'target_school': row.target_school, 'exam_year': row.exam_year,
         'avatar_key': row.avatar_key or '', 'daily_goal_min': row.daily_goal_min,
         'vip_until': iso(row.vip_until),
-        'is_vip': bool(row.vip_until and row.vip_until > utcnow()),
+        'vip_permanent': bool(row.vip_permanent),
+        'is_vip': feature_service.is_vip(row),
         'created_at': iso(row.created_at), 'last_login_at': iso(row.last_login_at),
     }
 
@@ -105,7 +106,7 @@ def overview(request: Request, db=Depends(get_db)):
 
     return ok({
         'member_count': len(users),
-        'vip_count': sum(1 for u in users if u.vip_until and u.vip_until > utcnow()),
+        'vip_count': sum(1 for u in users if feature_service.is_vip(u)),
         'room_capacity': room.capacity if room else 0,
         'room_member_count': room_member_count,
         'online_count': online_count,
@@ -161,6 +162,7 @@ def _get_member(db, uid):
 @router.put('/members/{uid}')
 def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depends(get_db)):
     user = _get_member(db, uid)
+    db.refresh(user, with_for_update=True)
     if body.nickname is not None:
         user.nickname = body.nickname
     if body.target_school is not None:
@@ -181,14 +183,26 @@ def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depend
         now = utcnow()
         days = body.vip_days or 30
         if body.vip_action == 'grant':
+            user.vip_permanent = False
             user.vip_until = now + timedelta(days=days)
         elif body.vip_action == 'renew':
+            if user.vip_permanent: raise ApiError(400, 40001, '永久VIP无需续期')
             base = user.vip_until if (user.vip_until and user.vip_until > now) else now
             user.vip_until = base + timedelta(days=days)
+        elif body.vip_action == 'permanent':
+            user.vip_permanent, user.vip_until = True, None
+        elif body.vip_action == 'set_expiry':
+            if body.vip_until is None: raise ApiError(400, 40001, '请指定到期时间')
+            until = body.vip_until
+            if until.tzinfo: until = until.astimezone(timezone.utc).replace(tzinfo=None)
+            if until <= now: raise ApiError(400, 40001, '到期时间必须晚于当前时间')
+            user.vip_permanent, user.vip_until = False, until
         else:
+            user.vip_permanent = False
             user.vip_until = None
+        user.vip_expiry_notified_until = None
         if body.vip_action != 'revoke':
-            until = user.vip_until.date().isoformat() if user.vip_until else '长期'
+            until = user.vip_until.date().isoformat() if user.vip_until else '永久'
             title = 'VIP 已开通' if body.vip_action == 'grant' else 'VIP 已续期'
             content = f'管理员已为你{"开通" if body.vip_action == "grant" else "续期"} VIP，有效期至 {until}。'
         else:
@@ -306,10 +320,18 @@ def review_request(rid: int, body: FeatureRequestReview, request: Request,
         raise ApiError(404, 40401, '申请不存在')
     if row.status != 'pending':
         raise ApiError(400, 40001, '该申请已处理')
+    if body.action == 'reject' and len(body.note.strip()) < 5:
+        raise ApiError(400, 40001, '驳回原因至少5个字')
+    claimed = db.execute(sa_update(FeatureRequest).where(FeatureRequest.id == rid,
+        FeatureRequest.status == 'pending').values(status='approved' if body.action == 'approve' else 'rejected',
+            active_key=row.active_key if body.action == 'approve' else None)).rowcount
+    if claimed != 1: raise ApiError(400, 40001, '该申请已被其他管理员处理')
     row.status = 'approved' if body.action == 'approve' else 'rejected'
     row.review_note = body.note.strip()
     row.reviewed_by = admin.id
     row.reviewed_at = utcnow()
+    row.approval_source = 'manual'
+    if body.action == 'reject': row.active_key = None
     user = db.get(User, row.user_id)
     label = FEATURE_LABELS.get(row.feature, row.feature)
     if row.status == 'approved':
@@ -330,6 +352,33 @@ def review_request(rid: int, body: FeatureRequestReview, request: Request,
     return ok(admin_request_dict(row, user))
 
 
+@router.get('/email-jobs')
+def email_jobs(status: str = 'all', db=Depends(get_db)):
+    if status not in {'all', 'pending', 'retry', 'sending', 'sent', 'failed', 'cancelled'}:
+        raise ApiError(400, 40001, '邮件状态无效')
+    query = select(EmailJob)
+    if status != 'all': query = query.where(EmailJob.status == status)
+    rows = db.scalars(query.order_by(EmailJob.id.desc()).limit(200)).all()
+    return ok([{'id': row.id, 'user_id': row.user_id, 'recipient': row.recipient,
+        'subject': row.subject, 'status': row.status, 'attempts': row.attempts,
+        'last_error': row.last_error or '', 'next_attempt_at': iso(row.next_attempt_at),
+        'sent_at': iso(row.sent_at), 'created_at': iso(row.created_at)} for row in rows])
+
+
+@router.post('/email-jobs/{job_id}/retry')
+def retry_email_job(job_id: int, request: Request, db=Depends(get_db), admin=Depends(get_admin)):
+    row = db.get(EmailJob, job_id)
+    if not row: raise ApiError(404, 40401, '邮件任务不存在')
+    if row.status not in {'failed', 'retry'}: raise ApiError(409, 40901, '该任务不处于可重试状态')
+    user = db.get(User, row.user_id)
+    if not user or user.status == 'deleted': raise ApiError(400, 40001, '账号已注销，不能重发')
+    row.status, row.attempts, row.lease_token = 'pending', 0, None
+    row.next_attempt_at, row.last_error = utcnow(), ''
+    audit(db, request, 'email.retry', user_id=row.user_id, detail=str(job_id))
+    db.commit()
+    return ok({'queued': True})
+
+
 @router.post('/requests/{rid}/revoke')
 def revoke_request(rid: int, request: Request, db=Depends(get_db),
                    admin=Depends(get_admin)):
@@ -338,15 +387,19 @@ def revoke_request(rid: int, request: Request, db=Depends(get_db),
         raise ApiError(404, 40401, '申请不存在')
     if row.status != 'approved':
         raise ApiError(400, 40001, '只有已通过的申请可以撤销')
+    claimed = db.execute(sa_update(FeatureRequest).where(FeatureRequest.id == rid,
+        FeatureRequest.status == 'approved').values(status='revoked', active_key=None)).rowcount
+    if claimed != 1: raise ApiError(400, 40001, '申请状态已变化，请刷新')
     row.status = 'revoked'
+    row.active_key = None
     row.review_note = (row.review_note + ' / 管理员撤销').strip(' /')
     row.reviewed_by = admin.id
     row.reviewed_at = utcnow()
-    feature_service.revoke_feature(db, row.user_id, row.feature)
+    feature_service.revoke_feature(db, row.user_id, row.feature, request_id=rid)
     user = db.get(User, row.user_id)
     label = FEATURE_LABELS.get(row.feature, row.feature)
     create_message(db, user, 'apply', '功能授权已撤销',
-                   f'你申请的「{label}」授权已被管理员撤销，相关功能将立即失效。',
+                   f'你申请的「{label}」审批授权已撤销；其他有效VIP或授权仍保留。',
                    link='/requests', dedupe_key=f'apply-revoke:{rid}', email=True,
                    settings=request.app.state.settings)
     audit(db, request, 'admin.revoke_request', user_id=row.user_id, detail=str(rid))

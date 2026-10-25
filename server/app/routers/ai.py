@@ -1,5 +1,8 @@
 """AI 助教接口（独立 Tab）：VIP 自填 Key（BYOK）+ 服务端兜底 Key。"""
 import json
+import hashlib
+from datetime import timedelta
+from sqlalchemy.exc import IntegrityError
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -7,9 +10,10 @@ from sqlalchemy import delete, select
 
 from ..deps import audit, get_current_user, get_db
 from ..errors import ApiError, ok
-from ..models import AIConversation, AIMessage, UserAIKey
+from ..models import AIConversation, AIMessage, UserAIKey, AIModelCache
+from ..services import ai_usage
 from ..schemas.ai import (
-    AIKeyInput, AIModelsInput, ChatInput, ConversationCreate, ConversationUpdate,
+    AIKeyInput, AIModelsInput, ChatInput, ConversationCreate, ConversationUpdate, AIPreferencesInput,
 )
 from ..serializers import iso
 from ..services import ai as ai_service
@@ -41,7 +45,7 @@ def msg_dict(row):
 
 
 def is_vip(user):
-    return bool(user.vip_until and user.vip_until > utcnow())
+    return feature_service.is_vip(user)
 
 
 def require_ai(db, user):
@@ -121,6 +125,21 @@ def delete_key(request: Request, user=Depends(get_current_user), db=Depends(get_
     return ok(key_dict(None))
 
 
+@router.get('/usage')
+def usage(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
+    require_ai(db, user)
+    return ok({**ai_usage.summary(db, user.id, request.app.state.settings.ai_daily_limit),
+               'context_turns': user.ai_context_turns})
+
+
+@router.put('/preferences')
+def preferences(body: AIPreferencesInput, user=Depends(get_current_user), db=Depends(get_db)):
+    require_ai(db, user)
+    user.ai_context_turns = body.context_turns
+    db.commit()
+    return ok({'context_turns': user.ai_context_turns})
+
+
 @router.post('/models')
 async def models(body: AIModelsInput, request: Request, user=Depends(get_current_user),
                  db=Depends(get_db)):
@@ -133,7 +152,25 @@ async def models(body: AIModelsInput, request: Request, user=Depends(get_current
         raise ApiError(400, 40001, '请先填写 API Key')
     base_url = ai_service.resolve_base_url(
         body.provider, body.base_url or (key_row.base_url if key_row else ''))
+    cache_key = hashlib.sha256(f'{user.id}|{body.provider}|{base_url}|{api_key}'.encode()).hexdigest()
+    cached = db.get(AIModelCache, cache_key)
+    if cached and cached.fetched_at > utcnow() - timedelta(hours=24):
+        return ok({'models': json.loads(cached.models_json), 'fallback': False,
+                   'provider': body.provider, 'cached': True, 'fetched_at': iso(cached.fetched_at)})
     items = await ai_service.fetch_models(base_url, api_key)
+    if items:
+        if cached:
+            cached.models_json, cached.fetched_at = json.dumps(items), utcnow()
+        else:
+            db.add(AIModelCache(cache_key=cache_key, user_id=user.id, models_json=json.dumps(items)))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()  # 并发首次拉取由另一个请求填充缓存。
+    elif cached:
+        return ok({'models': json.loads(cached.models_json), 'fallback': True,
+                   'provider': body.provider, 'cached': True, 'stale': True,
+                   'fetched_at': iso(cached.fetched_at)})
     fallback = not items
     if fallback and ai_service.default_model(body.provider):
         items = [ai_service.default_model(body.provider)]
@@ -153,27 +190,35 @@ async def chat(body: ChatInput, request: Request, user=Depends(get_current_user)
         convo = get_owned_conversation(db, body.conversation_id, user)
         rows = db.scalars(select(AIMessage).where(
             AIMessage.conversation_id == convo.id).order_by(
-            AIMessage.id.desc()).limit(ai_service.HISTORY_TURNS * 2)).all()
+            AIMessage.id.desc()).limit(user.ai_context_turns * 2)).all()
         rows.reverse()
         history = [{'role': r.role, 'content': r.content} for r in rows]
+        quota_day = ai_usage.reserve(db, user.id, request.app.state.settings.ai_daily_limit)
         db.add(AIMessage(conversation_id=convo.id, role='user', content=body.content))
         convo.updated_at = utcnow()
         if convo.title == '新对话':
             convo.title = body.content[:20]
         db.commit()
 
+    if not convo:
+        quota_day = ai_usage.reserve(db, user.id, request.app.state.settings.ai_daily_limit)
     messages = ai_service.build_messages(body.scene, history, body.content, body.context)
-    if key_row:
-        api_key = crypto.decrypt(enc_secret(request), key_row.key_cipher, str(user.id))
-        result = await ai_service.call_openai(
-            key_row.base_url or ai_service.resolve_base_url(key_row.provider),
-            api_key, key_row.model or ai_service.default_model(key_row.provider),
-            messages, request.app.state.settings.ai_max_tokens)
-        reply = result['content']
-    else:
-        reply = await ai_service.call_ark(request.app.state.settings, messages)
-        result = {'content': reply, 'prompt_tokens': None,
-                  'completion_tokens': None, 'latency_ms': None}
+    try:
+        if key_row:
+            api_key = crypto.decrypt(enc_secret(request), key_row.key_cipher, str(user.id))
+            result = await ai_service.call_openai(
+                key_row.base_url or ai_service.resolve_base_url(key_row.provider),
+                api_key, key_row.model or ai_service.default_model(key_row.provider),
+                messages, request.app.state.settings.ai_max_tokens)
+            reply = result['content']
+        else:
+            reply = await ai_service.call_ark(request.app.state.settings, messages)
+            result = {'content': reply, 'prompt_tokens': None,
+                      'completion_tokens': None, 'latency_ms': None}
+    except Exception:
+        ai_usage.finish(db, user.id, quota_day)
+        raise
+    ai_usage.finish(db, user.id, quota_day, result)
 
     out = {'reply': reply, 'scene': body.scene,
            'prompt_tokens': result['prompt_tokens'],
@@ -205,15 +250,18 @@ async def chat_stream(body: ChatInput, request: Request, user=Depends(get_curren
         convo = get_owned_conversation(db, body.conversation_id, user)
         rows = db.scalars(select(AIMessage).where(
             AIMessage.conversation_id == convo.id).order_by(
-            AIMessage.id.desc()).limit(ai_service.HISTORY_TURNS * 2)).all()
+            AIMessage.id.desc()).limit(user.ai_context_turns * 2)).all()
         rows.reverse()
         history = [{'role': r.role, 'content': r.content} for r in rows]
+        quota_day = ai_usage.reserve(db, user.id, request.app.state.settings.ai_daily_limit)
         db.add(AIMessage(conversation_id=convo.id, role='user', content=body.content))
         convo.updated_at = utcnow()
         if convo.title == '新对话':
             convo.title = body.content[:20]
         db.commit()
 
+    if not convo:
+        quota_day = ai_usage.reserve(db, user.id, request.app.state.settings.ai_daily_limit)
     messages = ai_service.build_messages(body.scene, history, body.content, body.context)
 
     def sse(payload):
@@ -241,12 +289,15 @@ async def chat_stream(body: ChatInput, request: Request, user=Depends(get_curren
                 usage = chunk.get('usage') or {}
                 latency = chunk.get('latency_ms')
         except ApiError as e:
+            ai_usage.finish(db, user.id, quota_day)
             yield sse({'type': 'error', 'message': e.message})
             return
         except Exception:
+            ai_usage.finish(db, user.id, quota_day)
             yield sse({'type': 'error', 'message': 'AI 服务异常，请稍后重试'})
             return
 
+        ai_usage.finish(db, user.id, quota_day, usage)
         prompt_tokens = usage.get('prompt_tokens')
         completion_tokens = usage.get('completion_tokens')
         out = {'type': 'done', 'reply': reply, 'scene': body.scene,

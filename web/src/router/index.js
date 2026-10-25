@@ -35,7 +35,8 @@ const routes = [
   // 登录 / 注册 / 找回（无底部导航）
   { path: '/login', name: 'login', component: () => import('../views/auth/AuthView.vue'), meta: { title: '登录', hideTabbar: true } },
   // 后台管理（仅管理员，页面内二次校验）
-  { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { title: '后台管理', requiresAuth: true, hideTabbar: true } },
+  { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { title: '后台管理', requiresAuth: true, requiresAdmin: true, hideTabbar: true } },
+  { path: '/admin/email-jobs', name: 'email-jobs', component: () => import('../views/EmailJobsView.vue'), meta: { title: '通知邮件任务', requiresAuth: true, requiresAdmin: true, hideTabbar: true } },
 
   // 二级页（隐藏底部导航）
   { path: '/tasks', name: 'tasks', component: () => import('../views/TasksView.vue'), meta: { title: '任务计划', hideTabbar: true } },
@@ -59,6 +60,7 @@ router.beforeEach((to) => {
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
+  if (to.meta.requiresAdmin && !auth.isAdmin) return '/me'
   return true
 })
 

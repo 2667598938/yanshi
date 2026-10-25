@@ -91,6 +91,8 @@ export const schoolApi = {
 
 // ------------------------------------------------------------ AI
 export const aiApi = {
+  usage: () => http.get('/ai/usage'),
+  preferences: (body) => http.put('/ai/preferences', body),
   enabled: () => http.get('/ai/enabled'),
   scenes: () => http.get('/ai/scenes'),
   chat: (body) => http.post('/ai/chat', body),
@@ -167,6 +169,8 @@ export const inspirationApi = {
 
 // ------------------------------------------------------------ 后台
 export const adminApi = {
+  emailJobs: (status = 'all') => http.get('/admin/email-jobs', { query: { status } }),
+  retryEmail: (id) => http.post(`/admin/email-jobs/${id}/retry`, {}),
   overview: () => http.get('/admin/overview'),
   members: () => http.get('/admin/members'),
   createMember: (body) => http.post('/admin/members', body),

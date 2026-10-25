@@ -38,7 +38,7 @@ const announcementForm = ref('')
 const resetTarget = ref(null)
 const newPwd = ref('')
 const vipTarget = ref(null)
-const vipForm = ref({ action: 'grant', days: 30, note: '' })
+const vipForm = ref({ action: 'grant', days: 30, until: '', note: '' })
 const reviewTarget = ref(null)
 const reviewNote = ref('')
 
@@ -122,7 +122,7 @@ function switchTab(next) {
 
 function openVip(m) {
   vipTarget.value = m
-  vipForm.value = { action: 'grant', days: 30, note: '' }
+  vipForm.value = { action: 'grant', days: 30, until: '', note: '' }
   sheet.value = 'vip'
 }
 
@@ -130,7 +130,11 @@ async function submitVip() {
   const f = vipForm.value
   if (f.note.trim().length < 5) return toast('请填写至少 5 个字的操作备注')
   const payload = { vip_action: f.action, note: f.note.trim() }
-  if (f.action !== 'revoke') payload.vip_days = Number(f.days) || 30
+    if (['grant', 'renew'].includes(f.action)) payload.vip_days = Number(f.days) || 30
+    if (f.action === 'set_expiry') {
+      if (!f.until) return toast('请选择到期日期')
+      payload.vip_until = new Date(`${f.until}T23:59:59+08:00`).toISOString()
+    }
   try {
     const row = await adminApi.updateMember(vipTarget.value.id, payload)
     Object.assign(vipTarget.value, row)
@@ -175,7 +179,7 @@ function openReject(r) {
 }
 
 async function submitReject() {
-  if (!reviewNote.value.trim()) return toast('请填写驳回原因')
+  if (reviewNote.value.trim().length < 5) return toast('驳回原因至少5个字')
   try {
     const row = await adminApi.reviewRequest(reviewTarget.value.id, {
       action: 'reject', note: reviewNote.value.trim(),
@@ -300,6 +304,7 @@ onMounted(() => {
 <template>
   <div class="admin-page">
     <CopyFallback v-model="manualCopy" />
+    <div class="page"><button class="btn btn-ghost btn-sm" @click="router.push('/admin/email-jobs')">通知邮件任务与重试</button></div>
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>
@@ -358,7 +363,7 @@ onMounted(() => {
             </div>
             <div class="member-sub">
               {{ m.email }} · {{ SCHOOL_MAP[m.target_school]?.short || '未填梦校' }}
-              <span v-if="m.is_vip"> · 到期 {{ fmtDate(m.vip_until) }}</span>
+              <span v-if="m.is_vip"> · {{ m.vip_permanent ? '永久VIP' : `到期 ${fmtDate(m.vip_until)}` }}</span>
             </div>
           </div>
           <div class="member-actions">
@@ -476,17 +481,20 @@ onMounted(() => {
         <template v-else-if="sheet === 'vip'">
           <div class="sheet-title">会员调整 · {{ vipTarget?.nickname }}</div>
           <div class="vip-current">
-            当前状态：{{ vipTarget?.is_vip ? `VIP · ${fmtDate(vipTarget.vip_until)} 到期` : '未开通' }}
+            当前状态：{{ vipTarget?.vip_permanent ? '永久VIP' : vipTarget?.is_vip ? `VIP · ${fmtDate(vipTarget.vip_until)} 到期` : '未开通' }}
           </div>
           <div class="seg" style="margin-bottom: 12px">
             <button :class="{ on: vipForm.action === 'grant' }" @click="vipForm.action = 'grant'">开通</button>
             <button :class="{ on: vipForm.action === 'renew' }" @click="vipForm.action = 'renew'">续期</button>
             <button :class="{ on: vipForm.action === 'revoke' }" @click="vipForm.action = 'revoke'">降级</button>
+            <button :class="{ on: vipForm.action === 'permanent' }" @click="vipForm.action = 'permanent'">永久</button>
+            <button :class="{ on: vipForm.action === 'set_expiry' }" @click="vipForm.action = 'set_expiry'">指定到期</button>
           </div>
-          <label v-if="vipForm.action !== 'revoke'" class="sf">
+          <label v-if="['grant', 'renew'].includes(vipForm.action)" class="sf">
             <span>会员天数</span>
             <input v-model="vipForm.days" type="number" min="1" max="3650" placeholder="30" />
           </label>
+          <label v-if="vipForm.action === 'set_expiry'" class="sf"><span>到期日期（当天23:59）</span><input v-model="vipForm.until" type="date" /></label>
           <label class="sf">
             <span>操作备注（必填 ≥5 字）</span>
             <input v-model="vipForm.note" maxlength="300" placeholder="如：研友续期一个月" />

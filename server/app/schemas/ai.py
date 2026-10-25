@@ -28,6 +28,11 @@ class ConversationUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=80)
 
 
+class AIPreferencesInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    context_turns: int = Field(ge=0, le=50)
+
+
 class AIKeyInput(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 

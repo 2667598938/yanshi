@@ -31,6 +31,15 @@ const fetching = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
 const loading = ref(true)
+const usage = ref(null)
+const contextTurns = ref(10)
+
+async function saveContext() {
+  try {
+    await aiApi.preferences({ context_turns: Number(contextTurns.value) })
+    toast('上下文轮数已保存')
+  } catch (e) { toast(e.message) }
+}
 
 const isVip = computed(() => auth.isVip)
 const canUse = ref(false)
@@ -50,6 +59,8 @@ async function load() {
     canUse.value = cfg ? !!cfg.access : isVip.value
     if (!canUse.value) return
     status.value = await aiApi.key()
+    usage.value = await aiApi.usage()
+    contextTurns.value = usage.value.context_turns
     if (status.value.configured) {
       provider.value = status.value.provider || 'deepseek'
       baseUrl.value = status.value.base_url || ''
@@ -75,7 +86,7 @@ async function fetchModels() {
     if (data.fallback) {
       toast('未拉取到模型列表，可手动填写模型名')
     } else {
-      toast(`已拉取 ${models.value.length} 个模型`)
+      toast(`${data.cached ? '使用24小时缓存' : '已拉取'} ${models.value.length} 个模型`)
     }
     if (!model.value && models.value.length) model.value = models.value[0].id
   } catch (e) {
@@ -142,6 +153,14 @@ onMounted(load)
       </div>
 
       <template v-else>
+        <div v-if="usage" class="card">
+          <div>今日 AI 请求 {{ usage.requests }} / {{ usage.daily_limit }} · 剩余 {{ usage.remaining }}</div>
+          <div class="field-hint">北京时间零点重置，失败尝试计入请求预算。成功 {{ usage.succeeded }} 次，失败 {{ usage.failed }} 次。</div>
+          <div class="field-hint">服务商已报告的 Token：输入 {{ usage.prompt_tokens }} / 输出 {{ usage.completion_tokens }}（不含未报告用量）。</div>
+          <label class="field-label">携带历史对话轮数（0–50）</label>
+          <input v-model.number="contextTurns" class="input" type="number" min="0" max="50" />
+          <button class="btn btn-outline mt8" @click="saveContext">保存上下文设置</button>
+        </div>
         <div class="card status-card">
           <div class="status-head">
             <span class="status-ic"><KeyRound :size="18" /></span>

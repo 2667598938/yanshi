@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     volc_model: str = 'doubao-seed-2-1-pro-260915'
     volc_base_url: str = 'https://ark.cn-beijing.volces.com/api/v3'
     ai_max_tokens: int = 1200
+    ai_daily_limit: int = Field(default=100, ge=1, le=10000)
     # 用户自填 AI Key 的加密主密钥（AES-256-GCM）；留空时退回 JWT secret 派生
     ai_key_enc_secret: str = ''
 

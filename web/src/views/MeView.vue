@@ -11,6 +11,7 @@ import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
 import { useProfileStore } from '../stores/profile'
+import { useNotificationsStore } from '../stores/notifications'
 import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 import { fmtDate } from '../utils/time'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
@@ -34,7 +35,8 @@ const sheetType = ref(null)
 const nickDraft = ref(app.nickname)
 const signatureDraft = ref('')
 const figureDraft = ref('figure-1')
-const unread = ref(0)
+const notifications = useNotificationsStore()
+const unread = computed(() => notifications.unread)
 const uploading = ref(false)
 const fileInput = ref(null)
 const showLegal = ref(false)
@@ -104,7 +106,7 @@ async function manualSync() {
 
 const school = computed(() => SCHOOL_MAP[auth.user?.target_school || app.dreamSchool] || SCHOOL_MAP[app.dreamSchool])
 const avatar = computed(() => auth.user?.avatar_key || '')
-const vipUntil = computed(() => fmtDate(auth.user?.vip_until))
+const vipUntil = computed(() => auth.user?.vip_permanent ? '永久有效' : fmtDate(auth.user?.vip_until))
 const figure = computed(() => FIGURE_MAP[auth.user?.figure_id || 'figure-1'] || FIGURES[0])
 
 const goals = [
@@ -282,7 +284,7 @@ async function togglePrivacy() {
 
 onMounted(() => {
   auth.fetchMe().catch(() => {})
-  messageApi.unread().then((d) => { unread.value = d.count || 0 }).catch(() => {})
+  notifications.refresh()
   db.syncMeta.get('lastSyncAt').then((m) => { lastSyncAt.value = m?.value || 0 }).catch(() => {})
   if (auth.user) {
     app.setNickname(auth.user.nickname)
