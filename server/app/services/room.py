@@ -45,6 +45,13 @@ def get_membership(db, room_id, user_id):
         RoomMember.room_id == room_id, RoomMember.user_id == user_id))
 
 
+def require_member(db, user, room):
+    member = get_membership(db, room.id, user.id)
+    if member is None:
+        raise ApiError(403, 40301, '请先加入自习室')
+    return member
+
+
 def _new_room_code(db):
     alphabet = string.ascii_uppercase + string.digits
     for _ in range(50):
@@ -381,7 +388,7 @@ def _streak(dates: set, today_str: str) -> int:
 
 def heartbeat(db, user, payload, room=None):
     room = room or get_default_room(db)
-    ensure_member(db, user, room)
+    require_member(db, user, room)
     presence = db.scalar(select(RoomPresence).where(
         RoomPresence.room_id == room.id, RoomPresence.user_id == user.id))
     now = utcnow()
@@ -517,7 +524,7 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
 
 def add_message(db, user, content: str, room=None):
     room = room or get_default_room(db)
-    ensure_member(db, user, room)
+    require_member(db, user, room)
     row = RoomMessage(room_id=room.id, user_id=user.id, content=content[:500])
     db.add(row)
     db.commit()
@@ -540,7 +547,7 @@ def delete_message(db, user, message_id: int, is_admin: bool, room=None):
 
 def upsert_goal(db, user, payload, room=None):
     room = room or get_default_room(db)
-    ensure_member(db, user, room)
+    require_member(db, user, room)
     goal = db.scalar(select(RoomGoal).where(
         RoomGoal.room_id == room.id, RoomGoal.user_id == user.id))
     if goal is None:

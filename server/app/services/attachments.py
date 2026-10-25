@@ -9,7 +9,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import func, select
 
 from ..errors import ApiError
-from ..models import Attachment
+from ..models import Attachment, Inspiration
 from ..time import utcnow
 
 Image.MAX_IMAGE_PIXELS = 4096 * 4096
@@ -79,11 +79,15 @@ def used_bytes(db, user_id):
     return int(value or 0)
 
 
-def can_view(row, user):
+def can_view(row, user, db=None):
     if row.deleted_at:
         return False
     if row.uploader_id == user.id or user.role == 'admin':
         return True
+    if row.biz_type == 'inspiration' and db is not None:
+        return db.scalar(select(Inspiration.id).where(
+            Inspiration.image_key == row.object_key,
+            Inspiration.status == 'approved').limit(1)) is not None
     return row.biz_type == 'avatar'   # 头像在自习室互相可见，其余仅本人
 
 

@@ -27,7 +27,7 @@ MAX_TOTAL_BYTES = 20 * 1024 * 1024   # 每账号 20MB
 MAX_OPERATIONS = 200000              # 每账号操作日志上限
 
 SESSION_MAX_SEC = 180 * 60           # 番茄时长上限 180 分钟
-SESSION_MAX_PAUSE_SEC = 30 * 60      # 单颗累计暂停上限 30 分钟（超过按暂停超时处理）
+SESSION_MAX_PAUSE_MS = 30 * 60 * 1000  # 单次暂停上限；累计暂停仅用于扣减时长
 
 sync_write_lock = threading.Lock()
 
@@ -39,22 +39,40 @@ def _normalize_session(record: dict) -> dict:
     try:
         started = int(record.get('startedAt') or 0)
         ended = int(record.get('endedAt') or 0)
-        paused = int(record.get('pauseAccum') or 0)
+        paused = max(0, int(record.get('pauseAccum') or 0))
+        max_pause = max(0, int(record.get('maxPauseMs') or 0))
     except (TypeError, ValueError):
         return record
     if started <= 0 or ended <= 0:
         return record
     raw_sec = max(0, (ended - started - paused) // 1000)
+    if 'pauseAccum' not in record:
+        # 旧客户端未发送暂停明细：只能用墙钟时长约束已保存的有效时长，不能把暂停加回来。
+        try:
+            actual = int(record['actualSec'])
+            raw_sec = min(raw_sec, max(0, actual))
+        except (KeyError, TypeError, ValueError):
+            pass
     status = record.get('status')
     reason = record.get('end_reason') or ''
-    if status == 'done':
-        if paused >= SESSION_MAX_PAUSE_SEC:
-            status, reason = 'quit', reason or 'pause_timeout'
-        elif raw_sec > SESSION_MAX_SEC:
-            status, reason = 'quit', reason or 'timeout'
+    if max_pause >= SESSION_MAX_PAUSE_MS or reason == 'pause_timeout':
+        status, reason = 'quit', 'pause_timeout'
+    elif reason in {'timeout', 'abandoned'}:
+        status = 'quit'
+    elif status == 'done':
+        if raw_sec > SESSION_MAX_SEC:
+            status, reason = 'quit', 'timeout'
+    if record.get('mode') == 'timer' and status == 'done':
+        try:
+            planned_sec = int(record.get('plannedMin') or 0) * 60
+            if planned_sec > 0:
+                raw_sec = min(raw_sec, planned_sec)
+        except (TypeError, ValueError):
+            pass
     record['status'] = status
     record['actualSec'] = min(raw_sec, SESSION_MAX_SEC)
-    record['end_reason'] = 'completed' if status == 'done' else (reason or 'timeout')
+    record['end_reason'] = 'completed' if status == 'done' else (
+        reason if reason in {'timeout', 'pause_timeout', 'abandoned'} else 'timeout')
     return record
 
 

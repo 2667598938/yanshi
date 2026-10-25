@@ -50,13 +50,13 @@ def test_session_is_normalized_by_server(client):
     assert rec['actualSec'] == 180 * 60
     assert rec['end_reason'] == 'timeout'
 
-    # 暂停累计 31 分钟：按暂停超时 quit，实际时长扣除暂停
+    # 多次暂停累计 31 分钟不能推断单次超时，只扣除暂停时长
     r = send(client, h, op_id(), [
         {'id': 'x2', 'expectedRevision': 0,
          'record': session('x2', base, base + 3600 * 1000, paused=31 * 60 * 1000)}])
     rec = r.json()['data']['changed'][0]['record']
-    assert rec['status'] == 'quit'
-    assert rec['end_reason'] == 'pause_timeout'
+    assert rec['status'] == 'done'
+    assert rec['end_reason'] == 'completed'
     assert rec['actualSec'] == 3600 - 31 * 60
 
     # 正常完成：状态 done，小于上限

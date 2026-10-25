@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from ..deps import audit, get_admin, get_current_user, get_db
 from ..errors import ApiError, ok
-from ..models import Inspiration, User
+from ..models import Attachment, Inspiration, User
 from ..schemas.community import InspirationInput, InspirationReview
 from ..serializers import iso
 from ..services.messages import create_message
@@ -49,8 +49,17 @@ def submit_inspiration(body: InspirationInput, request: Request,
         Inspiration.user_id == user.id, Inspiration.status == 'pending'))
     if pending:
         raise ApiError(409, 40901, '已有投稿在审核中，请等待结果')
+    image_key = body.image_key.strip()
+    if image_key:
+        attachment = db.scalar(select(Attachment).where(
+            Attachment.object_key == image_key,
+            Attachment.uploader_id == user.id,
+            Attachment.biz_type == 'inspiration',
+            Attachment.deleted_at.is_(None)))
+        if attachment is None:
+            raise ApiError(400, 40001, '请使用本人上传的励志配图')
     row = Inspiration(user_id=user.id, content=body.content.strip(),
-                      image_key=body.image_key.strip(), status='pending')
+                      image_key=image_key, status='pending')
     db.add(row)
     audit(db, request, 'inspiration.submit', user_id=user.id)
     db.commit()

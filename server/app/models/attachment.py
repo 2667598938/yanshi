@@ -11,7 +11,7 @@ def now():
 
 
 class Attachment(Base):
-    """统一图片附件：头像 avatar / 错题 mistake / 梦校相册 school。
+    """统一图片附件：头像 avatar / 错题 mistake / 梦校相册 school / 励志 inspiration。
 
     本地开发落 data/uploads；生产落七牛 Kodo 私有 bucket。对象 key 形如
     avatar/3/ab12....jpg，不可猜测；访问统一走带鉴权的 view 接口。
@@ -22,7 +22,7 @@ class Attachment(Base):
     object_key = Column(String(255), unique=True, nullable=False, index=True)
     storage_backend = Column(String(12), default='local', server_default='local', nullable=False)
     uploader_id = Column(ForeignKey('users.id'), nullable=False, index=True)
-    biz_type = Column(String(16), nullable=False)   # avatar | mistake | school
+    biz_type = Column(String(16), nullable=False)   # avatar | mistake | school | inspiration
     content_type = Column(String(32), default='image/jpeg', server_default='image/jpeg')
     size_bytes = Column(Integer, default=0, server_default='0', nullable=False)
     width = Column(Integer, default=0, server_default='0')

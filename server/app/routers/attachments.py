@@ -57,7 +57,7 @@ async def upload_avatar(request: Request, file: UploadFile = File(...),
 
 
 @router.post('/image')
-async def upload_image(request: Request, biz: Literal['mistake', 'school'] = 'mistake',
+async def upload_image(request: Request, biz: Literal['mistake', 'school', 'inspiration'] = 'mistake',
                        file: UploadFile = File(...),
                        user: User = Depends(get_current_user), db=Depends(get_db)):
     if user.status != 'active':
@@ -72,7 +72,7 @@ async def upload_image(request: Request, biz: Literal['mistake', 'school'] = 'mi
 @router.get('/view')
 def view(key: str, request: Request, user: User = Depends(get_current_user), db=Depends(get_db)):
     row = db.scalar(select(Attachment).where(Attachment.object_key == key))
-    if not row or not logic.can_view(row, user):
+    if not row or not logic.can_view(row, user, db):
         raise ApiError(404, 40401, '图片不存在或无权查看')
     settings = request.app.state.settings
     storage = ImageStorage(settings)
