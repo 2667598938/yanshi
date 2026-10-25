@@ -15,7 +15,8 @@
 - **资料库**：VIP 发布、非 VIP 链接脱敏、点赞与收藏
 - **社区**：动态与二级评论、励志区投稿审核、梦校墙
 - **AI 助教**：考研答疑 / 作文批改 / 计划 / 复盘；VIP 可填自己的 API Key，SSE 流式输出
-- **账号与后台**：邮箱验证码登录、忘记密码、站内消息、VIP / 邀请码、功能申请、内容审核、审计日志
+- **账号与会话**：邮箱验证码登录（5 分钟有效、5 次输错作废）；access token 仅驻内存，refresh token 只放 httpOnly Cookie；每个账号使用独立本地库，换号不串数据
+- **账号与后台**：忘记密码、站内消息、VIP / 邀请码、功能申请、内容审核、审计日志
 - **预留开关**：微信 / QQ / 手机号登录代码已实现，通过 `AUTH_CHANNELS` 控制，默认仅邮箱
 
 ## 目录结构
@@ -93,6 +94,7 @@ npm run dev
 | `DATABASE_URL` | 开发默认 SQLite；生产可换 MySQL 8 |
 | `JWT_SECRET` | 生产必须填写随机长串；开发留空自动生成 `data/jwt.key` |
 | `AUTH_CHANNELS` | 登录渠道开关，默认 `email`；可加 `wechat,qq,phone` |
+| `AUTH_EMAIL_DOMAINS` | 邮箱验证码允许的域名，默认 `qq.com`；留空表示不限制 |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 初始管理员，仅在首次 seed 时生效 |
 | `MAIL_CONSOLE` / `SMTP_*` | 开发打印验证码；生产配置 QQ 邮箱 SMTP |
 | `IMAGE_STORAGE` / `QINIU_*` | `local` 或 `qiniu`（七牛 Kodo） |
@@ -156,6 +158,8 @@ git push -u origin feat/room-invite
 
 ## 更多文档
 
-- 后端架构与同步设计：`server/docs/ARCHITECTURE.md`
+- 当前架构基线（v4.0，2026-10-25）：[server/docs/ARCHITECTURE.md](server/docs/ARCHITECTURE.md)
+- 产品 / 数据 / 同步设计原文：[docs/design-2026-10-25/](docs/design-2026-10-25/)
+- 历史四人版架构（仅存档）：`server/docs/ARCHITECTURE-v3-4person-HISTORICAL.md`
 - 部署步骤：`server/deploy/部署步骤.md`
 - 前端说明：[web/README.md](web/README.md)
