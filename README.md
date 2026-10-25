@@ -120,11 +120,14 @@ cd server
 python -m pytest -q
 
 cd ..\web
+npm test
 npm run build
 ```
 
 - 后端测试使用临时 SQLite 与 mock AI，不会访问真实网络。
-- CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）在 push / PR 到 `main`、`dev` 时执行：后端迁移可执行性 + 全量 pytest；前端 `npm ci` + `npm run build`。
+- 前端回归测试使用 Vitest + fake-indexeddb，覆盖实际 Dexie 库、Pinia store、账号切换、图片补传与备份序列化。
+- CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）在 push / PR 到 `main`、`dev` 时执行：后端迁移可执行性 + 全量 pytest；前端 `npm ci` + `npm test` + `npm run build`。
+- 第 0 期修复范围、数据兼容规则与人工验收步骤见 [第 0 期修复说明](docs/phase0-acceptance.md)。
 
 ## 分支与提交规范
 
