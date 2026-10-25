@@ -82,7 +82,7 @@ def test_v1_rejects_general_tools_even_if_legacy_flags_enabled(client,friend,fla
     assert client.get('/api/v1/ai/usage',headers=friend).json()['data']['requests']==0
 
 
-def test_published_school_images_are_shared_but_private_biz_images_cannot_be_published(client, friend):
+def test_personal_school_images_stay_private_and_reject_wrong_biz(client, friend):
     ah = h(login(client, **ADMIN)['access_token'])
     key = upload(client, '/api/v1/attachments/image', ah, 'school').json()['data']['key']
     private = upload(client, '/api/v1/attachments/image', ah, 'mistake').json()['data']['key']

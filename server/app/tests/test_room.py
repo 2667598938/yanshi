@@ -37,8 +37,8 @@ def session_record(rid, sec, day=None):
             'date': day or today(), 'note': '', 'createdAt': now_ms}
 
 
-def test_privacy_mode_anonymizes_and_excludes_ranking(client):
-    """隐私模式：他人视角匿名占位、隐藏时长，排行榜排除；本人仍可见自己。"""
+def test_privacy_mode_masks_learning_and_excludes_ranking(client):
+    """隐私模式：他人视角显示隐私中、完全隐藏学习字段；本人仍可见自己。"""
     admin = login(client, **ADMIN)
     ah = auth_header(admin['access_token'])
     fh = register_friend(client, ah, 'privacy@test.com', '隐私同学')

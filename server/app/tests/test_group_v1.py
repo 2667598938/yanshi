@@ -50,6 +50,9 @@ def test_group_privacy_owner_admin_and_public_room_boundaries(client):
     client.delete(f'/api/v1/admin/group-members/{uid}',headers=admin)
     assert client.get('/api/v1/room',headers=owner).status_code==200
     assert client.get(path,headers=admin).status_code==404
+    client.post('/api/v1/group/presence',headers=owner,json={'status':'focusing'})
+    assert client.get('/api/v1/rooms',headers=admin).json()['data'][0]['online_count']==0
+    assert client.get('/api/v1/room',headers=admin).json()['data']['room']['online_count']==0
     assert client.get('/api/v1/attachments/view',headers=admin,params={'key':key}).status_code==404
 
 

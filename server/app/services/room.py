@@ -4,6 +4,7 @@
 在线 / 正在学由心跳维持（room_presence），与学习记录解耦。
 """
 import json
+from .group import shared_user_ids, same_group
 import secrets
 import string
 import time
@@ -103,7 +104,7 @@ def room_summary(db, room, user, member_count=None, online_count=None):
     if online_count is None:
         cutoff = utcnow() - timedelta(seconds=ONLINE_WINDOW_SEC)
         online_count = db.scalar(select(func.count()).select_from(RoomPresence).join(User,User.id == RoomPresence.user_id).where(
-            ((User.is_private_mode == False) | (User.id == user.id)),
+            ((User.id == user.id) | ((User.is_private_mode == False) & User.id.in_(shared_user_ids(user.id)))),
             RoomPresence.room_id == room.id,
             RoomPresence.status != 'offline',
             RoomPresence.last_heartbeat_at >= cutoff)) or 0
@@ -140,7 +141,7 @@ def list_rooms(db, user):
     cutoff = utcnow() - timedelta(seconds=ONLINE_WINDOW_SEC)
     online = dict(db.execute(
         select(RoomPresence.room_id, func.count()).join(User,User.id == RoomPresence.user_id).where(
-            ((User.is_private_mode == False) | (User.id == user.id)),
+            ((User.id == user.id) | ((User.is_private_mode == False) & User.id.in_(shared_user_ids(user.id)))),
             RoomPresence.room_id.in_(ids),
             RoomPresence.status != 'offline',
             RoomPresence.last_heartbeat_at >= cutoff,
@@ -503,10 +504,9 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
             p and p.status != 'offline'
             and (now - p.last_heartbeat_at).total_seconds() <= ONLINE_WINDOW_SEC
         )
-        if online and (not u.is_private_mode or u.id == current_user.id):
+        if online and (u.id == current_user.id or (not u.is_private_mode and same_group(db,current_user.id,u.id))):
             online_count += 1
         private = bool(u.is_private_mode)
-        from .group import same_group
         hide = u.id != current_user.id and (private or not same_group(db,current_user.id,u.id))
         display_status = p.status if online else 'offline'
         focus_sec = None

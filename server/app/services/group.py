@@ -50,3 +50,8 @@ def shared_records(db, viewer, owner_id, after='', kind=None):
     rows = db.scalars(query.order_by(LearningRecord.id).limit(200)).all()
     return {'items': [project(json.loads(row.body)) for row in rows],
             'next': rows[-1].id if len(rows) == 200 else None}
+
+
+def shared_user_ids(viewer_id):
+    groups=select(StudyGroupMember.group_id).where(StudyGroupMember.user_id==viewer_id)
+    return select(StudyGroupMember.user_id).where(StudyGroupMember.group_id.in_(groups))
