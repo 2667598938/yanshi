@@ -14,10 +14,13 @@
 - **自习室**：公开 / 私密房间、6 位房间码、房主改名 / 换码 / 踢人 / 解散、心跳在线、留言板、目标墙、房间排行
 - **资料库**：VIP 发布、非 VIP 链接脱敏、点赞与收藏
 - **社区**：动态与二级评论、励志区投稿审核、梦校墙
-- **AI 助教**：考研答疑 / 作文批改 / 计划 / 复盘；VIP 可填自己的 API Key，SSE 流式输出
+- **AI 助教**：考研答疑 / 作文批改 / 计划 / 复盘；VIP或审批授权可用BYOK；图片输入、SSE、日预算、上下文设置、模型目录缓存及受限只读工具/联网搜索
 - **账号与会话**：邮箱验证码登录（5 分钟有效、5 次输错作废）；access token 仅驻内存，refresh token 只放 httpOnly Cookie；每个账号使用独立本地库，换号不串数据
 - **账号与后台**：忘记密码、站内消息、VIP / 邀请码、功能申请、内容审核、审计日志
 - **预留开关**：微信 / QQ / 手机号登录代码已实现，通过 `AUTH_CHANNELS` 控制，默认仅邮箱
+- **开放与运维**：首次初始化默认关闭注册、账号上限4人；房间类型由后端开关控制；手机号绑定、持久邮件重试、迁移就绪检查、校验备份与恢复到新目录
+
+完整功能范围、统一测试步骤及真实服务待验项见[统一验收清单](docs/acceptance-checklist.md)和[开发进度](docs/implementation-status.md)。视频小房间/云端自习室默认关闭，按PRD F-26不包含视频推流。
 
 ## 目录结构
 
@@ -95,11 +98,16 @@ npm run dev
 | `JWT_SECRET` | 生产必须填写随机长串；开发留空自动生成 `data/jwt.key` |
 | `AUTH_CHANNELS` | 登录渠道开关，默认 `email`；可加 `wechat,qq,phone` |
 | `AUTH_EMAIL_DOMAINS` | 邮箱验证码允许的域名，默认 `qq.com`；留空表示不限制 |
+| `REGISTRATION_OPEN` / `ACCOUNT_MAX_USERS` | 首次初始化注册开关与独立账号名额；已有库注册开关由后台管理 |
+| `FEATURES` | 后端功能和房间类型开关，视频/云端类型默认关闭 |
+| `SMS_*` | 腾讯云验证码短信；生产必须真实配置后才能启用phone渠道 |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 初始管理员，仅在首次 seed 时生效 |
 | `MAIL_CONSOLE` / `SMTP_*` | 开发打印验证码；生产配置 QQ 邮箱 SMTP |
 | `IMAGE_STORAGE` / `QINIU_*` | `local` 或 `qiniu`（七牛 Kodo） |
 | `VOLC_API_KEY` / `VOLC_MODEL` | 服务端兜底 AI Key（可选） |
 | `AI_KEY_ENC_SECRET` | VIP 自填 Key 的 AES-256-GCM 主密钥；留空回退 JWT_SECRET 派生 |
+| `AI_DAILY_LIMIT` / `AI_CUSTOM_HOSTS` | 每日请求预算与生产自定义AI网关精确域名白名单 |
+| `AI_VISION_ENABLED` / `AI_TOOLS_ENABLED` / `BRAVE_SEARCH_API_KEY` | 图片、只读工具、搜索配置；模型能力需在AI设置中确认 |
 
 ## 数据库与迁移
 
@@ -128,6 +136,7 @@ npm run build
 - 前端回归测试使用 Vitest + fake-indexeddb，覆盖实际 Dexie 库、Pinia store、账号切换、图片补传与备份序列化。
 - CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）在 push / PR 到 `main`、`dev` 时执行：后端迁移可执行性 + 全量 pytest；前端 `npm ci` + `npm test` + `npm run build`。
 - 第 0 期修复范围、数据兼容规则与人工验收步骤见 [第 0 期修复说明](docs/phase0-acceptance.md)。
+- 最新自动回归：后端124项、前端78项；含图片权限、工具上限、共享验证码、原子兑换、并发座位、离线队列与恢复校验。真实SMTP/短信/OAuth/七牛/AI供应商另按统一清单验收。
 
 ## 分支与提交规范
 

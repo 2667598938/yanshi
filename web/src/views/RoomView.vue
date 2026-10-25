@@ -428,7 +428,7 @@ onBeforeUnmount(() => {
         <component :is="joinRequired ? Lock : Users" :size="18" />
         <div v-if="isFull">
           <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || 4 }}）</div>
-          <div class="fb-sub">暂时没有座位，可以换一个自习室，或等国主扩容。</div>
+          <div class="fb-sub">暂时没有座位，可以换一个自习室，或等成员退出后再加入。</div>
         </div>
         <div v-else-if="joinRequired">
           <div class="fb-title">私密自习室 · 需房主通过</div>

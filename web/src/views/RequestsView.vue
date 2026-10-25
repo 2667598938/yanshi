@@ -58,7 +58,7 @@ async function submit() {
     const row = await requestApi.create({ feature: feature.value, reason: text })
     rows.value.unshift(row)
     reason.value = ''
-    toast(row.status === 'approved' ? 'VIP 免审核，已自动开通' : '已提交，等待管理员审批')
+    toast(row.status === 'approved' ? '权限已通过，功能以站点开放状态为准' : '已提交，等待管理员审批')
   } catch (e) {
     toast(e.message)
   } finally {
@@ -90,7 +90,7 @@ onMounted(load)
       <!-- VIP 提示 -->
       <button v-if="isVip" class="vip-banner on" @click="router.push('/vip')">
         <Crown :size="17" />
-        <span class="vb-txt">VIP 免审核：提交后立即开通</span>
+        <span class="vb-txt">VIP 免人工审批，功能以站点开放状态为准</span>
         <ChevronRight :size="16" />
       </button>
       <button v-else class="vip-banner" @click="router.push('/vip')">

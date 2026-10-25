@@ -25,6 +25,8 @@ const provider = ref('deepseek')
 const baseUrl = ref('https://api.deepseek.com/v1')
 const apiKey = ref('')
 const model = ref('deepseek-chat')
+const supportsImages = ref(false)
+const supportsTools = ref(false)
 const status = ref(null)
 const models = ref([])
 const fetching = ref(false)
@@ -51,6 +53,8 @@ function pickProvider(p) {
   baseUrl.value = p.base || ''
   model.value = p.model || ''
   models.value = p.model ? [{ id: p.model }] : []
+  supportsImages.value = false
+  supportsTools.value = false
 }
 
 async function load() {
@@ -65,6 +69,8 @@ async function load() {
       provider.value = status.value.provider || 'deepseek'
       baseUrl.value = status.value.base_url || ''
       model.value = status.value.model || ''
+      supportsImages.value = !!status.value.supports_images
+      supportsTools.value = !!status.value.supports_tools
     }
   } catch (e) {
     if (e.status !== 403) toast(e.message)
@@ -82,7 +88,8 @@ async function fetchModels() {
       base_url: baseUrl.value.trim(),
       api_key: apiKey.value.trim(),
     })
-    models.value = (data.models || []).map((id) => ({ id }))
+    const details = new Map((data.details || []).map(item => [item.id, item]))
+    models.value = (data.models || []).map((id) => ({ id, ...details.get(id) }))
     if (data.fallback) {
       toast('未拉取到模型列表，可手动填写模型名')
     } else {
@@ -106,6 +113,8 @@ async function save() {
       provider: provider.value,
       base_url: baseUrl.value.trim(),
       model: model.value.trim(),
+      supports_images: supportsImages.value,
+      supports_tools: supportsTools.value,
       api_key: apiKey.value.trim(),
     })
     apiKey.value = ''
@@ -219,10 +228,13 @@ onMounted(load)
               :class="{ on: model === m.id }"
               @click="model = m.id"
             >
-              {{ m.id }}
+              {{ m.id }}{{ m.id === currentProvider?.model ? ' · 推荐' : '' }} · {{ m.supports_images == null ? '图片能力未知' : m.supports_images ? '支持图片' : '不支持图片' }} · 上下文{{ m.context_length || '未知' }}
             </button>
           </div>
 
+          <div class="field-hint">模型列表不保证提供能力信息；请根据服务商说明确认当前模型能力。</div>
+          <label class="field-label"><input v-model="supportsImages" type="checkbox" /> 该模型支持图片输入</label>
+          <label class="field-label"><input v-model="supportsTools" type="checkbox" /> 该模型支持工具调用</label>
           <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
             <Save :size="17" />{{ saving ? '保存中…' : '保存设置' }}
           </button>

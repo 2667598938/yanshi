@@ -1,5 +1,6 @@
 """图片处理与附件编排（4 人私密版：无审核，统一转 JPEG，按用户配额）。"""
 import secrets
+import json
 import tempfile
 import threading
 import warnings
@@ -9,7 +10,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import func, select
 
 from ..errors import ApiError
-from ..models import Attachment, Inspiration
+from ..models import Attachment, Inspiration, School
 from ..time import utcnow
 
 Image.MAX_IMAGE_PIXELS = 4096 * 4096
@@ -88,6 +89,9 @@ def can_view(row, user, db=None):
         return db.scalar(select(Inspiration.id).where(
             Inspiration.image_key == row.object_key,
             Inspiration.status == 'approved').limit(1)) is not None
+    if row.biz_type == 'school' and db is not None:
+        return any(school.logo_key == row.object_key or row.object_key in json.loads(school.album_keys or '[]')
+                   for school in db.scalars(select(School)).all())
     return row.biz_type == 'avatar'   # 头像在自习室互相可见，其余仅本人
 
 

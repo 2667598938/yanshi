@@ -228,7 +228,8 @@ async function pushOutbox() {
   let batch = (await db.syncMeta.get('pendingLearningCommand'))?.value
   if (!batch) {
   await db.transaction('rw', db.outbox, db.mistakes, db.syncMeta, async () => {
-  const all = await db.outbox.orderBy('createdAt').limit(200).toArray()
+  const all = await db.outbox.orderBy('createdAt')
+    .filter((item) => !COMMUNITY_TYPES.has(item.type) && !heldIds.has(item.recordId)).limit(200).toArray()
   const items = []
   for (const it of all) {
     if (COMMUNITY_TYPES.has(it.type)) continue

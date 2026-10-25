@@ -14,10 +14,10 @@ const code = ref('')
 const submitting = ref(false)
 
 const benefits = [
-  'AI 问答权限，随时提问',
-  '功能申请免审核，提交即开通',
+  'AI 问答权限，按每日预算与服务商额度使用',
+  '功能申请免人工审批，以站点开放状态为准',
   '个人中心 VIP 专属标识',
-  '邀请码优先发放给研友',
+  '发布网盘资料、查看资料完整链接',
 ]
 
 async function activate() {
@@ -27,7 +27,7 @@ async function activate() {
   try {
     const data = await vipApi.redeem(value)
     if (auth.user) {
-      auth.setUser({ ...auth.user, is_vip: data.is_vip, vip_until: data.vip_until })
+      auth.setUser({ ...auth.user, is_vip: data.is_vip, vip_until: data.vip_until, vip_permanent: !!data.vip_permanent })
     }
     toast(`已开通 ${data.granted_days} 天 VIP`)
     router.replace('/vip')

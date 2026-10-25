@@ -19,12 +19,13 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     accessToken: '',
     user: loadCachedUser(),
+    vipNow: Date.now(),
   }),
   getters: {
     isLoggedIn: (s) => !!s.user,
     canRefresh: (s) => !!s.user,
     isAdmin: (s) => s.user?.role === 'admin',
-    isVip: (s) => !!s.user?.vip_permanent || (!!s.user?.vip_until && new Date(s.user.vip_until) > new Date()),
+    isVip: (s) => !!s.user?.vip_permanent || (!!s.user?.vip_until && new Date(s.user.vip_until).getTime() > s.vipNow),
   },
   actions: {
     persist() {
@@ -44,6 +45,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     setUser(user) {
+      this.vipNow = Date.now()
       this.user = user
       this.persist()
     },

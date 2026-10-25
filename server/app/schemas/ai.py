@@ -12,6 +12,9 @@ class ChatInput(BaseModel):
     scene: Scene = 'general'
     content: str = Field(min_length=1, max_length=4000)
     conversation_id: Optional[int] = None
+    image_keys: list[str] = Field(default_factory=list, max_length=4)
+    use_tools: bool = False
+    use_search: bool = False
     context: Optional[dict] = None      # 复盘等场景附带的本地统计数据
 
 
@@ -34,6 +37,8 @@ class AIPreferencesInput(BaseModel):
 
 
 class AIKeyInput(BaseModel):
+    supports_images: bool = False
+    supports_tools: bool = False
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     provider: Provider = 'deepseek'

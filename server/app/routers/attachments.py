@@ -57,13 +57,17 @@ async def upload_avatar(request: Request, file: UploadFile = File(...),
 
 
 @router.post('/image')
-async def upload_image(request: Request, biz: Literal['mistake', 'school', 'inspiration'] = 'mistake',
+async def upload_image(request: Request, biz: Literal['mistake', 'school', 'inspiration', 'ai'] = 'mistake',
                        file: UploadFile = File(...),
                        user: User = Depends(get_current_user), db=Depends(get_db)):
     if user.status != 'active':
         raise ApiError(403, 40301, '当前账号状态不能上传')
     request.app.state.transient.limit(f'upload:{user.id}', 30, 60)
     settings = request.app.state.settings
+    if biz == 'ai':
+        from ..services.features import require_feature
+        require_feature(db, user, 'ai')
+        if not settings.ai_vision_enabled: raise ApiError(403, 40310, 'AI图片功能暂未开放')
     row = await _save(db, settings, user, biz, file, False, settings.image_max_bytes)
     db.commit()
     return ok(_payload(row))

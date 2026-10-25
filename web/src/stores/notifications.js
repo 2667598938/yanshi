@@ -10,6 +10,7 @@ export const useNotificationsStore = defineStore('notifications', {
     async refresh() {
       const sequence = ++this.sequence
       const auth = useAuthStore()
+      auth.vipNow = Date.now()
       const account = auth.user?.id
       if (!account) { this.unread = 0; return }
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return

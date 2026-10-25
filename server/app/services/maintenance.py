@@ -103,9 +103,11 @@ def refresh_model_catalogs(session_factory, settings, secret):
                 if cached and cached.fetched_at > now - timedelta(days=7): continue
                 items = asyncio.run(ai.fetch_models(base, plaintext))
                 if not items: continue
-                if cached: cached.models_json, cached.fetched_at = json.dumps(items), now
+                if cached:
+                    cached.models_json, cached.fetched_at = json.dumps(items), now
+                    cached.details_json = json.dumps(getattr(items, 'details', []))
                 else: db.add(AIModelCache(cache_key=cache_key, user_id=user_id,
-                    models_json=json.dumps(items), fetched_at=now))
+                    models_json=json.dumps(items), details_json=json.dumps(getattr(items, 'details', [])), fetched_at=now))
                 db.commit()
             except Exception:
                 db.rollback()  # Key或上游故障不能阻断邮件与其他用户的目录刷新。

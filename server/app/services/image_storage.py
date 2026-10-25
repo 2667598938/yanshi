@@ -8,7 +8,7 @@ import shutil
 
 from ..errors import ApiError
 
-KEY_RE = re.compile(r'(avatar|mistake|school|inspiration)/[0-9]+/[a-f0-9]{32}\.jpg')
+KEY_RE = re.compile(r'(avatar|mistake|school|inspiration|ai)/[0-9]+/[a-f0-9]{32}\.jpg')
 
 
 class ImageStorage:

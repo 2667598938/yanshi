@@ -3,17 +3,11 @@ import threading
 import time
 import secrets
 from contextlib import contextmanager
-from sqlalchemy import Column, String, Text, Float, select
-from ..database import Base, begin_development_transaction
+from sqlalchemy import select
+from ..database import begin_development_transaction
+from ..models import TransientState
 from ..errors import ApiError
 from . import ai_key
-
-
-class TransientState(Base):
-    __tablename__ = 'transient_states'
-    state_key = Column(String(200), primary_key=True)
-    value_cipher = Column(Text, nullable=False)
-    expires_at = Column(Float, nullable=False, index=True)
 
 
 class PersistentTransientStore:

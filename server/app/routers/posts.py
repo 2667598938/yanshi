@@ -159,9 +159,14 @@ def delete_post(pid: int, request: Request, reason: str = '', expected_revision:
     reason = (reason or '').strip()
     if user.role == 'admin' and not is_owner and len(reason) < 5:
         raise ApiError(400, 40001, '管理员删除内容必须填写至少5字原因')
-    row.deleted_at = utcnow()
-    row.updated_at = row.deleted_at
-    row.revision += 1
+    now = utcnow()
+    changed = db.execute(update(Post).where(Post.id == pid, Post.deleted_at.is_(None),
+        Post.revision == row.revision).values(deleted_at=now, updated_at=now, revision=Post.revision + 1)).rowcount
+    if changed != 1:
+        db.rollback(); db.refresh(row)
+        if row.deleted_at: return ok()
+        raise ApiError(409, 40902, '帖子已在其他设备更新，请确认后再删除',
+            data={'current': post_dict(row, db.get(User, row.user_id), 0, user)})
     db.execute(update(Comment).where(Comment.post_id == pid).values(deleted_at=utcnow()))
     if not is_owner:
         author = db.get(User, row.user_id)

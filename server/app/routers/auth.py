@@ -20,6 +20,7 @@ from ..services.security import (
     user_payload, verify_password,
 )
 from ..services.transient import deliver, digest
+from ..services.profile import profile_write
 from .public import config_get
 
 router = APIRouter(prefix='/api/v1', tags=['auth'])
@@ -284,6 +285,7 @@ def me(user=Depends(get_current_user)):
 
 
 @router.put('/users/me')
+@profile_write
 def update_me(body: ProfileUpdate, request: Request, user=Depends(get_current_user),
               db=Depends(get_db)):
     db.refresh(user, with_for_update=True)

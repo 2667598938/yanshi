@@ -133,6 +133,8 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
     headers = {'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'}
     base_payload = {**payload, 'stream': True}
     usage = None
+    finished = False
+    saw_content = False
     for attempt in (0, 1):
         body = dict(base_payload)
         if attempt == 0:
@@ -156,6 +158,7 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
                             continue
                         data = line[5:].strip()
                         if data == '[DONE]':
+                            finished = True
                             break
                         try:
                             obj = json.loads(data)
@@ -165,12 +168,17 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
                             usage = obj['usage']
                         choices = obj.get('choices') or []
                         if choices:
+                            if choices[0].get('finish_reason'): finished = True
                             delta = (choices[0].get('delta') or {}).get('content')
                             if delta:
+                                if not isinstance(delta, str): raise ApiError(502, 50201, '模型流式内容格式无效')
+                                saw_content = True
                                 yield {'delta': delta}
                     break
         except httpx.HTTPError:
             raise ApiError(502, 50201, f'{label}连接失败，请稍后重试') from None
+    if not finished or not saw_content:
+        raise ApiError(502, 50201, '模型连接提前结束或未返回有效回答，请重试')
     yield {'usage': usage or {}, 'latency_ms': int((time.monotonic() - started) * 1000)}
 
 
@@ -195,6 +203,12 @@ async def stream_openai(base_url: str, api_key: str, model: str, messages: list,
         yield chunk
 
 
+class ModelCatalog(list):
+    def __init__(self):
+        super().__init__()
+        self.details = []
+
+
 async def fetch_models(base_url: str, api_key: str) -> list:
     """用用户 Key 实时拉取模型列表；失败由调用方降级为手填。"""
     try:
@@ -208,11 +222,18 @@ async def fetch_models(base_url: str, api_key: str) -> list:
         rows = data.get('data') if isinstance(data, dict) else None
         if not isinstance(rows, list):
             return []
-        models = []
-        for row in rows:
+        models = ModelCatalog()
+        for row in rows[:1000]:
             mid = row.get('id') if isinstance(row, dict) else None
-            if mid and mid not in models:
+            if isinstance(mid, str) and 0 < len(mid) <= 120 and mid not in models:
                 models.append(mid)
-        return models[:200]
+                capabilities = row.get('capabilities') if isinstance(row.get('capabilities'), dict) else {}
+                context = row.get('context_length') or row.get('context_window') or row.get('max_model_len')
+                vision = capabilities.get('vision', row.get('supports_vision'))
+                models.details.append({'id': mid,
+                    'context_length': context if isinstance(context, int) and not isinstance(context, bool) and 0 < context <= 10000000 else None,
+                    'supports_images': vision if isinstance(vision, bool) else None})
+                if len(models) >= 200: break
+        return models
     except (httpx.HTTPError, ValueError):
         return []

@@ -1,11 +1,13 @@
 <script setup>
-import { ref, onMounted, nextTick, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Sparkles, MessageCircle, Send, Plus, History, Sigma, Cpu,
   PenLine, CalendarClock, RotateCcw, Settings2, Crown, ChevronRight,
 } from 'lucide-vue-next'
-import { aiApi } from '../api'
+import { aiApi, attachmentApi } from '../api'
+import { db, uid, activeAccountId } from '../db'
+import BlobImage from '../components/BlobImage.vue'
 import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
 
@@ -32,6 +34,38 @@ const sending = ref(false)
 const showHistory = ref(false)
 const historyList = ref([])
 const scrollEl = ref(null)
+const fileInput = ref(null)
+const attachments = ref([])
+const features = ref({ vision: false, tools: false, search: false, model_vision: false, model_tools: false })
+const useTools = ref(false)
+const useSearch = ref(false)
+let controller
+let alive = true
+onBeforeUnmount(() => { alive = false; controller?.abort() })
+
+async function uploadRow(row) {
+  if (row.key || row.uploading) return
+  row.uploading = true; row.error = ''
+  try {
+    const suffix = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg' }[row.blob.type] || 'jpg'
+    const file = row.blob instanceof File ? row.blob : new File([row.blob], `ai-input.${suffix}`, { type: row.blob.type || 'image/jpeg' })
+    const result = await attachmentApi.uploadImage(file, 'ai')
+    row.key = result.key
+  } catch (e) { row.error = e.message || '图片上传失败，可重试' }
+  finally { row.uploading = false }
+}
+async function pickImages(event) {
+  const files = Array.from(event.target.files || [])
+  event.target.value = ''
+  for (const file of files) {
+    if (attachments.value.length >= 4) { toast('每次最多4张图片'); break }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      toast('请使用5MB以内的JPEG、PNG或WebP图片'); continue
+    }
+    attachments.value.push({ id: uid(), key: '', blob: file, uploading: false, error: '' })
+  }
+  for (const row of attachments.value) if (!row.key) await uploadRow(row)
+}
 
 const welcome = computed(
   () => ({
@@ -55,55 +89,64 @@ const blocked = computed(() => {
 })
 
 async function send() {
-  const content = input.value.trim()
-  if (!content || sending.value) return
-  if (blocked.value) return
-  if (!enabled.value) {
-    toast('AI 未启用，请先在 AI 设置中配置 Key')
-    return
-  }
-  messages.value.push({ role: 'user', content })
-  input.value = ''
+  const content = input.value.trim() || (attachments.value.length ? '请分析这些题目图片，并讲解思路与易错点。' : '')
+  if (!content || sending.value || blocked.value) return
+  if (!enabled.value) return toast('AI未启用，请先配置Key')
+  if (attachments.value.some((row) => !row.key)) return toast('有图片尚未上传成功，请重试或移除该图片')
+  const selected = [...attachments.value]
+  const imageKeys = selected.map((row) => row.key)
+  input.value = ''; attachments.value = []
+  messages.value.push({ role: 'user', content, image_keys: imageKeys })
   sending.value = true
-  const reply = { role: 'assistant', content: '', streaming: true }
+  const reply = reactive({ role: 'assistant', content: '', streaming: true, tools: [], sources: [] })
   messages.value.push(reply)
+  controller = new AbortController()
+  const accountAtSend = activeAccountId()
+  let completed = false
+  let failed = false
   scrollBottom()
   try {
-    await aiApi.chatStream(
-      {
-        scene: scene.value,
-        content,
-        conversation_id: conversationId.value || undefined,
-      },
+    if (!conversationId.value) {
+      const convo = await aiApi.createConversation({ scene: scene.value })
+      if (!alive) return
+      conversationId.value = convo.id
+    }
+    await aiApi.chatStream({ scene: scene.value, content, image_keys: imageKeys,
+      conversation_id: conversationId.value, use_tools: useTools.value, use_search: useSearch.value },
       (evt) => {
-        if (evt.type === 'delta') {
-          reply.content += evt.text
-          scrollBottom()
-        } else if (evt.type === 'error') {
+        if (!alive) return
+        if (evt.type === 'delta') { reply.content += evt.text; scrollBottom() }
+        else if (evt.type === 'error') {
+          failed = true
           reply.content += (reply.content ? '\n\n' : '') + `出错了：${evt.message}`
         } else if (evt.type === 'done') {
+          completed = true
           reply.streaming = false
-          reply.prompt_tokens = evt.prompt_tokens
-          reply.completion_tokens = evt.completion_tokens
-          reply.latency_ms = evt.latency_ms
-          if (evt.conversation_id) {
-            conversationId.value = evt.conversation_id
-            if (evt.title) conversationTitle.value = evt.title
-          }
+          Object.assign(reply, { prompt_tokens: evt.prompt_tokens, completion_tokens: evt.completion_tokens,
+            latency_ms: evt.latency_ms, tools: evt.tools || [], sources: evt.sources || [] })
+          if (evt.conversation_id) conversationId.value = evt.conversation_id
+          if (evt.title) conversationTitle.value = evt.title
         }
-      }
-    )
+      }, { signal: controller.signal })
   } catch (e) {
-    if (!reply.content) reply.content = `出错了：${e.message}，稍后再试。`
-    else reply.content += `\n\n（连接中断：${e.message}）`
+    if (!completed) {
+      failed = true
+      reply.content += `\n请求未完成：${e.message}`
+    }
   } finally {
     reply.streaming = false
     sending.value = false
+    if (failed && alive) {
+      if (!input.value) input.value = content
+      if (!attachments.value.length) attachments.value = selected
+    }
+    if (completed && alive && activeAccountId() === accountAtSend) await db.kv.delete('ai:draft')
     scrollBottom()
   }
 }
 
 function newChat(s) {
+  if (sending.value) return
   if (s) scene.value = s
   conversationId.value = null
   conversationTitle.value = ''
@@ -121,13 +164,14 @@ async function loadHistory() {
 }
 
 async function openConversation(id) {
+  if (sending.value) return
   try {
     const data = await aiApi.conversation(id)
     conversationId.value = data.id
     conversationTitle.value = data.title
     scene.value = data.scene || 'general'
     messages.value = (data.messages || []).map((m) => ({
-      role: m.role, content: m.content,
+      role: m.role, content: m.content, image_keys: m.image_keys || [], tools: m.tools || [], sources: m.sources || [],
       prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens,
       latency_ms: m.latency_ms,
     }))
@@ -150,13 +194,21 @@ async function removeConversation(id) {
 
 onMounted(async () => {
   try {
-    await auth.fetchMe().catch(() => {})
     const cfg = await aiApi.enabled()
     enabled.value = cfg.enabled
+    features.value = cfg
+    keyReady.value = !!cfg.enabled
     access.value = cfg.access !== false
     if (access.value) {
       const k = await aiApi.key()
-      keyReady.value = !!k.configured
+      keyReady.value = !!k.configured || !!cfg.enabled
+    }
+    const draft = await db.kv.get('ai:draft')
+    if (draft?.value) {
+      input.value = draft.value.content || ''
+      attachments.value = (draft.value.images || []).slice(0, 4).map((image) => ({ id: uid(),
+        key: typeof image === 'string' ? image : '', blob: typeof image === 'string' ? null : image,
+        uploading: false, error: '' }))
     }
     const sc = await aiApi.scenes()
     if (Array.isArray(sc) && sc.length) {
@@ -235,7 +287,10 @@ onMounted(async () => {
       <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
         <div v-if="m.role === 'assistant'" class="msg-ava"><Sparkles :size="16" /></div>
         <div class="msg-main">
+          <div v-if="m.image_keys?.length" class="ai-images"><BlobImage v-for="key in m.image_keys" :key="key" :src="key" alt="题目图片" /></div>
           <div class="bubble">{{ m.content }}<span v-if="m.streaming" class="caret">▍</span></div>
+          <div v-if="m.tools?.length" class="msg-usage">已调用：{{ m.tools.map(t => `${t.name}${t.status === 'failed' ? '（失败）' : ''}`).join('、') }}</div>
+          <div v-if="m.sources?.length" class="ai-sources"><a v-for="source in m.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.title || '查看来源' }}</a></div>
           <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
             <template v-if="m.prompt_tokens || m.completion_tokens">
               {{ (m.prompt_tokens || 0) + (m.completion_tokens || 0) }} tokens
@@ -247,6 +302,20 @@ onMounted(async () => {
       </div>
     </div>
 
+    <div v-if="!blocked" class="ai-options">
+      <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple style="display:none" @change="pickImages" />
+      <button class="btn btn-outline btn-sm" :disabled="sending || !features.vision" @click="fileInput?.click()">添加题图（最多4张）</button>
+      <label><input v-model="useTools" type="checkbox" :disabled="sending || !features.tools || !features.model_tools" />只读学习工具</label>
+      <label><input v-model="useSearch" type="checkbox" :disabled="sending || !features.search || !features.model_tools" />联网搜索</label>
+      <div v-if="!features.model_vision" class="msg-usage">图片需在AI设置中确认模型支持；也可移除图片仅发送文字。</div>
+      <div v-if="useTools || useSearch" class="msg-usage">工具模式等待完整结果；仅读取本人已同步数据，最多3次模型请求，不修改学习记录。联网时关键词会发送给搜索服务。</div>
+      <div class="ai-images"><div v-for="row in attachments" :key="row.id">
+        <BlobImage :blob="row.key ? null : row.blob" :src="row.key" alt="待发送题图" />
+        <button :disabled="sending || row.uploading" @click="attachments = attachments.filter(x => x.id !== row.id)">移除</button>
+        <button v-if="!row.key" :disabled="row.uploading" @click="uploadRow(row)">{{ row.uploading ? '上传中' : '上传/重试' }}</button>
+        <small v-if="row.error">{{ row.error }}</small>
+      </div></div>
+    </div>
     <div v-if="!blocked" class="composer">
       <input
         v-model="input"
@@ -254,7 +323,7 @@ onMounted(async () => {
         maxlength="4000"
         @keyup.enter="send"
       />
-      <button class="send-btn" :disabled="sending || !input.trim()" @click="send">
+      <button class="send-btn" :disabled="sending || (!input.trim() && !attachments.length)" @click="send">
         <Send :size="18" />
       </button>
     </div>
@@ -284,6 +353,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.ai-options { padding: 4px 16px; background: white; max-height: 32vh; overflow: auto; }
+.ai-options label { font-size: 12px; margin: 4px 8px; display: inline-flex; align-items: center; gap: 4px; }
+.ai-images { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.ai-images img { width: 80px; height: 70px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; }
+.ai-images button, .ai-images small { display: block; font-size: 11px; }
+.ai-sources a { display: block; font-size: 12px; padding: 4px 0; word-break: break-all; }
+
 .ai-wrap {
   position: fixed;
   top: 0;

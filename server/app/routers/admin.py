@@ -23,6 +23,7 @@ from ..services import room as room_service
 from ..services.messages import create_message
 from ..services.security import hash_password, new_invite_code
 from ..services.transient import digest
+from ..services.profile import profile_write
 from ..time import utcnow
 from .vip import FEATURE_LABELS
 
@@ -177,6 +178,7 @@ def _get_member(db, uid):
 
 
 @router.put('/members/{uid}')
+@profile_write
 def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depends(get_db)):
     user = _get_member(db, uid)
     db.refresh(user, with_for_update=True)

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
+  { path: '/admin/schools', name: 'school-admin', component: () => import('../views/SchoolAdminView.vue'), meta: { title: '院校与校园图片', requiresAuth: true, requiresAdmin: true, hideTabbar: true } },
   { path: '/me/phone', name: 'phone-settings', component: () => import('../views/PhoneSettingsView.vue'), meta: { title: '绑定手机号', requiresAuth: true, hideTabbar: true } },
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: '今日' } },
   { path: '/stats', name: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计' } },

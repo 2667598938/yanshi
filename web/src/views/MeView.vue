@@ -96,7 +96,8 @@ async function manualSync() {
     const ok = await syncNow()
     const meta = await db.syncMeta.get('lastSyncAt')
     lastSyncAt.value = meta?.value || 0
-    toast(ok === false ? '同步失败，请稍后再试' : '已同步')
+    const pending = await db.outbox.count() + await db.syncMeta.filter(row => row.key.startsWith('conflict:')).count()
+    toast(ok === false ? '同步失败，请稍后再试' : pending ? `本轮同步完成，仍有${pending}项待同步或待处理` : '已同步')
   } catch {
     toast('同步失败，请稍后再试')
   } finally {
@@ -104,7 +105,13 @@ async function manualSync() {
   }
 }
 
-const school = computed(() => SCHOOL_MAP[auth.user?.target_school || app.dreamSchool] || SCHOOL_MAP[app.dreamSchool] || Object.values(SCHOOL_MAP)[0])
+const schoolCatalog = ref([])
+const school = computed(() => {
+  const key = auth.user?.target_school || app.dreamSchool
+  const saved = schoolCatalog.value.find(row => row.key === key)
+  return saved ? { ...SCHOOL_MAP[key], ...saved.info, name: saved.name, logo: SCHOOL_MAP[key]?.logo || '' }
+    : SCHOOL_MAP[key] || { name: key || '尚未选择梦校', motto: '', logo: '' }
+})
 const avatar = computed(() => auth.user?.avatar_key || '')
 const vipUntil = computed(() => auth.user?.vip_permanent ? '永久有效' : fmtDate(auth.user?.vip_until))
 const figure = computed(() => FIGURE_MAP[auth.user?.figure_id || 'figure-1'] || FIGURES[0])
@@ -283,7 +290,8 @@ async function togglePrivacy() {
 }
 
 onMounted(() => {
-  auth.fetchMe().catch(() => {})
+  auth.fetchMe().then(() => profile.load(true)).catch(() => {})
+  db.kv.get('schools:catalog').then(row => { schoolCatalog.value = row?.value || [] }).catch(() => {})
   notifications.refresh()
   db.syncMeta.get('lastSyncAt').then((m) => { lastSyncAt.value = m?.value || 0 }).catch(() => {})
   if (auth.user) {

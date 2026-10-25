@@ -23,9 +23,9 @@ const untilText = computed(() =>
 
 const benefits = [
   { icon: Sparkles, title: 'AI 问答权限', sub: '按配置额度使用AI助教，可查看当日用量' },
-  { icon: ShieldCheck, title: '功能申请免审核', sub: '提交即开通，无需等待审批' },
+  { icon: ShieldCheck, title: '功能申请免审核', sub: '免人工审批，功能以站点开放状态为准' },
   { icon: Crown, title: 'VIP 专属标识', sub: '个人中心展示会员身份' },
-  { icon: Ticket, title: '邀请码优先发放', sub: '可向管理员申请邀请码赠送给研友' },
+  { icon: Ticket, title: '资料区权益', sub: '发布网盘资料，查看完整链接与提取码' },
 ]
 
 async function load() {

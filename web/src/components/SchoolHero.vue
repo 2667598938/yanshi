@@ -21,12 +21,14 @@ let lastManual = 0
 function mergeSchools(rows) {
   if (!rows?.length) return
   schools.value = rows.map((row) => {
-    const local = SCHOOL_MAP[row.key] || SCHOOLS[0]
+    const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
     return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
       logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
       album: row.album_keys?.length ? row.album_keys : [local.view] }
   })
-  if (browseIndex.value >= schools.value.length) browseIndex.value = 0
+  const target = schools.value.findIndex(row => row.key === app.dreamSchool)
+  if (!lastManual && target >= 0) browseIndex.value = target
+  else if (browseIndex.value >= schools.value.length) browseIndex.value = 0
 }
 const albumIndex = ref(0)
 const campusImage = computed(() => school.value.album?.[albumIndex.value % school.value.album.length] || school.value.view)

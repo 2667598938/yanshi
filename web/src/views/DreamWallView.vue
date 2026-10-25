@@ -14,10 +14,13 @@ const albumIndex = ref(0)
 const image = computed(() => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view)
 let interval
 let alive = true
+let lastManual = 0
+function pickSchool(school) { active.value = school; albumIndex.value = 0; lastManual = Date.now() }
+function pickAlbum(index) { albumIndex.value = index; lastManual = Date.now() }
 function merge(rows) {
   if (!rows?.length) return
   schools.value = rows.map((row) => {
-    const local = SCHOOL_MAP[row.key] || SCHOOLS[0]
+    const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
     return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
       logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
       album: row.album_keys?.length ? row.album_keys : [local.view] }
@@ -25,7 +28,7 @@ function merge(rows) {
 }
 onMounted(async () => {
   interval = setInterval(() => {
-    if (active.value && document.visibilityState === 'visible') albumIndex.value += 1
+    if (active.value && document.visibilityState === 'visible' && Date.now() - lastManual >= 10000) albumIndex.value += 1
   }, 5000)
   try {
     const cached = await db.kv.get('schools:catalog')
@@ -57,7 +60,7 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
           :key="s.key"
           class="school-card"
           :style="{ '--sc': s.color }"
-          @click="active = s; albumIndex = 0"
+          @click="pickSchool(s)"
         >
           <BlobImage class="sc-view" :src="s.view" :alt="s.name" />
           <div class="sc-body">
@@ -83,7 +86,7 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
           </div>
         </div>
         <div v-if="active.album?.length > 1" class="motto">
-          <button v-for="(key, i) in active.album" :key="key" class="btn btn-outline btn-sm" @click="albumIndex = i">{{ i + 1 }}</button>
+          <button v-for="(key, i) in active.album" :key="key" class="btn btn-outline btn-sm" @click="pickAlbum(i)">{{ i + 1 }}</button>
         </div>
         <div class="motto"><Quote :size="15" />{{ active.motto }}</div>
         <button class="btn btn-ghost btn-block" @click="active = null">收好，继续学</button>

@@ -12,6 +12,7 @@ import { useSubjectsStore } from '../stores/subjects'
 import { REASON_MAP, REVIEW_INTERVALS, intervalLabel } from '../data/subjects'
 import { fmtShort } from '../utils/time'
 import { useToast } from '../composables/useToast'
+import { db } from '../db'
 
 const router = useRouter()
 const mistakes = useMistakesStore()
@@ -45,6 +46,19 @@ function nextLabel(m) {
 function dueLabel(ms) {
   if (!ms) return ''
   return fmtShort(new Date(ms).toISOString())
+}
+
+async function askAi() {
+  if (!detail.value) return
+  const m = detail.value
+  try {
+    await db.kv.put({ key: 'ai:draft', value: {
+      content: `请讲解这道错题的考点、解题思路和易错点。\n题目：${m.content || ''}\n我的思路：${m.idea || ''}\n已有解析：${m.analysis || ''}`.slice(0, 4000),
+      images: [...(m.images || []), ...(m.answerImages || [])].slice(0, 4),
+    } })
+    detail.value = null
+    router.push('/ai')
+  } catch (e) { toast(e.message) }
 }
 
 function open(m) {
@@ -223,6 +237,7 @@ async function remove() {
         </button>
       </div>
 
+      <button class="btn btn-outline btn-block mt8" @click="askAi">让 AI 讲讲这道题</button>
       <div class="row-actions">
         <button class="ra-btn" @click="router.push({ path: '/mistake/edit', query: { id: detail.id } }); detail = null">
           <Pencil :size="15" />编辑

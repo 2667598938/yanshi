@@ -1,4 +1,4 @@
-from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, Text,
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Float,
                         UniqueConstraint)
 from ..database import Base
 from ..time import utcnow
@@ -6,6 +6,13 @@ from ..time import utcnow
 
 def now():
     return utcnow()
+
+
+class TransientState(Base):
+    __tablename__ = 'transient_states'
+    state_key = Column(String(200), primary_key=True)
+    value_cipher = Column(Text, nullable=False)
+    expires_at = Column(Float, nullable=False, index=True)
 
 
 class Config(Base):

@@ -6,12 +6,19 @@ from sqlalchemy import select
 
 from ..deps import require_enabled_feature, get_admin, get_current_user, get_db
 from ..errors import ApiError, ok
-from ..models import School
+from ..models import School, Attachment
 from ..schemas.school import SchoolInput, SchoolUpdate
 from ..serializers import iso
 from ..time import utcnow
 
 router = APIRouter(prefix='/api/v1', tags=['schools'], dependencies=[Depends(require_enabled_feature('dream_school'))])
+
+
+def validate_school_images(db, keys):
+    for key in set(keys) - {''}:
+        if not db.scalar(select(Attachment.id).where(Attachment.object_key == key,
+            Attachment.biz_type == 'school', Attachment.deleted_at.is_(None))):
+            raise ApiError(400, 40001, '院校图片必须使用校园图片上传入口生成的有效附件')
 
 
 def to_dict(row: School):
@@ -41,6 +48,7 @@ def get_school(key: str, db=Depends(get_db), user=Depends(get_current_user)):
 
 @router.post('/admin/schools')
 def create_school(body: SchoolInput, db=Depends(get_db), admin=Depends(get_admin)):
+    validate_school_images(db, [body.logo_key, *body.album_keys])
     if db.scalar(select(School.id).where(School.key == body.key)):
         raise ApiError(409, 40901, '院校标识已存在')
     now = utcnow()
@@ -57,6 +65,7 @@ def create_school(body: SchoolInput, db=Depends(get_db), admin=Depends(get_admin
 @router.put('/admin/schools/{key}')
 def update_school(key: str, body: SchoolUpdate, db=Depends(get_db),
                   admin=Depends(get_admin)):
+    validate_school_images(db, [body.logo_key or '', *(body.album_keys or [])])
     row = db.scalar(select(School).where(School.key == key))
     if not row:
         raise ApiError(404, 40401, '院校不存在')
@@ -64,7 +73,7 @@ def update_school(key: str, body: SchoolUpdate, db=Depends(get_db),
         row.name = body.name
     if body.short:
         row.short = body.short
-    if body.logo_key:
+    if body.logo_key is not None:
         row.logo_key = body.logo_key
     if body.album_keys is not None:
         row.album_keys = json.dumps(body.album_keys, ensure_ascii=False)

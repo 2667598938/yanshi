@@ -304,7 +304,7 @@ onMounted(() => {
 <template>
   <div class="admin-page">
     <CopyFallback v-model="manualCopy" />
-    <div class="page"><button class="btn btn-ghost btn-sm" @click="router.push('/admin/email-jobs')">通知邮件任务与重试</button></div>
+    <div class="page"><button class="btn btn-ghost btn-sm" @click="router.push('/admin/email-jobs')">通知邮件任务与重试</button><button class="btn btn-ghost btn-sm" @click="router.push('/admin/schools')">院校与校园图片</button></div>
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>

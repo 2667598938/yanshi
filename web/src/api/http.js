@@ -115,11 +115,17 @@ export async function streamPost(path, body, onEvent, { signal } = {}) {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let finished = false
+  const deliver = (event) => {
+    if (event.type === 'done' || event.type === 'error') finished = true
+    onEvent(event)
+  }
   try {
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
       const blocks = buffer.split('\n\n')
       buffer = blocks.pop() || ''
       for (const block of blocks) {
@@ -133,18 +139,19 @@ export async function streamPost(path, body, onEvent, { signal } = {}) {
         } catch {
           continue // 忽略无法解析的心跳/空事件
         }
-        onEvent(event)
+        deliver(event)
       }
     }
     // 刷新末尾未以空行收尾的事件
     const tail = buffer.split('\n').find((x) => x.startsWith('data:'))
     if (tail) {
       try {
-        onEvent(JSON.parse(tail.slice(5).trim()))
+        deliver(JSON.parse(tail.slice(5).trim()))
       } catch {
         /* 忽略不完整事件 */
       }
     }
+    if (!finished) throw new Error('连接提前结束，回答尚未完成，请重试')
   } finally {
     reader.releaseLock()
   }
@@ -154,6 +161,7 @@ export const http = {
   get: (path, opts) => request('GET', path, opts),
   post: (path, body, opts) => request('POST', path, { ...opts, body }),
   put: (path, body, opts) => request('PUT', path, { ...opts, body }),
+  patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   del: (path, opts) => request('DELETE', path, opts),
 }
 

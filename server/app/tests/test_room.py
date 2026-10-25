@@ -156,6 +156,7 @@ def test_room_messages_and_goal(client):
 
 
 def test_room_capacity_four(client):
+    client.app.state.settings.account_max_users = 4  # 显式四人内测账号上限，与房间席位分别校验。
     admin = login(client, **ADMIN)
     ah = auth_header(admin['access_token'])
     # 已有管理员 1 人，再注册 1 人 + 管理员建 2 人 = 4 人

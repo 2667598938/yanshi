@@ -117,3 +117,13 @@ it('使用服务端游标增量拉取，并应用删除墓碑', async () => {
   expect(await db.tasks.get('t')).toBeUndefined()
   expect((await db.syncMeta.get('pullCursor')).value).toBe(15)
 })
+
+it('大量待处理社区草稿不会挡住后面的学习记录同步', async () => {
+  await db.outbox.bulkAdd(Array.from({ length: 201 }, (_, i) => ({
+    recordId: `post-pending-${i}`, type: 'post', record: { content: 'draft' }, createdAt: i,
+  })))
+  await writeRecord('tasks', { id: 'task-after-posts', title: 'still sync' })
+  await syncNow()
+  expect(syncApi.commands).toHaveBeenCalled()
+  expect(syncApi.commands.mock.calls[0][1].some(change => change.id === 'task-after-posts')).toBe(true)
+})

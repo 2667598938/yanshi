@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     ai_daily_limit: int = Field(default=100, ge=1, le=10000)
     ai_custom_hosts: str = ''
     ai_allow_private_hosts: bool = False
+    ai_vision_enabled: bool = True
+    ai_tools_enabled: bool = True
+    ai_server_vision: bool = False
+    ai_server_tools: bool = False
+    brave_search_api_key: str = ''
     # 用户自填 AI Key 的加密主密钥（AES-256-GCM）；留空时退回 JWT secret 派生
     ai_key_enc_secret: str = ''
 
