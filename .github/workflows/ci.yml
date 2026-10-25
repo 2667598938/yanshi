@@ -36,7 +36,9 @@ jobs:
       - name: 校验数据库迁移
         env:
           DATABASE_URL: sqlite:///./ci.sqlite
-        run: python -m alembic upgrade head
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
 
       - name: 运行测试
         run: python -m pytest -q

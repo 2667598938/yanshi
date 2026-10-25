@@ -69,7 +69,7 @@ class RoomJoinApply(Base):
     room_id = Column(ForeignKey('rooms.id'), nullable=False)
     user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
     status = Column(String(12), default='pending', server_default='pending', nullable=False)
-    message = Column(String(200), default='', server_default='')
+    message = Column(String(200), default='', server_default='', nullable=False)
     # 待审时为 f'{room_id}-{user_id}'，审批后置 NULL，让同一人可再次申请
     pending_key = Column(String(40), nullable=True)
     created_at = Column(DateTime, default=now, nullable=False, index=True)
