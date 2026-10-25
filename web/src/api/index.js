@@ -1,5 +1,5 @@
 // 后端接口集中封装（统一前缀 /api/v1）。所有方法返回 data 部分。
-import { http } from './http'
+import { http, streamPost } from './http'
 
 // ------------------------------------------------------------ 公共
 export const publicApi = {
@@ -22,8 +22,7 @@ export const authApi = {
     http.post('/auth/phone/verify-code', { phone, code }, { auth: false }),
   register: (body) => http.post('/auth/register', body, { auth: false }),
   login: (email, password) => http.post('/auth/login', { email, password }, { auth: false }),
-  refresh: (refresh_token) =>
-    http.post('/auth/refresh', { refresh_token }, { auth: false }),
+  refresh: () => http.post('/auth/refresh', {}, { auth: false }),
   logout: () => http.post('/auth/logout', {}),
   resetPassword: (body) => http.post('/auth/reset-password', body, { auth: false }),
   me: () => http.get('/auth/me'),
@@ -54,6 +53,11 @@ export const roomApi = {
   create: (body) => http.post('/rooms', body),
   join: (id, code = '') => http.post(`/rooms/${id}/join`, { code }),
   joinByCode: (code) => http.post('/rooms/join-by-code', { code }),
+  preview: (id) => http.get(`/rooms/${id}/preview`),
+  apply: (id, message = '') => http.post(`/rooms/${id}/apply`, { message }),
+  applies: (id, status = 'pending') => http.get(`/rooms/${id}/applies`, { query: { status } }),
+  reviewApply: (id, applyId, approve) =>
+    http.post(`/rooms/${id}/applies/${applyId}/review`, { approve }),
   leave: (id) => http.post(`/rooms/${id}/leave`, {}),
   update: (id, body) => http.patch(`/rooms/${id}`, body),
   newCode: (id) => http.post(`/rooms/${id}/code`, {}),
@@ -90,6 +94,7 @@ export const aiApi = {
   enabled: () => http.get('/ai/enabled'),
   scenes: () => http.get('/ai/scenes'),
   chat: (body) => http.post('/ai/chat', body),
+  chatStream: (body, onEvent, opts) => streamPost('/ai/chat/stream', body, onEvent, opts),
   key: () => http.get('/ai/key'),
   saveKey: (body) => http.put('/ai/key', body),
   deleteKey: () => http.del('/ai/key'),
@@ -171,6 +176,7 @@ export const adminApi = {
   deleteMember: (id) => http.del(`/admin/members/${id}`),
   requests: (status = 'pending') => http.get('/admin/requests', { query: { status } }),
   reviewRequest: (id, body) => http.post(`/admin/requests/${id}/review`, body),
+  revokeRequest: (id) => http.post(`/admin/requests/${id}/revoke`, {}),
   invites: () => http.get('/admin/invites'),
   createInvite: (body) => http.post('/admin/invites', body),
   deleteInvite: (id) => http.del(`/admin/invites/${id}`),

@@ -13,14 +13,15 @@ from sqlalchemy import func, select
 
 from ..errors import ApiError
 from ..models import (
-    LearningRecord, Room, RoomGoal, RoomMember, RoomMessage, RoomPresence, User,
+    LearningRecord, Room, RoomGoal, RoomJoinApply, RoomMember, RoomMessage, RoomPresence, User,
 )
 from ..serializers import iso
 from ..time import utcnow
+from . import messages as message_service
 
 # 中国时区固定 UTC+8（无夏令时），用固定偏移避免依赖系统时区库
 CN = timezone(timedelta(hours=8))
-ONLINE_WINDOW_SEC = 45          # 超过 45 秒无心跳视为离线
+ONLINE_WINDOW_SEC = 90          # 超过 90 秒无心跳视为离线
 MAX_FOCUS_SEC = 6 * 3600        # 单次进行中专注展示上限
 MESSAGE_LIMIT = 50
 
@@ -74,7 +75,7 @@ def room_summary(db, room, user, member_count=None, online_count=None):
         'owner': {'id': owner.id, 'nickname': owner.nickname} if owner else None,
         'created_at': iso(room.created_at),
     }
-    # 房间码只给成员看；私密房间非成员完全看不到
+    # 房间码只给成员看；私密房间未加入者走预览接口，仅返回公开信息
     data['code'] = room.code if membership else ''
     return data
 
@@ -121,6 +122,113 @@ def join_room(db, user, room, code=''):
     ensure_member(db, user, room)
     db.commit()
     return room_state(db, user, room)
+
+
+def _apply_dict(row, user=None):
+    data = {
+        'id': row.id, 'room_id': row.room_id, 'user_id': row.user_id,
+        'status': row.status, 'message': row.message or '',
+        'created_at': iso(row.created_at), 'handled_at': iso(row.handled_at),
+    }
+    if user is not None:
+        data.update({
+            'nickname': user.nickname,
+            'avatar_key': user.avatar_key or '',
+            'target_school': user.target_school or '',
+        })
+    return data
+
+
+def latest_apply(db, room_id, user_id):
+    return db.scalar(select(RoomJoinApply).where(
+        RoomJoinApply.room_id == room_id, RoomJoinApply.user_id == user_id,
+    ).order_by(RoomJoinApply.id.desc()).limit(1))
+
+
+def room_preview(db, user, room):
+    """私密房间未加入也可看房间公开信息与自己的申请状态，成员数据仍不可见。"""
+    membership = get_membership(db, room.id, user.id)
+    apply_row = latest_apply(db, room.id, user.id)
+    return {
+        'room': room_summary(db, room, user),
+        'joined': membership is not None,
+        'my_role': membership.role if membership else '',
+        'join_required': room.visibility == 'private' and membership is None,
+        'apply': _apply_dict(apply_row) if apply_row else None,
+    }
+
+
+def apply_join(db, user, room, message=''):
+    """私密房间凭码免审；无码陌生人提交申请，同一人只保留一条待审。"""
+    if get_membership(db, room.id, user.id):
+        raise ApiError(400, 40001, '你已经在这个自习室')
+    if room.visibility != 'private':
+        raise ApiError(400, 40001, '公开自习室可以直接加入')
+    member_count = db.scalar(select(func.count()).select_from(RoomMember).where(
+        RoomMember.room_id == room.id)) or 0
+    if member_count >= room.capacity:
+        raise ApiError(403, 40302, '自习室已满，暂时无法申请')
+    pending = db.scalar(select(RoomJoinApply).where(
+        RoomJoinApply.room_id == room.id, RoomJoinApply.user_id == user.id,
+        RoomJoinApply.status == 'pending'))
+    if pending is not None:
+        return _apply_dict(pending)
+    row = RoomJoinApply(room_id=room.id, user_id=user.id, status='pending',
+                        message=(message or '')[:200],
+                        pending_key=f'{room.id}-{user.id}')
+    db.add(row)
+    db.flush()
+    owner = db.get(User, room.owner_id) if room.owner_id else None
+    if owner is not None and owner.id != user.id:
+        message_service.create_message(
+            db, owner, kind='apply', title='新的入房申请',
+            content=f'{user.nickname} 申请加入「{room.name}」：{row.message or "未填写申请说明"}',
+            link=f'/rooms/{room.id}', dedupe_key=f'room-apply:{row.id}')
+    db.commit()
+    db.refresh(row)
+    return _apply_dict(row)
+
+
+def list_applies(db, user, room, status='pending'):
+    if room.owner_id != user.id and user.role != 'admin':
+        raise ApiError(403, 40301, '只有房主可以查看入房申请')
+    rows = db.scalars(select(RoomJoinApply).where(
+        RoomJoinApply.room_id == room.id, RoomJoinApply.status == status,
+    ).order_by(RoomJoinApply.created_at.asc(), RoomJoinApply.id.asc())).all()
+    users = {}
+    if rows:
+        users = {u.id: u for u in db.scalars(select(User).where(
+            User.id.in_([r.user_id for r in rows]))).all()}
+    return {'status': status, 'items': [_apply_dict(r, users.get(r.user_id)) for r in rows]}
+
+
+def review_apply(db, user, room, apply_id, approve):
+    """房主通过/驳回；通过时立即写入成员，权限即时生效。"""
+    if room.owner_id != user.id and user.role != 'admin':
+        raise ApiError(403, 40301, '只有房主可以审批入房申请')
+    row = db.get(RoomJoinApply, apply_id)
+    if row is None or row.room_id != room.id:
+        raise ApiError(404, 40401, '申请不存在')
+    if row.status != 'pending':
+        raise ApiError(400, 40001, '该申请已处理')
+    applicant = db.get(User, row.user_id)
+    if applicant is None:
+        raise ApiError(404, 40401, '申请人不存在')
+    if approve and get_membership(db, room.id, row.user_id) is None:
+        # 满员直接抛 403，pending 状态保持，房主可稍后再处理
+        ensure_member(db, applicant, room)
+    row.status = 'approved' if approve else 'rejected'
+    row.pending_key = None
+    row.handled_at = utcnow()
+    row.handled_by = user.id
+    message_service.create_message(
+        db, applicant, kind='apply',
+        title='入房申请已通过' if approve else '入房申请未通过',
+        content=(f'你已加入「{room.name}」，一起加油。' if approve
+                 else f'房主暂未通过你加入「{room.name}」的申请，可以稍后再申请。'),
+        link=f'/rooms/{room.id}', dedupe_key=f'room-apply-review:{row.id}')
+    db.commit()
+    return _apply_dict(row, applicant)
 
 
 def leave_room(db, user, room):
@@ -325,6 +433,7 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
     now_ms = int(time.time() * 1000)
 
     member_payload = []
+    rankable = []
     online_count = 0
     for m in members:
         u = users.get(m.user_id)
@@ -337,38 +446,51 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
         )
         if online:
             online_count += 1
+        private = bool(u.privacy_mode)
+        hide = private and u.id != current_user.id
         display_status = p.status if online else 'offline'
         focus_sec = None
         if online and p and p.status == 'focusing' and p.focus_started_at:
             focus_sec = min(max(now_ms - p.focus_started_at, 0) // 1000, MAX_FOCUS_SEC)
         agg = stats.get(m.user_id, {'today_sec': 0, 'week_sec': 0, 'total_sec': 0, 'dates': set()})
         g = goals.get(m.user_id)
-        member_payload.append({
-            'user_id': u.id, 'nickname': u.nickname, 'avatar_key': u.avatar_key or '',
-            'figure_id': u.figure_id or 'figure-1',
-            'role': m.role, 'target_school': u.target_school or '', 'exam_year': u.exam_year,
+        item = {
+            'user_id': u.id,
+            'nickname': '匿名研友' if hide else u.nickname,
+            'avatar_key': '' if hide else (u.avatar_key or ''),
+            'figure_id': 'figure-1' if hide else (u.figure_id or 'figure-1'),
+            'role': m.role,
+            'target_school': '' if hide else (u.target_school or ''),
+            'exam_year': 0 if hide else u.exam_year,
             'online': online,
+            'privacy': private,
             'presence': {
-                'status': display_status,
-                'subject_name': p.subject_name if online else '',
-                'activity_type': p.activity_type if online else '',
-                'mode': p.mode if online else '',
-                'focus_started_at': p.focus_started_at if online and p.status == 'focusing' else None,
-                'focus_sec': focus_sec,
+                'status': 'offline' if hide else display_status,
+                'subject_name': '' if hide else (p.subject_name if online else ''),
+                'activity_type': '' if hide else (p.activity_type if online else ''),
+                'mode': '' if hide else (p.mode if online else ''),
+                'focus_started_at': None if hide else (
+                    p.focus_started_at if online and p.status == 'focusing' else None),
+                'focus_sec': None if hide else focus_sec,
             },
-            'today_sec': agg['today_sec'], 'week_sec': agg['week_sec'],
-            'total_sec': agg['total_sec'], 'streak': _streak(agg['dates'], today_str),
-            'goal': None if not g else {
+            'today_sec': 0 if hide else agg['today_sec'],
+            'week_sec': 0 if hide else agg['week_sec'],
+            'total_sec': 0 if hide else agg['total_sec'],
+            'streak': 0 if hide else _streak(agg['dates'], today_str),
+            'goal': None if hide or not g else {
                 'target_school': g.target_school, 'target_score': g.target_score, 'words': g.words,
             },
-        })
+        }
+        member_payload.append(item)
+        if not private:
+            rankable.append(item)
 
     ranking = {
-        'today': sorted(({'user_id': m['user_id'], 'sec': m['today_sec']} for m in member_payload),
+        'today': sorted(({'user_id': m['user_id'], 'sec': m['today_sec']} for m in rankable),
                         key=lambda x: x['sec'], reverse=True),
-        'week': sorted(({'user_id': m['user_id'], 'sec': m['week_sec']} for m in member_payload),
+        'week': sorted(({'user_id': m['user_id'], 'sec': m['week_sec']} for m in rankable),
                        key=lambda x: x['sec'], reverse=True),
-        'all': sorted(({'user_id': m['user_id'], 'sec': m['total_sec']} for m in member_payload),
+        'all': sorted(({'user_id': m['user_id'], 'sec': m['total_sec']} for m in rankable),
                       key=lambda x: x['sec'], reverse=True),
     }
 
@@ -379,7 +501,8 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
                 RoomMessage.room_id == room.id, RoomMessage.deleted_at.is_(None))
             .order_by(RoomMessage.created_at.desc()).limit(limit_messages)
         ).all()
-    user_map = {uid: u.nickname for uid, u in users.items()}
+    user_map = {uid: ('匿名研友' if u.privacy_mode and uid != current_user.id else u.nickname)
+                for uid, u in users.items()}
     message_payload = [_message_dict(row, user_map, current_user.id) for row in reversed(messages)]
 
     return {

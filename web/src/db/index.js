@@ -15,32 +15,109 @@ export function uid(prefix = '') {
   )
 }
 
-export const db = new Dexie('yanshi_db')
-
-db.version(1).stores({
-  // 科目：id 主键，order 排序，archived 归档
-  subjects: 'id, archived, order',
-  // 番茄记录：date 用于按天聚合，subjectId / activityType 用于筛选
-  sessions: 'id, date, subjectId, startedAt, activityType',
-  // 任务：done / dueDate / createdAt / subjectId
-  tasks: 'id, done, dueDate, createdAt, subjectId',
-  // 错题：nextReviewAt 复习到期，*tags 多标签索引
-  mistakes: 'id, subjectId, nextReviewAt, createdAt, *tags',
-  // 键值（头像等）
-  kv: 'key',
+export const db = new Proxy({}, {
+  get(_, prop) {
+    const value = currentDb[prop]
+    return typeof value === 'function' ? value.bind(currentDb) : value
+  },
+  set(_, prop, value) {
+    currentDb[prop] = value
+    return true
+  },
+  has(_, prop) {
+    return prop in currentDb
+  },
 })
 
-// v0.3 同步：outbox 待发变更、syncMeta 同步状态（增量声明，不影响已有表）
-db.version(2).stores({
-  outbox: '++id, recordId, type, createdAt',
-  syncMeta: 'key',
-})
+// 每个账号独立 IndexedDB，避免换号后把上一个账号的未同步记录重新入队
+let currentDb = createDb('yanshi_db')
+let accountId = null
 
-// v0.4 离线社区：本地待上传动态、待同步收藏状态
-db.version(3).stores({
-  localPosts: 'id, createdAt',
-  localFavs: 'resourceId, updatedAt',
-})
+function createDb(name) {
+  const instance = new Dexie(name)
+
+  instance.version(1).stores({
+    // 科目：id 主键，order 排序，archived 归档
+    subjects: 'id, archived, order',
+    // 番茄记录：date 用于按天聚合，subjectId / activityType 用于筛选
+    sessions: 'id, date, subjectId, startedAt, activityType',
+    // 任务：done / dueDate / createdAt / subjectId
+    tasks: 'id, done, dueDate, createdAt, subjectId',
+    // 错题：nextReviewAt 复习到期，*tags 多标签索引
+    mistakes: 'id, subjectId, nextReviewAt, createdAt, *tags',
+    // 键值（头像等）
+    kv: 'key',
+  })
+
+  // v0.3 同步：outbox 待发变更、syncMeta 同步状态（增量声明，不影响已有表）
+  instance.version(2).stores({
+    outbox: '++id, recordId, type, createdAt',
+    syncMeta: 'key',
+  })
+
+  // v0.4 离线社区：本地待上传动态、待同步收藏状态
+  instance.version(3).stores({
+    localPosts: 'id, createdAt',
+    localFavs: 'resourceId, updatedAt',
+  })
+
+  return instance
+}
+
+// 当前账号的「进行中的番茄」存储键（未登录时用公用键）
+export function currentKey() {
+  return accountId ? `${CUR_KEY}:u${accountId}` : CUR_KEY
+}
+
+async function migrateGuestData(guest, target) {
+  const tables = ['subjects', 'sessions', 'tasks', 'mistakes', 'outbox',
+    'localPosts', 'localFavs', 'kv']
+  let targetRows = 0
+  for (const table of ['subjects', 'sessions', 'tasks', 'mistakes', 'outbox',
+    'localPosts', 'localFavs']) {
+    targetRows += await target[table].count()
+  }
+  if (targetRows > 0) return
+  for (const table of tables) {
+    const rows = await guest[table].toArray()
+    if (rows.length) await target[table].bulkPut(rows)
+  }
+  for (const table of tables) await guest[table].clear()
+}
+
+// 登录/登出/启动时切换账号数据源；首次登录把游客数据迁移进该账号库
+export async function activateAccount(userId, { migrateGuest = false } = {}) {
+  const nextId = userId ? Number(userId) : null
+  if (nextId === accountId) {
+    if (!currentDb.isOpen()) await currentDb.open()
+    return
+  }
+  let next
+  if (nextId && migrateGuest) {
+    const target = createDb(`yanshi_db_u${nextId}`)
+    await target.open()
+    await migrateGuestData(currentDb, target)
+    await currentDb.close()
+    next = target
+  } else {
+    await currentDb.close()
+    next = createDb(nextId ? `yanshi_db_u${nextId}` : 'yanshi_db')
+    await next.open()
+  }
+  currentDb = next
+  accountId = nextId
+
+  if (nextId) {
+    const guestCurrent = localStorage.getItem(CUR_KEY)
+    const accountCurrent = localStorage.getItem(currentKey())
+    if (guestCurrent && !accountCurrent) localStorage.setItem(currentKey(), guestCurrent)
+    if (guestCurrent) localStorage.removeItem(CUR_KEY)
+  }
+}
+
+export function activeAccountId() {
+  return accountId
+}
 
 // 首次启动：写入默认科目
 async function seedSubjects() {

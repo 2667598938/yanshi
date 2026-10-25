@@ -123,6 +123,78 @@ async def call_openai(base_url: str, api_key: str, model: str, messages: list,
     }
 
 
+async def stream_openai_compat(url: str, api_key: str, payload: dict,
+                               label: str = 'AI'):
+    """OpenAI 兼容流式接口：逐段产出 delta，最后产出用量。
+
+    部分服务商不接受 stream_options，首次 400 时自动重试一次去掉该字段。
+    """
+    started = time.monotonic()
+    headers = {'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'}
+    base_payload = {**payload, 'stream': True}
+    usage = None
+    for attempt in (0, 1):
+        body = dict(base_payload)
+        if attempt == 0:
+            body['stream_options'] = {'include_usage': True}
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=15),
+                                         trust_env=False) as client:
+                async with client.stream('POST', url, headers=headers, json=body) as resp:
+                    if resp.status_code == 400 and attempt == 0:
+                        await resp.aread()
+                        continue
+                    if resp.status_code != 200:
+                        await resp.aread()
+                        hint = {401: 'API Key 无效或已失效', 403: '模型权限不足',
+                                404: '模型不可用，请检查模型名',
+                                429: '调用频率超限或额度不足'}.get(resp.status_code)
+                        raise ApiError(502, 50201, hint or f'{label}服务暂时不可用，请稍后重试')
+                    async for line in resp.aiter_lines():
+                        line = line.strip()
+                        if not line.startswith('data:'):
+                            continue
+                        data = line[5:].strip()
+                        if data == '[DONE]':
+                            break
+                        try:
+                            obj = json.loads(data)
+                        except ValueError:
+                            continue
+                        if obj.get('usage'):
+                            usage = obj['usage']
+                        choices = obj.get('choices') or []
+                        if choices:
+                            delta = (choices[0].get('delta') or {}).get('content')
+                            if delta:
+                                yield {'delta': delta}
+                    break
+        except httpx.HTTPError:
+            raise ApiError(502, 50201, f'{label}连接失败，请稍后重试') from None
+    yield {'usage': usage or {}, 'latency_ms': int((time.monotonic() - started) * 1000)}
+
+
+async def stream_ark(settings, messages):
+    """服务端兜底 Key（火山方舟）流式输出。"""
+    if not settings.ai_enabled:
+        raise ApiError(503, 50301, 'AI 尚未配置（服务端未填写火山方舟 Key）')
+    url = settings.volc_base_url.rstrip('/') + '/chat/completions'
+    payload = {'model': settings.volc_model, 'messages': messages,
+               'temperature': 0.3, 'max_tokens': settings.ai_max_tokens}
+    async for chunk in stream_openai_compat(url, settings.volc_api_key, payload):
+        yield chunk
+
+
+async def stream_openai(base_url: str, api_key: str, model: str, messages: list,
+                        max_tokens: int = 1200):
+    """VIP 自填 Key 的流式输出。"""
+    payload = {'model': model, 'messages': messages, 'temperature': 0.3,
+               'max_tokens': max_tokens}
+    async for chunk in stream_openai_compat(base_url + '/chat/completions',
+                                            api_key, payload):
+        yield chunk
+
+
 async def fetch_models(base_url: str, api_key: str) -> list:
     """用用户 Key 实时拉取模型列表；失败由调用方降级为手填。"""
     try:

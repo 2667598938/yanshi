@@ -6,9 +6,11 @@ import { postApi } from '../api'
 import { fmtShort } from '../utils/time'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const { toast } = useToast()
 
 const post = ref(null)
@@ -65,9 +67,14 @@ async function send() {
 }
 
 async function removeComment(c) {
+  let reason = ''
+  if (auth.isAdmin && !c.mine) {
+    reason = (prompt('删除原因（必填，会通知作者）') || '').trim()
+    if (!reason) return toast('管理员删除内容必须填写原因')
+  }
   if (!confirm('删除这条评论？')) return
   try {
-    await postApi.deleteComment(c.id)
+    await postApi.deleteComment(c.id, reason)
     const ids = new Set([c.id, ...childrenOf(c.id).map((x) => x.id)])
     comments.value = comments.value.filter((x) => !ids.has(x.id))
   } catch (e) {
@@ -76,7 +83,11 @@ async function removeComment(c) {
 }
 
 async function removePost() {
-  const reason = post.value.can_delete ? '' : prompt('删除原因（会通知作者）') || ''
+  let reason = ''
+  if (auth.isAdmin && !post.value?.mine) {
+    reason = (prompt('删除原因（必填，会通知作者）') || '').trim()
+    if (!reason) return toast('管理员删除内容必须填写原因')
+  }
   if (!confirm('删除这条动态？')) return
   try {
     await postApi.remove(id.value, reason)

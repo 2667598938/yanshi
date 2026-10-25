@@ -8,7 +8,7 @@ import secrets
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -18,7 +18,7 @@ from ..errors import ApiError, ok
 from ..models import LoginLog, User, UserAuth
 from ..schemas.account import OAuthTicketInput, PhoneCodeInput, PhoneVerifyInput
 from ..services.room import join_room_quietly
-from ..services.security import hash_password, issue_tokens, user_payload
+from ..services.security import hash_password, issue_session, user_payload
 from ..services.transient import digest
 from ..time import utcnow
 from .public import config_get
@@ -74,7 +74,7 @@ def _get_or_create_user(db, request, provider, uid, nickname, avatar='', phone=N
     return user, True
 
 
-def _finish_login(db, request, user, provider):
+def _finish_login(db, request, user, provider, response):
     now = clock(request)
     user.last_login_at = now
     db.add(LoginLog(user_id=user.id, email=user.email, result='success',
@@ -82,9 +82,9 @@ def _finish_login(db, request, user, provider):
                     user_agent=request.headers.get('user-agent', '')))
     audit(db, request, f'auth.oauth_{provider}', user_id=user.id)
     db.commit()
-    tokens = issue_tokens(request, db, user, now)
+    result = issue_session(request, db, user, response, now)
     db.commit()
-    return {**tokens, 'user': user_payload(user)}
+    return result
 
 
 # ---------------------------------------------------------------- 授权入口
@@ -114,8 +114,8 @@ def authorize(provider: str, request: Request):
 
 
 @router.get('/oauth/{provider}/callback')
-async def callback(request: Request, provider: str, code: str = '', state: str = '',
-                   db=Depends(get_db)):
+async def callback(request: Request, response: Response, provider: str, code: str = '',
+                   state: str = '', db=Depends(get_db)):
     _require_channel(request, provider)
     if provider == 'phone':
         raise ApiError(400, 40001, '手机号登录请使用短信接口')
@@ -134,15 +134,16 @@ async def callback(request: Request, provider: str, code: str = '', state: str =
         uid, nickname, avatar = await _qq_profile(settings, code, _callback_url(request, provider))
 
     user, _ = _get_or_create_user(db, request, provider, uid, nickname, avatar)
-    result = _finish_login(db, request, user, provider)
     if request.query_params.get('format') == 'json':
-        return ok(result)
-    # 浏览器流程：用一次性 ticket 换 token，避免把 access_token 拼进地址栏
+        return ok(_finish_login(db, request, user, provider, response))
+    # 浏览器流程：用一次性 ticket 换 access token，refresh 已写入 httpOnly Cookie
     ticket = secrets.token_urlsafe(24)
+    origin = request.app.state.settings.public_origin.rstrip('/')
+    redirect = RedirectResponse(f'{origin}/login?oauth_ticket={ticket}')
+    result = _finish_login(db, request, user, provider, redirect)
     request.app.state.transient.set('oauth-ticket:' + digest(ticket),
                                     json.dumps(result), 120)
-    origin = request.app.state.settings.public_origin.rstrip('/')
-    return RedirectResponse(f'{origin}/login?oauth_ticket={ticket}')
+    return redirect
 
 
 @router.post('/oauth/exchange')
@@ -172,11 +173,11 @@ def phone_send_code(body: PhoneCodeInput, request: Request):
 
 
 @router.post('/phone/verify-code')
-def phone_verify_code(body: PhoneVerifyInput, request: Request, db=Depends(get_db)):
+def phone_verify_code(body: PhoneVerifyInput, request: Request, response: Response,
+                      db=Depends(get_db)):
     _require_channel(request, 'phone')
     store = request.app.state.transient
-    expected = store.consume('phone-code:' + digest(body.phone))
-    if not expected or not secrets.compare_digest(expected, digest(body.code)):
+    if not store.verify('phone-code:' + digest(body.phone), digest(body.code), 5):
         raise ApiError(400, 40001, '验证码错误或过期')
 
     row = db.scalar(select(UserAuth).where(
@@ -194,7 +195,7 @@ def phone_verify_code(body: PhoneVerifyInput, request: Request, db=Depends(get_d
                 f'研友{body.phone[-4:]}', phone=body.phone)
         else:
             db.add(UserAuth(user_id=user.id, provider='phone', provider_uid=body.phone))
-    return ok(_finish_login(db, request, user, 'phone'))
+    return ok(_finish_login(db, request, user, 'phone', response))
 
 
 # ---------------------------------------------------------------- 提供商适配

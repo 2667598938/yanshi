@@ -162,6 +162,11 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
           maxlength="2000"
           placeholder="记录今天的学习、困惑或一点小进展…"
         ></textarea>
+        <div class="compose-legal">
+          发布即表示同意
+          <a @click.prevent="router.push('/disclaimer')">《免责声明》</a>
+          ，请勿发布违规或侵权内容
+        </div>
         <div class="compose-foot">
           <span>{{ draft.trim().length }}/2000</span>
           <button class="btn btn-primary btn-sm" :disabled="posting" @click="publish">
@@ -201,4 +206,6 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
 .ta { width: 100%; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14px; font-family: inherit; background: #fafbfe; resize: vertical; outline: none; }
 .ta:focus { border-color: var(--primary); }
 .compose-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 11.5px; color: var(--faint); }
+.compose-legal { margin-top: 10px; font-size: 11.5px; color: var(--faint); line-height: 1.6; }
+.compose-legal a { color: var(--primary); cursor: pointer; text-decoration: none; }
 </style>

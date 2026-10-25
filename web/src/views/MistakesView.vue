@@ -9,8 +9,8 @@ import BlobImage from '../components/BlobImage.vue'
 import SubjectIcon from '../components/SubjectIcon.vue'
 import { useMistakesStore } from '../stores/mistakes'
 import { useSubjectsStore } from '../stores/subjects'
-import { REASON_MAP, REVIEW_INTERVALS } from '../data/subjects'
-import { mdWeekLabel } from '../utils/date'
+import { REASON_MAP, REVIEW_INTERVALS, intervalLabel } from '../data/subjects'
+import { fmtShort } from '../utils/time'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
@@ -37,9 +37,14 @@ function subjOf(id) {
 function isDue(m) {
   return !m.mastered && m.nextReviewAt && dueList.value.some((x) => x.id === m.id)
 }
-function nextDays(m) {
+function nextLabel(m) {
   if (m.mastered) return null
-  return REVIEW_INTERVALS[Math.min(m.stage, REVIEW_INTERVALS.length - 1)]
+  const stage = Math.min(m.stage || 0, REVIEW_INTERVALS.length - 1)
+  return intervalLabel(REVIEW_INTERVALS[stage])
+}
+function dueLabel(ms) {
+  if (!ms) return ''
+  return fmtShort(new Date(ms).toISOString())
 }
 
 function open(m) {
@@ -49,16 +54,18 @@ async function remember() {
   if (!detail.value) return
   const m = detail.value
   const willMaster = m.stage + 1 >= REVIEW_INTERVALS.length
-  const next = willMaster ? null : REVIEW_INTERVALS[m.stage + 1]
+  const next = willMaster ? null : intervalLabel(REVIEW_INTERVALS[m.stage + 1])
   await mistakes.review(m.id, true)
   detail.value = mistakes.list.find((x) => x.id === m.id) || null
-  toast(willMaster ? '已掌握，这道题过关了' : `${next} 天后再复习，加油`)
+  toast(willMaster ? '已掌握，这道题过关了' : `${next}后再复习，加油`)
 }
 async function forget() {
   if (!detail.value) return
-  await mistakes.review(detail.value.id, false)
-  detail.value = mistakes.list.find((x) => x.id === detail.value.id) || null
-  toast('明天再复习一次')
+  const m = detail.value
+  await mistakes.review(m.id, false)
+  detail.value = mistakes.list.find((x) => x.id === m.id) || null
+  const next = detail.value ? nextLabel(detail.value) : null
+  toast(next ? `已回退一个节点，${next}后再复习` : '已回退一个复习节点')
 }
 async function remove() {
   if (!detail.value) return
@@ -137,7 +144,7 @@ async function remove() {
             <span v-else-if="m.mastered" class="mk-ok">
               <BookOpenCheck :size="12" />已掌握
             </span>
-            <span v-else class="mk-next">{{ m.nextReviewAt ? mdWeekLabel(m.nextReviewAt) : '' }}</span>
+            <span v-else class="mk-next">{{ dueLabel(m.nextReviewAt) }}</span>
           </div>
           <div v-if="m.content" class="mk-content">{{ m.content }}</div>
           <div class="mk-line2">
@@ -171,7 +178,7 @@ async function remove() {
         </span>
         <template v-else>
           <span class="stage-text">第 {{ detail.stage + 1 }} / {{ REVIEW_INTERVALS.length }} 轮复习</span>
-          <span class="stage-next">{{ isDue(detail) ? '今天该复习' : nextDays(detail) + ' 天后复习' }}</span>
+          <span class="stage-next">{{ isDue(detail) ? '现在该复习' : `${nextLabel(detail)}后复习` }}</span>
         </template>
       </div>
       <div class="stage-track">
@@ -189,19 +196,30 @@ async function remove() {
       </div>
 
       <div v-if="detail.content" class="dk-content">{{ detail.content }}</div>
+      <div v-if="detail.idea" class="dk-block">
+        <div class="dk-label">主要思路</div>
+        <div class="dk-text">{{ detail.idea }}</div>
+      </div>
+      <div v-if="detail.analysis" class="dk-block">
+        <div class="dk-label">答案解析</div>
+        <div class="dk-text">{{ detail.analysis }}</div>
+      </div>
 
       <div v-if="detail.images?.length" class="dk-imgs">
-        <BlobImage v-for="(b, i) in detail.images" :key="i" :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" class="dk-img" />
+        <BlobImage v-for="(b, i) in detail.images" :key="`q${i}`" :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" class="dk-img" />
+      </div>
+      <div v-if="detail.answerImages?.length" class="dk-imgs">
+        <BlobImage v-for="(b, i) in detail.answerImages" :key="`a${i}`" :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" class="dk-img" />
       </div>
 
       <div v-if="!detail.mastered" class="review-actions">
         <button class="btn btn-primary btn-block" @click="remember">
           <Check :size="18" />
           <span v-if="detail.stage + 1 >= REVIEW_INTERVALS.length">记住了，完成掌握</span>
-          <span v-else>记住了，{{ REVIEW_INTERVALS[detail.stage + 1] }} 天后复习</span>
+          <span v-else>记住了，{{ intervalLabel(REVIEW_INTERVALS[detail.stage + 1]) }}后复习</span>
         </button>
         <button class="btn btn-ghost btn-block mt8" @click="forget">
-          <RefreshCw :size="16" />还没记住，明天再来
+          <RefreshCw :size="16" />还没记住，回退上一个节点
         </button>
       </div>
 
@@ -531,6 +549,9 @@ async function remove() {
   border-radius: 12px;
   padding: 12px 14px;
 }
+.dk-block { margin-top: 12px; background: #f8fafc; border-radius: 12px; padding: 12px 14px; }
+.dk-label { font-size: 11.5px; color: var(--faint); margin-bottom: 4px; }
+.dk-text { font-size: 14px; color: var(--ink); line-height: 1.65; white-space: pre-wrap; }
 .dk-imgs {
   margin-top: 12px;
   display: flex;

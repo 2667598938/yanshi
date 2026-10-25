@@ -1,8 +1,8 @@
-import json
 import secrets
 from datetime import timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -14,11 +14,30 @@ from ..schemas.account import (
     RegisterInput, ResetVerifyInput, TokenInput,
 )
 from ..services.room import join_room_quietly
-from ..services.security import hash_password, issue_tokens, user_payload, verify_password
+from ..services.security import (
+    REFRESH_COOKIE, clear_refresh_cookie, hash_password, issue_session,
+    user_payload, verify_password,
+)
 from ..services.transient import deliver, digest
 from .public import config_get
 
 router = APIRouter(prefix='/api/v1', tags=['auth'])
+
+CODE_TTL = 300          # 验证码 5 分钟有效
+CODE_MAX_ATTEMPTS = 5   # 输错 5 次作废
+
+
+def ensure_email_domain(request: Request, email: str) -> None:
+    """按配置限制邮箱域名（一期为 QQ 邮箱；留空则不限制）。"""
+    raw = request.app.state.settings.auth_email_domains
+    allowed = {x.strip().lower() for x in raw.split(',') if x.strip()}
+    if allowed and email.rsplit('@', 1)[-1].lower() not in allowed:
+        raise ApiError(400, 40001, '仅支持 QQ 邮箱登录')
+
+
+def verify_code(store, key: str, code: str) -> bool:
+    return store.verify(key, digest(code), CODE_MAX_ATTEMPTS)
+
 
 
 # ----------------------------- 邮箱验证码 -----------------------------
@@ -30,6 +49,7 @@ def email_code(body: EmailCodeInput, request: Request):
     db = request.app.state.session_factory()
     try:
         email = body.email
+        ensure_email_domain(request, email)
         store.limit('email-minute:' + digest(email), 1, 60)
         store.limit('email-day:' + digest(email), 10, 86400)
         store.limit('email-ip:' + request.client.host, 20, 3600)
@@ -42,11 +62,11 @@ def email_code(body: EmailCodeInput, request: Request):
             return ok({'sent': True})
 
         value = f'{secrets.randbelow(1000000):06}'
-        store.set(f'{body.scene}-code:' + digest(email), digest(value), 600)
+        store.set(f'{body.scene}-code:' + digest(email), digest(value), CODE_TTL)
         title = {'register': '注册验证码', 'reset': '重置密码验证码',
                  'login': '登录验证码'}[body.scene]
         deliver(settings, email, f'研时 · {title}',
-                f'你的验证码是 {value}，10 分钟内有效。如非本人操作请忽略。')
+                f'你的验证码是 {value}，5 分钟内有效，最多可输错 5 次。如非本人操作请忽略。')
         return ok({'sent': True})
     finally:
         db.close()
@@ -55,17 +75,17 @@ def email_code(body: EmailCodeInput, request: Request):
 # ----------------------------- 注册 -----------------------------
 
 @router.post('/auth/register')
-def register(body: RegisterInput, request: Request, db=Depends(get_db)):
+def register(body: RegisterInput, request: Request, response: Response, db=Depends(get_db)):
     if not config_get(db, 'registration_open', False):
         raise ApiError(403, 40301, '注册已关闭，请联系管理员创建账号')
     if not body.accepted_terms:
         raise ApiError(400, 40001, '请先同意用户协议与隐私政策')
+    ensure_email_domain(request, body.email)
 
     store = request.app.state.transient
     store.limit('register-ip:' + request.client.host, 10, 3600)
 
-    expected = store.consume('register-code:' + digest(body.email))
-    if not expected or not secrets.compare_digest(expected, digest(body.code)):
+    if not verify_code(store, 'register-code:' + digest(body.email), body.code):
         raise ApiError(400, 40001, '邮箱验证码错误或过期')
     if db.scalar(select(User.id).where(User.email == body.email, User.status != 'deleted')):
         raise ApiError(409, 40901, '该邮箱已注册')
@@ -98,21 +118,22 @@ def register(body: RegisterInput, request: Request, db=Depends(get_db)):
     db.add(LoginLog(user_id=user.id, email=body.email, result='success',
                     ip=request.client.host, user_agent=request.headers.get('user-agent', '')))
     db.commit()
-    result = issue_tokens(request, db, user, now)
+    result = issue_session(request, db, user, response, now)
     db.commit()
-    return ok({**result, 'user': user_payload(user)})
+    return ok(result)
 
 
 # ----------------------------- 验证码登录 / 自动注册 -----------------------------
 
 @router.post('/auth/email-login')
-def email_login(body: EmailLoginInput, request: Request, db=Depends(get_db)):
+def email_login(body: EmailLoginInput, request: Request, response: Response,
+                db=Depends(get_db)):
     store = request.app.state.transient
     store.limit('email-login-ip:' + request.client.host, 30, 3600)
     store.limit('email-login:' + digest(body.email), 10, 900)
+    ensure_email_domain(request, body.email)
 
-    expected = store.consume('login-code:' + digest(body.email))
-    if not expected or not secrets.compare_digest(expected, digest(body.code)):
+    if not verify_code(store, 'login-code:' + digest(body.email), body.code):
         raise ApiError(400, 40001, '验证码错误或过期')
 
     now = clock(request)
@@ -150,15 +171,15 @@ def email_login(body: EmailLoginInput, request: Request, db=Depends(get_db)):
     audit(db, request, 'auth.email_login', user_id=user.id,
           detail='register' if registered else 'login')
     db.commit()
-    result = issue_tokens(request, db, user, now)
+    result = issue_session(request, db, user, response, now)
     db.commit()
-    return ok({**result, 'user': user_payload(user), 'registered': registered})
+    return ok({**result, 'registered': registered})
 
 
 # ----------------------------- 登录 -----------------------------
 
 @router.post('/auth/login')
-def login(body: LoginInput, request: Request, db=Depends(get_db)):
+def login(body: LoginInput, request: Request, response: Response, db=Depends(get_db)):
     store = request.app.state.transient
     now = clock(request)
     email = body.email
@@ -196,16 +217,21 @@ def login(body: LoginInput, request: Request, db=Depends(get_db)):
                     ip=request.client.host, user_agent=ua))
     audit(db, request, 'login.success', user_id=user.id)
     db.commit()
-    result = issue_tokens(request, db, user, now)
+    result = issue_session(request, db, user, response, now)
     db.commit()
-    return ok({**result, 'user': user_payload(user)})
+    return ok(result)
 
 
 # ----------------------------- 刷新 / 登出 -----------------------------
 
 @router.post('/auth/refresh')
-def refresh(body: TokenInput, request: Request, db=Depends(get_db)):
-    data = decode(request, body.refresh_token, 'refresh')
+def refresh(request: Request, response: Response, body: Optional[TokenInput] = None,
+            db=Depends(get_db)):
+    token = (body.refresh_token if body and body.refresh_token else '') \
+        or request.cookies.get(REFRESH_COOKIE, '')
+    if not token:
+        raise ApiError(401, 40101, '请重新登录')
+    data = decode(request, token, 'refresh')
     now = clock(request)
     user = db.get(User, int(data['sub']))
     if not user or user.token_version != data.get('ver') or user.status in ('banned', 'deleted'):
@@ -218,20 +244,25 @@ def refresh(body: TokenInput, request: Request, db=Depends(get_db)):
     if result.rowcount != 1:
         raise ApiError(401, 40101, '此刷新凭证已失效，请重新登录')
     db.commit()
-    tokens = issue_tokens(request, db, user, now)
+    tokens = issue_session(request, db, user, response, now)
     db.commit()
     return ok(tokens)
 
 
 @router.post('/auth/logout')
-def logout(body: TokenInput, request: Request, db=Depends(get_db)):
+def logout(request: Request, response: Response, body: Optional[TokenInput] = None,
+           db=Depends(get_db)):
+    token = (body.refresh_token if body and body.refresh_token else '') \
+        or request.cookies.get(REFRESH_COOKIE, '')
     try:
-        data = decode(request, body.refresh_token, 'refresh')
-        db.execute(update(RefreshToken).where(RefreshToken.id == digest(data['jti']))
-                   .values(revoked_at=clock(request)))
-        db.commit()
+        if token:
+            data = decode(request, token, 'refresh')
+            db.execute(update(RefreshToken).where(RefreshToken.id == digest(data['jti']))
+                       .values(revoked_at=clock(request)))
+            db.commit()
     except ApiError:
         pass
+    clear_refresh_cookie(response)
     return ok()
 
 
@@ -254,7 +285,7 @@ def update_me(body: ProfileUpdate, request: Request, user=Depends(get_current_us
 
 
 @router.put('/users/me/password')
-def change_password(body: ChangePasswordInput, request: Request,
+def change_password(body: ChangePasswordInput, request: Request, response: Response,
                     user=Depends(get_current_user), db=Depends(get_db)):
     if not verify_password(body.old_password, user.password_hash):
         raise ApiError(400, 40001, '原密码错误')
@@ -263,7 +294,7 @@ def change_password(body: ChangePasswordInput, request: Request,
     db.execute(update(RefreshToken).where(RefreshToken.user_id == user.id).values(revoked_at=clock(request)))
     audit(db, request, 'auth.change_password', user_id=user.id)
     db.commit()
-    tokens = issue_tokens(request, db, user)
+    tokens = issue_session(request, db, user, response)
     db.commit()
     return ok({'reauthenticate': True, **tokens})
 
@@ -271,10 +302,11 @@ def change_password(body: ChangePasswordInput, request: Request,
 # ----------------------------- 找回密码（邮箱验证码） -----------------------------
 
 @router.post('/auth/reset-password')
-def reset_password(body: ResetVerifyInput, request: Request, db=Depends(get_db)):
+def reset_password(body: ResetVerifyInput, request: Request, response: Response,
+                   db=Depends(get_db)):
     store = request.app.state.transient
-    expected = store.consume('reset-code:' + digest(body.email))
-    if not expected or not secrets.compare_digest(expected, digest(body.code)):
+    ensure_email_domain(request, body.email)
+    if not verify_code(store, 'reset-code:' + digest(body.email), body.code):
         raise ApiError(400, 40001, '验证码错误或过期')
     user = db.scalar(select(User).where(User.email == body.email, User.status != 'deleted'))
     if not user:
@@ -284,4 +316,5 @@ def reset_password(body: ResetVerifyInput, request: Request, db=Depends(get_db))
     db.execute(update(RefreshToken).where(RefreshToken.user_id == user.id).values(revoked_at=clock(request)))
     audit(db, request, 'auth.reset_password', user_id=user.id)
     db.commit()
+    clear_refresh_cookie(response)
     return ok()

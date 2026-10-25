@@ -11,6 +11,22 @@ from .transient import digest
 
 INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'  # 去掉易混字符 0/O/1/I
 
+REFRESH_COOKIE = 'yanshi_refresh'
+REFRESH_COOKIE_PATH = '/api/v1/auth'
+
+
+def set_refresh_cookie(response, token: str, settings) -> None:
+    """refresh token 只放 httpOnly Cookie，前端不可读。"""
+    response.set_cookie(
+        key=REFRESH_COOKIE, value=token, max_age=settings.refresh_seconds,
+        httponly=True, secure=settings.environment == 'production',
+        samesite='lax', path=REFRESH_COOKIE_PATH,
+    )
+
+
+def clear_refresh_cookie(response) -> None:
+    response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
+
 
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=12)).decode()
@@ -47,6 +63,15 @@ def issue_tokens(request, db, user, now=None):
     return result
 
 
+def issue_session(request, db, user, response, now=None):
+    """签发会话：access 返回 JSON，refresh 写入 httpOnly Cookie。"""
+    tokens = issue_tokens(request, db, user, now)
+    refresh_token = tokens.pop('refresh_token')
+    set_refresh_cookie(response, refresh_token, request.app.state.settings)
+    tokens['user'] = user_payload(user)
+    return tokens
+
+
 def user_payload(user):
     return {
         'id': user.id, 'email': user.email, 'nickname': user.nickname,
@@ -56,6 +81,7 @@ def user_payload(user):
         'signature': user.signature or '', 'figure_id': user.figure_id or 'figure-1',
         'daily_goal_min': user.daily_goal_min, 'exam_date': user.exam_date,
         'notify_enabled': user.notify_enabled,
+        'privacy_mode': bool(user.privacy_mode),
         'vip_until': iso(user.vip_until),
         'is_vip': bool(user.vip_until and user.vip_until > utcnow()),
     }

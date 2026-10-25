@@ -1,4 +1,6 @@
 """AI 助教（v0.3-e）测试：mock 火山方舟，不打真实网络。"""
+import json
+
 import pytest
 
 from app.tests.conftest import login
@@ -16,6 +18,12 @@ def friend(client):
     ah = h(admin['access_token'])
     client.post('/api/v1/admin/members', headers=ah,
                 json={'email': 'ai1@test.com', 'nickname': 'AI同学', 'password': 'Friend2028'})
+    # 新基线：AI 需要 VIP 或审批授权；测试给该成员开通 VIP
+    members = client.get('/api/v1/admin/members', headers=ah).json()['data']
+    uid = next(x['id'] for x in members if x['email'] == 'ai1@test.com')
+    r = client.put(f'/api/v1/admin/members/{uid}', headers=ah,
+                   json={'vip_action': 'grant', 'vip_days': 30, 'note': '测试开通 VIP'})
+    assert r.status_code == 200, r.text
     return h(login(client, 'ai1@test.com', 'Friend2028')['access_token'])
 
 
@@ -90,6 +98,38 @@ def test_ai_disabled_without_key(client, friend):
     r = client.post('/api/v1/ai/chat', headers=friend, json={'content': 'hi'})
     assert r.status_code == 503
     assert client.get('/api/v1/ai/enabled', headers=friend).json()['data']['enabled'] is False
+
+
+def test_chat_stream_sse(client, friend, monkeypatch):
+    """流式对话：逐段 delta + 结束事件，并落库到会话。"""
+    async def fake_stream(settings, messages):
+        for part in ('流式', '回复'):
+            yield {'delta': part}
+        yield {'usage': {'prompt_tokens': 3, 'completion_tokens': 2}, 'latency_ms': 12}
+
+    import app.services.ai as svc
+    monkeypatch.setattr(svc, 'stream_ark', fake_stream)
+
+    cid = client.post('/api/v1/ai/conversations', headers=friend,
+                      json={'title': '流式测试'}).json()['data']['id']
+    with client.stream('POST', '/api/v1/ai/chat/stream', headers=friend,
+                       json={'conversation_id': cid, 'content': '你好'}) as r:
+        assert r.status_code == 200
+        assert r.headers['content-type'].startswith('text/event-stream')
+        body = ''.join(r.iter_text())
+
+    events = [json.loads(line[5:]) for line in body.splitlines()
+              if line.startswith('data:')]
+    assert [e['text'] for e in events if e['type'] == 'delta'] == ['流式', '回复']
+    done = events[-1]
+    assert done['type'] == 'done'
+    assert done['reply'] == '流式回复'
+    assert done['conversation_id'] == cid
+    assert done['prompt_tokens'] == 3
+
+    detail = client.get(f'/api/v1/ai/conversations/{cid}', headers=friend).json()['data']
+    assert [m['role'] for m in detail['messages']] == ['user', 'assistant']
+    assert detail['messages'][-1]['content'] == '流式回复'
 
 
 def test_scenes(client, friend):

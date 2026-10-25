@@ -48,3 +48,15 @@ class RoomJoin(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     code: str = Field(default='', max_length=32)
+
+
+class RoomApplyInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+    message: str = Field(default='', max_length=200)
+
+
+class ApplyReviewInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    approve: bool

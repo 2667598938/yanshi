@@ -29,6 +29,46 @@ def task(rid, title='做极限'):
             'acceptCriteria': '', 'dueDate': '', 'done': 0, 'doneAt': 0, 'createdAt': 1700000000000}
 
 
+def session(rid, started, ended, paused=0, status='done'):
+    return {'id': rid, 'type': 'session', 'subjectId': 's1', 'mode': 'stopwatch',
+            'activityType': '', 'plannedMin': 0, 'actualSec': 0, 'status': status,
+            'startedAt': started, 'endedAt': ended, 'pauseAccum': paused,
+            'date': '2026-10-25', 'note': '', 'createdAt': ended}
+
+
+def test_session_is_normalized_by_server(client):
+    h = headers(client)
+    base = 1700000000000
+
+    # 挂起 5 小时：服务端按 180 分钟上限记为 quit(timeout)
+    r = send(client, h, op_id(), [
+        {'id': 'x1', 'expectedRevision': 0,
+         'record': session('x1', base, base + 5 * 3600 * 1000)}])
+    assert r.status_code == 200, r.text
+    rec = r.json()['data']['changed'][0]['record']
+    assert rec['status'] == 'quit'
+    assert rec['actualSec'] == 180 * 60
+    assert rec['end_reason'] == 'timeout'
+
+    # 暂停累计 31 分钟：按暂停超时 quit，实际时长扣除暂停
+    r = send(client, h, op_id(), [
+        {'id': 'x2', 'expectedRevision': 0,
+         'record': session('x2', base, base + 3600 * 1000, paused=31 * 60 * 1000)}])
+    rec = r.json()['data']['changed'][0]['record']
+    assert rec['status'] == 'quit'
+    assert rec['end_reason'] == 'pause_timeout'
+    assert rec['actualSec'] == 3600 - 31 * 60
+
+    # 正常完成：状态 done，小于上限
+    r = send(client, h, op_id(), [
+        {'id': 'x3', 'expectedRevision': 0,
+         'record': session('x3', base, base + 25 * 60 * 1000)}])
+    rec = r.json()['data']['changed'][0]['record']
+    assert rec['status'] == 'done'
+    assert rec['actualSec'] == 25 * 60
+    assert rec['end_reason'] == 'completed'
+
+
 def test_sync_requires_auth(client):
     assert client.get('/api/v1/sync/records').status_code == 401
     assert client.post('/api/v1/sync/commands', json={'operationId': 'x', 'changes': []}).status_code == 401

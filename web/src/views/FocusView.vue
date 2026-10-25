@@ -99,10 +99,14 @@ async function record() {
   sheet.value = 'done'
   toast('已记录这次专注')
 }
-function giveup() {
-  timer.abort()
+async function giveup() {
+  const s = await timer.abort()
   sheet.value = false
-  toast('已放弃，不计入记录')
+  if (s && s.actualSec > 0) {
+    toast(`已放弃，保留实际专注 ${Math.max(1, Math.round(s.actualSec / 60))} 分钟`)
+  } else {
+    toast('已放弃')
+  }
 }
 function goMistake() {
   const s = finished.value

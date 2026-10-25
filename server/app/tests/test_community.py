@@ -59,6 +59,41 @@ def test_posts_and_nested_comments(client):
     assert client.get(f'/api/v1/posts/{pid}', headers=p1).status_code == 404
 
 
+def test_admin_delete_requires_reason(client):
+    """管理员删除他人内容必须填写原因；作者自删不受限。"""
+    admin = login(client, **ADMIN)
+    ah = h(admin['access_token'])
+    make_member(client, ah, 'reason1@test.com', '被删作者')
+    make_member(client, ah, 'reason2@test.com', '评论作者')
+    p1 = h(login(client, 'reason1@test.com', 'Friend2028')['access_token'])
+    p2 = h(login(client, 'reason2@test.com', 'Friend2028')['access_token'])
+
+    pid = client.post('/api/v1/posts', headers=p1, json={'content': '先留着'}).json()['data']['id']
+    cid = client.post(f'/api/v1/posts/{pid}/comments', headers=p2,
+                      json={'content': '一条评论'}).json()['data']['id']
+
+    # 管理员无原因删帖 / 删评论都被拒，内容仍在
+    r = client.delete(f'/api/v1/posts/{pid}', headers=ah)
+    assert r.status_code == 400 and r.json()['code'] == 40001
+    assert client.get(f'/api/v1/posts/{pid}', headers=p1).status_code == 200
+    r = client.delete(f'/api/v1/comments/{cid}', headers=ah)
+    assert r.status_code == 400 and r.json()['code'] == 40001
+
+    # 填原因后删除成功，作者收到含原因的站内消息
+    assert client.delete(f'/api/v1/comments/{cid}', headers=ah,
+                         params={'reason': '评论含广告'}).status_code == 200
+    msgs = client.get('/api/v1/messages', headers=p2).json()['data']
+    assert any('评论' in m['title'] and '评论含广告' in m['content'] for m in msgs)
+    assert client.delete(f'/api/v1/posts/{pid}', headers=ah,
+                         params={'reason': '内容违规'}).status_code == 200
+    msgs = client.get('/api/v1/messages', headers=p1).json()['data']
+    assert any('帖子' in m['title'] and '内容违规' in m['content'] for m in msgs)
+
+    # 作者自删不需要原因
+    own = client.post('/api/v1/posts', headers=p1, json={'content': '自己删'}).json()['data']['id']
+    assert client.delete(f'/api/v1/posts/{own}', headers=p1).status_code == 200
+
+
 def test_offline_post_client_id_is_idempotent(client):
     """离线发帖重试：同一 client_id 只落一条。"""
     admin = login(client, **ADMIN)

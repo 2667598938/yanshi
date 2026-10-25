@@ -53,6 +53,61 @@ def test_vip_redeem_and_admin_adjust(client):
     assert revoked.json()['data']['is_vip'] is False
 
 
+def test_approved_feature_grants_and_revoke(client):
+    """审批通过写授权表：资料完整链接/AI 立即生效，撤销后立即失效。"""
+    admin = login(client, 'admin@test.com', 'Admin2028')
+    ah = h(admin['access_token'])
+    publisher = client.post('/api/v1/admin/members', headers=ah,
+                            json={'email': 'grant-pub@test.com', 'nickname': '资料发布',
+                                  'password': 'Friend2028'}).json()['data']
+    viewer = client.post('/api/v1/admin/members', headers=ah,
+                         json={'email': 'grant1@test.com', 'nickname': '授权测试',
+                               'password': 'Friend2028'}).json()['data']
+    # 发布者开通 VIP 才能发资料
+    assert client.put(f"/api/v1/admin/members/{publisher['id']}", headers=ah,
+                      json={'vip_action': 'grant', 'vip_days': 30,
+                            'note': '测试资料发布'}).status_code == 200
+    ph = h(login(client, 'grant-pub@test.com', 'Friend2028')['access_token'])
+    member = login(client, 'grant1@test.com', 'Friend2028')
+    mh = h(member['access_token'])
+    assert viewer['is_vip'] is False
+
+    res = client.post('/api/v1/resources', headers=ph, json={
+        'title': '授权验证资料', 'url': 'https://example.com/share/full-link.zip',
+        'code': '8899', 'category': '其他', 'intro': '验证审批授权'})
+    assert res.status_code == 200, res.text
+    rid_res = res.json()['data']['id']
+    before = client.get(f'/api/v1/resources/{rid_res}', headers=mh).json()['data']
+    assert before['masked'] is True and before['code'] == ''
+
+    req = client.post('/api/v1/requests', headers=mh,
+                      json={'feature': 'materials', 'reason': '需要完整资料链接'})
+    req_id = req.json()['data']['id']
+    assert client.post(f'/api/v1/admin/requests/{req_id}/review', headers=ah,
+                       json={'action': 'approve', 'note': '同意开放'}).status_code == 200
+
+    after = client.get(f'/api/v1/resources/{rid_res}', headers=mh).json()['data']
+    assert after['masked'] is False
+    assert after['code'] == '8899'
+    assert after['url'].endswith('full-link.zip')
+
+    assert client.post(f'/api/v1/admin/requests/{req_id}/revoke',
+                       headers=ah).status_code == 200
+    revoked = client.get(f'/api/v1/resources/{rid_res}', headers=mh).json()['data']
+    assert revoked['masked'] is True and revoked['code'] == ''
+
+    # AI 授权同样立即生效/失效
+    req_ai = client.post('/api/v1/requests', headers=mh,
+                         json={'feature': 'ai', 'reason': '想用 AI 讲数学题'})
+    ai_id = req_ai.json()['data']['id']
+    assert client.get('/api/v1/ai/enabled', headers=mh).json()['data']['access'] is False
+    client.post(f'/api/v1/admin/requests/{ai_id}/review', headers=ah,
+                json={'action': 'approve', 'note': '同意 AI'})
+    assert client.get('/api/v1/ai/enabled', headers=mh).json()['data']['access'] is True
+    client.post(f'/api/v1/admin/requests/{ai_id}/revoke', headers=ah)
+    assert client.get('/api/v1/ai/enabled', headers=mh).json()['data']['access'] is False
+
+
 def test_feature_request_flow(client):
     admin = login(client, 'admin@test.com', 'Admin2028')
     ah = h(admin['access_token'])

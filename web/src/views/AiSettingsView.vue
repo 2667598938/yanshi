@@ -33,6 +33,7 @@ const deleting = ref(false)
 const loading = ref(true)
 
 const isVip = computed(() => auth.isVip)
+const canUse = ref(false)
 const configured = computed(() => !!status.value?.configured)
 const currentProvider = computed(() => PROVIDERS.find((p) => p.id === provider.value))
 
@@ -45,6 +46,9 @@ function pickProvider(p) {
 
 async function load() {
   try {
+    const cfg = await aiApi.enabled().catch(() => null)
+    canUse.value = cfg ? !!cfg.access : isVip.value
+    if (!canUse.value) return
     status.value = await aiApi.key()
     if (status.value.configured) {
       provider.value = status.value.provider || 'deepseek'
@@ -128,10 +132,10 @@ onMounted(load)
     <div class="page">
       <div v-if="loading" class="empty">读取中…</div>
 
-      <div v-else-if="!isVip" class="card guide">
+      <div v-else-if="!canUse" class="card guide">
         <div class="guide-badge"><Crown :size="24" /></div>
-        <div class="guide-title">AI 是 VIP 专属功能</div>
-        <div class="guide-desc">开通 VIP 后可填写自己的 API Key，调用你自己的模型额度，站内不保存明文。</div>
+        <div class="guide-title">AI 需要 VIP 或审批授权</div>
+        <div class="guide-desc">开通 VIP 或申请并获批「AI 问答权限」后，可填写自己的 API Key 调用模型额度，站内不保存明文。</div>
         <button class="btn btn-accent btn-block" @click="router.push('/vip')">
           <Crown :size="17" />去开通 VIP
         </button>

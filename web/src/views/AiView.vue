@@ -15,7 +15,7 @@ const { toast } = useToast()
 
 const enabled = ref(true)
 const keyReady = ref(false)
-const vip = ref(false)
+const access = ref(true)
 const scenes = ref([
   { key: 'kaoyan', label: '考研答疑', icon: Cpu },
   { key: 'general', label: '通用问答', icon: MessageCircle },
@@ -49,7 +49,7 @@ async function scrollBottom() {
 }
 
 const blocked = computed(() => {
-  if (!vip.value) return 'vip'
+  if (!access.value) return 'vip'
   if (!keyReady.value) return 'key'
   return ''
 })
@@ -65,23 +65,39 @@ async function send() {
   messages.value.push({ role: 'user', content })
   input.value = ''
   sending.value = true
+  const reply = { role: 'assistant', content: '', streaming: true }
+  messages.value.push(reply)
   scrollBottom()
   try {
-    const data = await aiApi.chat({
-      scene: scene.value,
-      content,
-      conversation_id: conversationId.value || undefined,
-    })
-    messages.value.push({ role: 'assistant', content: data.reply,
-      prompt_tokens: data.prompt_tokens, completion_tokens: data.completion_tokens,
-      latency_ms: data.latency_ms })
-    if (data.conversation_id) {
-      conversationId.value = data.conversation_id
-      if (data.title) conversationTitle.value = data.title
-    }
+    await aiApi.chatStream(
+      {
+        scene: scene.value,
+        content,
+        conversation_id: conversationId.value || undefined,
+      },
+      (evt) => {
+        if (evt.type === 'delta') {
+          reply.content += evt.text
+          scrollBottom()
+        } else if (evt.type === 'error') {
+          reply.content += (reply.content ? '\n\n' : '') + `出错了：${evt.message}`
+        } else if (evt.type === 'done') {
+          reply.streaming = false
+          reply.prompt_tokens = evt.prompt_tokens
+          reply.completion_tokens = evt.completion_tokens
+          reply.latency_ms = evt.latency_ms
+          if (evt.conversation_id) {
+            conversationId.value = evt.conversation_id
+            if (evt.title) conversationTitle.value = evt.title
+          }
+        }
+      }
+    )
   } catch (e) {
-    messages.value.push({ role: 'assistant', content: `出错了：${e.message}，稍后再试。` })
+    if (!reply.content) reply.content = `出错了：${e.message}，稍后再试。`
+    else reply.content += `\n\n（连接中断：${e.message}）`
   } finally {
+    reply.streaming = false
     sending.value = false
     scrollBottom()
   }
@@ -137,8 +153,8 @@ onMounted(async () => {
     await auth.fetchMe().catch(() => {})
     const cfg = await aiApi.enabled()
     enabled.value = cfg.enabled
-    vip.value = !!cfg.vip
-    if (cfg.vip) {
+    access.value = cfg.access !== false
+    if (access.value) {
       const k = await aiApi.key()
       keyReady.value = !!k.configured
     }
@@ -185,14 +201,14 @@ onMounted(async () => {
     <div v-if="blocked" class="ai-guide">
       <div class="guide-badge"><Crown :size="26" /></div>
       <div class="guide-title">
-        {{ blocked === 'vip' ? 'AI 是 VIP 专属功能' : '还差一步：配置你的 API Key' }}
+        {{ blocked === 'vip' ? 'AI 需要 VIP 或审批授权' : '还差一步：配置你的 API Key' }}
       </div>
       <div class="guide-desc">
         <template v-if="blocked === 'vip'">
-          AI 问答需要 VIP 权限，并填写你自己的模型 API Key。开通后站内不会保存明文 Key。
+          AI 问答需要 VIP 权限，或申请「AI 问答权限」并通过审批；使用时可填写你自己的模型 API Key，站内不会保存明文。
         </template>
         <template v-else>
-          你已是 VIP。前往 AI 设置填写自己的 API Key，即可开始对话；Key 使用 AES-256-GCM 加密存储。
+          你已获得 AI 权限。前往 AI 设置填写自己的 API Key，即可开始对话；Key 使用 AES-256-GCM 加密存储。
         </template>
       </div>
       <button
@@ -219,7 +235,7 @@ onMounted(async () => {
       <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
         <div v-if="m.role === 'assistant'" class="msg-ava"><Sparkles :size="16" /></div>
         <div class="msg-main">
-          <div class="bubble">{{ m.content }}</div>
+          <div class="bubble">{{ m.content }}<span v-if="m.streaming" class="caret">▍</span></div>
           <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
             <template v-if="m.prompt_tokens || m.completion_tokens">
               {{ (m.prompt_tokens || 0) + (m.completion_tokens || 0) }} tokens
@@ -228,10 +244,6 @@ onMounted(async () => {
             {{ ((m.latency_ms || 0) / 1000).toFixed(1) }}s
           </div>
         </div>
-      </div>
-      <div v-if="sending" class="chat-msg assistant">
-        <div class="msg-ava"><Sparkles :size="16" /></div>
-        <div class="bubble typing">思考中…</div>
       </div>
     </div>
 
@@ -303,7 +315,8 @@ onMounted(async () => {
 .bubble { max-width: 78%; padding: 10px 13px; border-radius: 14px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; box-shadow: var(--shadow-soft); }
 .chat-msg.assistant .bubble { background: #fff; border-top-left-radius: 4px; }
 .chat-msg.user .bubble { background: var(--primary); color: #fff; border-top-right-radius: 4px; }
-.typing { color: var(--faint); }
+.caret { display: inline-block; margin-left: 1px; color: var(--primary); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
 .msg-main { display: flex; flex-direction: column; min-width: 0; max-width: 78%; }
 .msg-main .bubble { max-width: 100%; }
 .msg-usage { font-size: 10.5px; color: var(--faint); margin-top: 4px; padding-left: 2px; }

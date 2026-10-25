@@ -57,11 +57,27 @@ class FeatureRequest(Base):
     feature = Column(String(40), nullable=False)
     reason = Column(String(500), nullable=False)
     status = Column(String(16), nullable=False, default='pending', server_default='pending',
-                    index=True)   # pending | approved | rejected | withdrawn
+                    index=True)   # pending | approved | rejected | revoked | withdrawn
     review_note = Column(String(300), default='', server_default='')
     reviewed_by = Column(ForeignKey('users.id'), nullable=True)
     reviewed_at = Column(DateTime)
     created_at = Column(DateTime, default=now, nullable=False, index=True)
+
+
+class UserFeatureGrant(Base):
+    """审批后的功能授权事实源；鉴权只读本表或 VIP。"""
+    __tablename__ = 'user_feature_grants'
+    __table_args__ = (
+        UniqueConstraint('user_id', 'feature', name='uq_grant_user_feature'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    feature = Column(String(40), nullable=False)
+    source_request_id = Column(Integer, nullable=True)
+    granted_by = Column(ForeignKey('users.id'), nullable=True)
+    granted_at = Column(DateTime, default=now, nullable=False)
+    revoked_at = Column(DateTime)
 
 
 class Message(Base):

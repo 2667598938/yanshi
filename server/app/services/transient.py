@@ -36,6 +36,26 @@ class TransientStore:
             self.data.pop(key, None)
             return value
 
+    def verify(self, key: str, value_digest: str, max_attempts: int = 5) -> bool:
+        """核对验证码：允许最多 max_attempts 次输错，成功后立即失效。"""
+        with self.lock:
+            stored = self.get(key)
+            if not stored:
+                return False
+            attempts_key = key + ':attempts'
+            if stored == value_digest:
+                self.data.pop(key, None)
+                self.data.pop(attempts_key, None)
+                return True
+            attempts = int(self.get(attempts_key) or 0) + 1
+            if attempts >= max_attempts:
+                # 达到错误上限：验证码作废，必须重新获取
+                self.data.pop(key, None)
+                self.data.pop(attempts_key, None)
+            else:
+                self.set(attempts_key, attempts, 300)
+            return False
+
     def set_once(self, key, value, ttl):
         with self.lock:
             if self.get(key) is not None:

@@ -32,10 +32,10 @@ const mistakes = useMistakesStore()
 const app = useAppStore()
 const { toast } = useToast()
 
-const rows = computed(() => timer.doneSessions)
+const rows = computed(() => timer.effectiveSessions)
 const today = todayKey()
 const thisMonday = weekStartKey(today)
-const isEmpty = computed(() => timer.totalCount === 0)
+const isEmpty = computed(() => timer.totalMin === 0)
 
 // ===== 本周 =====
 const weekRows = computed(() => filterSessions(rows.value, { start: thisMonday, end: today }))

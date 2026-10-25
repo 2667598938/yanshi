@@ -18,6 +18,7 @@ from ..schemas.account import (
     AnnouncementUpdate, FeatureRequestReview, InviteCreate,
 )
 from ..serializers import iso
+from ..services import features as feature_service
 from ..services import room as room_service
 from ..services.messages import create_message
 from ..services.security import hash_password, new_invite_code
@@ -290,7 +291,7 @@ def delete_invite(invite_id: int, request: Request, db=Depends(get_db)):
 def list_requests(status: str = 'pending', db=Depends(get_db)):
     query = select(FeatureRequest, User).join(User, FeatureRequest.user_id == User.id)
     if status != 'all':
-        if status not in ('pending', 'approved', 'rejected', 'withdrawn'):
+        if status not in ('pending', 'approved', 'rejected', 'revoked', 'withdrawn'):
             raise ApiError(400, 40001, '未知的申请状态')
         query = query.where(FeatureRequest.status == status)
     rows = db.execute(query.order_by(FeatureRequest.id.desc()).limit(200)).all()
@@ -312,6 +313,9 @@ def review_request(rid: int, body: FeatureRequestReview, request: Request,
     user = db.get(User, row.user_id)
     label = FEATURE_LABELS.get(row.feature, row.feature)
     if row.status == 'approved':
+        # 审批同事务写入授权表：鉴权只读 grant，撤销后立即失效
+        feature_service.grant_feature(db, user.id, row.feature, admin_id=admin.id,
+                                      request_id=row.id)
         title = '功能申请已通过'
         content = f'你申请的「{label}」已通过。' + (f'备注：{row.review_note}' if row.review_note else '')
     else:
@@ -322,6 +326,30 @@ def review_request(rid: int, body: FeatureRequestReview, request: Request,
                    settings=request.app.state.settings)
     audit(db, request, 'admin.review_request', user_id=row.user_id,
           detail=f'{rid} {row.status} {row.review_note}'.strip())
+    db.commit()
+    return ok(admin_request_dict(row, user))
+
+
+@router.post('/requests/{rid}/revoke')
+def revoke_request(rid: int, request: Request, db=Depends(get_db),
+                   admin=Depends(get_admin)):
+    row = db.get(FeatureRequest, rid)
+    if not row:
+        raise ApiError(404, 40401, '申请不存在')
+    if row.status != 'approved':
+        raise ApiError(400, 40001, '只有已通过的申请可以撤销')
+    row.status = 'revoked'
+    row.review_note = (row.review_note + ' / 管理员撤销').strip(' /')
+    row.reviewed_by = admin.id
+    row.reviewed_at = utcnow()
+    feature_service.revoke_feature(db, row.user_id, row.feature)
+    user = db.get(User, row.user_id)
+    label = FEATURE_LABELS.get(row.feature, row.feature)
+    create_message(db, user, 'apply', '功能授权已撤销',
+                   f'你申请的「{label}」授权已被管理员撤销，相关功能将立即失效。',
+                   link='/requests', dedupe_key=f'apply-revoke:{rid}', email=True,
+                   settings=request.app.state.settings)
+    audit(db, request, 'admin.revoke_request', user_id=row.user_id, detail=str(rid))
     db.commit()
     return ok(admin_request_dict(row, user))
 

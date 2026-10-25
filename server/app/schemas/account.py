@@ -65,7 +65,8 @@ class LoginInput(Strict):
 
 
 class TokenInput(Strict):
-    refresh_token: str = Field(max_length=4000)
+    # 兼容旧客户端；浏览器优先使用 httpOnly Cookie 中的 refresh token
+    refresh_token: str = Field(default='', max_length=4000)
 
 
 class ProfileUpdate(Strict):
@@ -76,6 +77,7 @@ class ProfileUpdate(Strict):
     daily_goal_min: Optional[int] = Field(default=None, ge=1, le=1440)
     exam_date: Optional[str] = Field(default=None, max_length=10)
     notify_enabled: Optional[bool] = None
+    privacy_mode: Optional[bool] = None
 
 
 class ErrorTypeInput(Strict):

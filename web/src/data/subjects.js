@@ -39,8 +39,17 @@ export const DURATIONS = [25, 45, 50, 90]
 export const MIN_DURATION = 5
 export const MAX_DURATION = 180
 
-// 复习阶段（艾宾浩斯，单位：天）
-export const REVIEW_INTERVALS = [1, 2, 4, 7, 15, 30]
+// 复习阶段（艾宾浩斯 8 节点，单位：分钟）：5min / 30min / 12h / 1d / 2d / 4d / 7d / 15d
+export const REVIEW_INTERVALS = [
+  5, 30, 12 * 60, 24 * 60, 2 * 24 * 60, 4 * 24 * 60, 7 * 24 * 60, 15 * 24 * 60,
+]
+
+export function intervalLabel(minutes) {
+  if (minutes == null) return ''
+  if (minutes < 60) return `${minutes} 分钟`
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} 小时`
+  return `${Math.round(minutes / (24 * 60))} 天`
+}
 
 // 考研阶段（任务用）
 export const PHASES = [

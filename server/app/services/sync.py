@@ -26,7 +26,36 @@ MAX_TOTAL_RECORDS = 20000            # 每账号 2 万条
 MAX_TOTAL_BYTES = 20 * 1024 * 1024   # 每账号 20MB
 MAX_OPERATIONS = 200000              # 每账号操作日志上限
 
+SESSION_MAX_SEC = 180 * 60           # 番茄时长上限 180 分钟
+SESSION_MAX_PAUSE_SEC = 30 * 60      # 单颗累计暂停上限 30 分钟（超过按暂停超时处理）
+
 sync_write_lock = threading.Lock()
+
+
+def _normalize_session(record: dict) -> dict:
+    """服务端重算番茄时长：真实时长封顶 180 分钟，超时/暂停超时记为 quit。"""
+    if record.get('type') != 'session':
+        return record
+    try:
+        started = int(record.get('startedAt') or 0)
+        ended = int(record.get('endedAt') or 0)
+        paused = int(record.get('pauseAccum') or 0)
+    except (TypeError, ValueError):
+        return record
+    if started <= 0 or ended <= 0:
+        return record
+    raw_sec = max(0, (ended - started - paused) // 1000)
+    status = record.get('status')
+    reason = record.get('end_reason') or ''
+    if status == 'done':
+        if paused >= SESSION_MAX_PAUSE_SEC:
+            status, reason = 'quit', reason or 'pause_timeout'
+        elif raw_sec > SESSION_MAX_SEC:
+            status, reason = 'quit', reason or 'timeout'
+    record['status'] = status
+    record['actualSec'] = min(raw_sec, SESSION_MAX_SEC)
+    record['end_reason'] = 'completed' if status == 'done' else (reason or 'timeout')
+    return record
 
 
 def canonical_signature(command_dict: dict) -> str:
@@ -118,6 +147,8 @@ def execute_commands(db, user_id: int, command_dict: dict) -> dict:
                     body_text, deleted = 'null', 1
                 else:
                     record_type = _validate_record(record_id, record)
+                    # 番茄记录由服务端重算时长与状态，避免客户端伪造/挂起误差
+                    record = _normalize_session(record)
                     # 类型不可变
                     if old and not old.deleted:
                         old_type = json.loads(old.body).get('type')

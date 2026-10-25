@@ -109,3 +109,13 @@ def test_resource_vip_masking_like_favorite(client):
     assert edited.json()['data']['title'].endswith('2026')
     assert client.delete(f'/api/v1/resources/{rid}', headers=h1).status_code == 200
     assert client.get(f'/api/v1/resources/{rid}', headers=h1).status_code == 404
+
+    # 管理员删除他人资料必须填写原因
+    second = client.post('/api/v1/resources', headers=h1, json=payload).json()['data']['id']
+    r = client.delete(f'/api/v1/resources/{second}', headers=ah)
+    assert r.status_code == 400 and r.json()['code'] == 40001
+    assert client.get(f'/api/v1/resources/{second}', headers=h1).status_code == 200
+    assert client.delete(f'/api/v1/resources/{second}', headers=ah,
+                         params={'reason': '链接失效'}).status_code == 200
+    msgs = client.get('/api/v1/messages', headers=h1).json()['data']
+    assert any('资料' in m['title'] and '链接失效' in m['content'] for m in msgs)

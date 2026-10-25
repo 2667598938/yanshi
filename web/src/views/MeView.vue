@@ -5,7 +5,7 @@ import {
   ChevronRight, Pencil, Target, Clock3, Bell, NotebookPen,
   Sparkles, Trash2, Info, Check, ListChecks, Download, Camera,
   LogOut, ShieldCheck, FileText, BookMarked, Crown, ClipboardCheck, Shapes,
-  BookOpen, Star, MessagesSquare, MessageSquare, School, RefreshCw,
+  BookOpen, Star, MessagesSquare, MessageSquare, School, RefreshCw, EyeOff,
 } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
@@ -14,7 +14,7 @@ import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 import { fmtDate } from '../utils/time'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
 import { db } from '../db'
-import { resetSyncState, syncNow } from '../sync/engine'
+import { syncNow } from '../sync/engine'
 import { blobToDataUrl } from '../utils/image'
 import { fmtMinutes, todayKey } from '../utils/date'
 import { authApi, publicApi, attachmentApi, messageApi } from '../api'
@@ -153,9 +153,8 @@ async function onAvatarChange(e) {
 }
 
 async function logout() {
+  // 各账号使用独立本地库，登出后切换到游客库，未同步数据仍保留在原账号库
   await auth.logout()
-  // 清理待发队列与同步状态，防止换号/公用设备时把上一个账号的本地改动推到新账号
-  await resetSyncState()
   router.replace('/login')
 }
 
@@ -233,6 +232,17 @@ async function toggleNotify() {
   }
 }
 
+async function togglePrivacy() {
+  const next = !auth.user?.privacy_mode
+  try {
+    const user = await authApi.updateMe({ privacy_mode: next })
+    auth.setUser(user)
+    toast(next ? '已开启隐私模式：成员列表与排行榜将匿名显示' : '已关闭隐私模式')
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
 onMounted(() => {
   auth.fetchMe().catch(() => {})
   messageApi.unread().then((d) => { unread.value = d.count || 0 }).catch(() => {})
@@ -304,6 +314,12 @@ onMounted(() => {
             <span class="row-ic c-purple"><Bell :size="18" /></span>
             <span class="row-label">到点浏览器通知</span>
             <span class="switch" :class="{ on: app.notifyEnabled }"><span class="knob"></span></span>
+          </div>
+          <div class="row" @click="togglePrivacy">
+            <span class="row-ic c-purple"><EyeOff :size="18" /></span>
+            <span class="row-label">隐私模式</span>
+            <span class="row-val">房间匿名 / 不上榜</span>
+            <span class="switch" :class="{ on: auth.user?.privacy_mode }"><span class="knob"></span></span>
           </div>
         </div>
       </div>

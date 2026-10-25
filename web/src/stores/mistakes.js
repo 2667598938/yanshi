@@ -1,19 +1,40 @@
 import { defineStore } from 'pinia'
 import { db, uid } from '../db'
-import { todayKey, addDaysKey } from '../utils/date'
+import { todayKey } from '../utils/date'
 import { REVIEW_INTERVALS } from '../data/subjects'
 import { enqueueRecord, enqueueDelete } from '../sync/engine'
 
-// 错题本：图片以 Blob 存 IndexedDB；艾宾浩斯 1/2/4/7/15/30 天复习
+// 错题本：图片以 Blob 存 IndexedDB；艾宾浩斯 8 节点（5min → 15d）
+const OLD_TO_NEW_STAGE = [3, 4, 5, 6, 7, 7]
+
+function scheduleAt(stage, base = Date.now()) {
+  return base + REVIEW_INTERVALS[Math.min(stage, REVIEW_INTERVALS.length - 1)] * 60000
+}
+
+// 旧版按「天」+ 日期字符串存复习计划，载入时迁移为毫秒时间戳与 8 节点阶段
+async function migrateRows(rows) {
+  let changed = false
+  for (const row of rows) {
+    if (typeof row.nextReviewAt !== 'string') continue
+    const dueMs = new Date(`${row.nextReviewAt}T00:00:00`).getTime()
+    row.stage = row.mastered ? Math.min(row.stage || 0, 7) : OLD_TO_NEW_STAGE[Math.min(row.stage || 0, 5)]
+    row.nextReviewAt = row.mastered ? null : (Number.isFinite(dueMs) ? dueMs : Date.now())
+    changed = true
+    await db.mistakes.put(row)
+  }
+  return changed
+}
+
 export const useMistakesStore = defineStore('mistakes', {
   state: () => ({ list: [], loaded: false }),
   getters: {
     sorted: (s) => [...s.list].sort((a, b) => b.createdAt - a.createdAt),
-    // 今日待复习（含已逾期未复习）
+    // 今日待复习（含已逾期）
     dueReview() {
-      const t = todayKey()
-      return this.sorted
-        .filter((x) => !x.mastered && x.nextReviewAt && x.nextReviewAt <= t)
+      const now = Date.now()
+      return this.sorted.filter(
+        (x) => !x.mastered && x.nextReviewAt && x.nextReviewAt <= now
+      )
     },
     // 仍在复习周期内（未掌握）
     active: (s) => s.list.filter((x) => !x.mastered),
@@ -32,6 +53,7 @@ export const useMistakesStore = defineStore('mistakes', {
     async load() {
       if (this.loaded) return
       this.list = await db.mistakes.toArray()
+      await migrateRows(this.list)
       this.loaded = true
     },
     async add(payload) {
@@ -42,12 +64,15 @@ export const useMistakesStore = defineStore('mistakes', {
         reason: payload.reason || 'other',
         tags: payload.tags || [],
         content: payload.content || '',
+        idea: payload.idea || '',
+        analysis: payload.analysis || '',
         images: payload.images || [],
+        answerImages: payload.answerImages || [],
         sessionId: payload.sessionId || null,
         sourceDate: payload.sourceDate || todayKey(),
         stage: 0,
         mastered: 0,
-        nextReviewAt: addDaysKey(todayKey(), REVIEW_INTERVALS[0]),
+        nextReviewAt: scheduleAt(0),
         history: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -70,26 +95,29 @@ export const useMistakesStore = defineStore('mistakes', {
       await enqueueDelete('mistakes', id)
       this.list = this.list.filter((x) => x.id !== id)
     },
-    // 复习：remembered=true 进入下一间隔；false 重置回第 1 天
+    // 复习：记住进入下一节点；需巩固回退上一节点（不再重置到 0）
     async review(id, remembered = true) {
       const m = this.list.find((x) => x.id === id)
       if (!m) return
-      const t = todayKey()
-      const history = [...(m.history || []), { date: t, remembered, at: Date.now() }]
-      let stage = m.stage
+      const now = Date.now()
+      const history = [...(m.history || []), {
+        date: todayKey(), remembered, at: now,
+        fromStage: m.stage, intervalMinutes: REVIEW_INTERVALS[m.stage],
+      }]
+      let stage = m.stage || 0
       let mastered = 0
       let nextReviewAt
       if (remembered) {
-        stage = m.stage + 1
+        stage = stage + 1
         if (stage >= REVIEW_INTERVALS.length) {
           mastered = 1
           nextReviewAt = null
         } else {
-          nextReviewAt = addDaysKey(t, REVIEW_INTERVALS[stage])
+          nextReviewAt = scheduleAt(stage, now)
         }
       } else {
-        stage = 0
-        nextReviewAt = addDaysKey(t, REVIEW_INTERVALS[0])
+        stage = Math.max(0, stage - 1)
+        nextReviewAt = scheduleAt(stage, now)
       }
       const patch = { stage, mastered, nextReviewAt, history }
       await db.mistakes.update(id, patch)
@@ -107,9 +135,9 @@ export const useMistakesStore = defineStore('mistakes', {
       return this.list.length
     },
     unreviewedCount() {
-      const t = todayKey()
+      const now = Date.now()
       return this.list.filter(
-        (x) => !x.mastered && x.nextReviewAt && x.nextReviewAt <= t
+        (x) => !x.mastered && x.nextReviewAt && x.nextReviewAt <= now
       ).length
     },
   },

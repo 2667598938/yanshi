@@ -1,5 +1,8 @@
 """AI 助教接口（独立 Tab）：VIP 自填 Key（BYOK）+ 服务端兜底 Key。"""
+import json
+
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 
 from ..deps import audit, get_current_user, get_db
@@ -11,6 +14,7 @@ from ..schemas.ai import (
 from ..serializers import iso
 from ..services import ai as ai_service
 from ..services import ai_key as crypto
+from ..services import features as feature_service
 from ..time import utcnow
 
 router = APIRouter(prefix='/api/v1/ai', tags=['ai'])
@@ -40,9 +44,8 @@ def is_vip(user):
     return bool(user.vip_until and user.vip_until > utcnow())
 
 
-def require_vip(user):
-    if not is_vip(user):
-        raise ApiError(403, 40301, '该功能需要 VIP')
+def require_ai(db, user):
+    feature_service.require_feature(db, user, 'ai', 'AI 功能需要 VIP 或审批授权')
 
 
 def key_dict(row):
@@ -74,20 +77,21 @@ def scenes(user=Depends(get_current_user)):
 def enabled(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
     key_row = db.get(UserAIKey, user.id)
     return ok({'enabled': bool(key_row) or request.app.state.settings.ai_enabled,
-               'byok': key_row is not None, 'vip': is_vip(user)})
+               'byok': key_row is not None, 'vip': is_vip(user),
+               'access': is_vip(user) or feature_service.has_feature(db, user, 'ai')})
 
 
 # ---------------------------------------------------------------- AI Key（VIP）
 @router.get('/key')
 def get_key(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
-    require_vip(user)
+    require_ai(db, user)
     return ok(key_dict(db.get(UserAIKey, user.id)))
 
 
 @router.put('/key')
 def save_key(body: AIKeyInput, request: Request, user=Depends(get_current_user),
              db=Depends(get_db)):
-    require_vip(user)
+    require_ai(db, user)
     base_url = ai_service.resolve_base_url(body.provider, body.base_url)
     model = body.model.strip() or ai_service.default_model(body.provider)
     cipher_text = crypto.encrypt(enc_secret(request), body.api_key.strip(), str(user.id))
@@ -120,7 +124,7 @@ def delete_key(request: Request, user=Depends(get_current_user), db=Depends(get_
 @router.post('/models')
 async def models(body: AIModelsInput, request: Request, user=Depends(get_current_user),
                  db=Depends(get_db)):
-    require_vip(user)
+    require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
     api_key = body.api_key.strip()
     if not api_key and key_row:
@@ -140,9 +144,8 @@ async def models(body: AIModelsInput, request: Request, user=Depends(get_current
 async def chat(body: ChatInput, request: Request, user=Depends(get_current_user),
                db=Depends(get_db)):
     request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
+    require_ai(db, user)
     key_row = db.get(UserAIKey, user.id)
-    if key_row:
-        require_vip(user)
 
     convo = None
     history = []
@@ -186,6 +189,82 @@ async def chat(body: ChatInput, request: Request, user=Depends(get_current_user)
         out['conversation_id'] = convo.id
         out['title'] = convo.title
     return ok(out)
+
+
+@router.post('/chat/stream')
+async def chat_stream(body: ChatInput, request: Request, user=Depends(get_current_user),
+                      db=Depends(get_db)):
+    """SSE 流式对话：逐字返回 delta，结束时落库并回传会话信息。"""
+    request.app.state.transient.limit(f'ai-chat:{user.id}', 20, 60)
+    require_ai(db, user)
+    key_row = db.get(UserAIKey, user.id)
+
+    convo = None
+    history = []
+    if body.conversation_id:
+        convo = get_owned_conversation(db, body.conversation_id, user)
+        rows = db.scalars(select(AIMessage).where(
+            AIMessage.conversation_id == convo.id).order_by(
+            AIMessage.id.desc()).limit(ai_service.HISTORY_TURNS * 2)).all()
+        rows.reverse()
+        history = [{'role': r.role, 'content': r.content} for r in rows]
+        db.add(AIMessage(conversation_id=convo.id, role='user', content=body.content))
+        convo.updated_at = utcnow()
+        if convo.title == '新对话':
+            convo.title = body.content[:20]
+        db.commit()
+
+    messages = ai_service.build_messages(body.scene, history, body.content, body.context)
+
+    def sse(payload):
+        return 'data: ' + json.dumps(payload, ensure_ascii=False) + '\n\n'
+
+    async def gen():
+        reply = ''
+        usage = {}
+        latency = None
+        chunk = {}
+        try:
+            if key_row:
+                stream = ai_service.stream_openai(
+                    key_row.base_url or ai_service.resolve_base_url(key_row.provider),
+                    crypto.decrypt(enc_secret(request), key_row.key_cipher, str(user.id)),
+                    key_row.model or ai_service.default_model(key_row.provider),
+                    messages, request.app.state.settings.ai_max_tokens)
+            else:
+                stream = ai_service.stream_ark(request.app.state.settings, messages)
+            async for chunk in stream:
+                if chunk.get('delta'):
+                    reply += chunk['delta']
+                    yield sse({'type': 'delta', 'text': chunk['delta']})
+            if 'usage' in chunk:
+                usage = chunk.get('usage') or {}
+                latency = chunk.get('latency_ms')
+        except ApiError as e:
+            yield sse({'type': 'error', 'message': e.message})
+            return
+        except Exception:
+            yield sse({'type': 'error', 'message': 'AI 服务异常，请稍后重试'})
+            return
+
+        prompt_tokens = usage.get('prompt_tokens')
+        completion_tokens = usage.get('completion_tokens')
+        out = {'type': 'done', 'reply': reply, 'scene': body.scene,
+               'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens,
+               'latency_ms': latency}
+        if convo:
+            db.add(AIMessage(conversation_id=convo.id, role='assistant', content=reply,
+                             prompt_tokens=prompt_tokens,
+                             completion_tokens=completion_tokens, latency_ms=latency))
+            convo.updated_at = utcnow()
+            db.commit()
+            out['conversation_id'] = convo.id
+            out['title'] = convo.title
+        yield sse(out)
+
+    return StreamingResponse(
+        gen(), media_type='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 @router.get('/conversations')

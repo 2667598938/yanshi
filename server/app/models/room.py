@@ -37,7 +37,7 @@ class RoomMember(Base):
 
 
 class RoomPresence(Base):
-    """在线 / 专注状态，由前端 20s 心跳驱动；查询时以 45 秒阈值判定离线。"""
+    """在线 / 专注状态，由前端 30s 心跳驱动；查询时以 90 秒阈值判定离线。"""
     __tablename__ = 'room_presence'
     __table_args__ = (
         UniqueConstraint('room_id', 'user_id', name='uq_presence_room_user'),
@@ -54,6 +54,26 @@ class RoomPresence(Base):
     mode = Column(String(12), default='', server_default='')
     focus_started_at = Column(BigInteger, nullable=True)   # epoch ms
     last_heartbeat_at = Column(DateTime, default=now, nullable=False)
+
+
+class RoomJoinApply(Base):
+    """私密房间入房申请：pending_key 只约束「待审唯一」，历史驳回可留多条。"""
+    __tablename__ = 'room_join_applies'
+    __table_args__ = (
+        UniqueConstraint('pending_key', name='uq_room_join_pending_key'),
+        Index('ix_room_join_applies_room_status', 'room_id', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    room_id = Column(ForeignKey('rooms.id'), nullable=False)
+    user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    status = Column(String(12), default='pending', server_default='pending', nullable=False)
+    message = Column(String(200), default='', server_default='')
+    # 待审时为 f'{room_id}-{user_id}'，审批后置 NULL，让同一人可再次申请
+    pending_key = Column(String(40), nullable=True)
+    created_at = Column(DateTime, default=now, nullable=False, index=True)
+    handled_at = Column(DateTime)
+    handled_by = Column(ForeignKey('users.id'), nullable=True)
 
 
 class RoomMessage(Base):

@@ -121,13 +121,16 @@ def delete_post(pid: int, request: Request, reason: str = '',
     is_owner = row.user_id == user.id
     if not is_owner and user.role != 'admin':
         raise ApiError(403, 40301, '只能删除自己的帖子')
+    reason = (reason or '').strip()
+    if user.role == 'admin' and not is_owner and not reason:
+        raise ApiError(400, 40001, '管理员删除内容必须填写原因')
     row.deleted_at = utcnow()
     db.execute(update(Comment).where(Comment.post_id == pid).values(deleted_at=utcnow()))
     if not is_owner:
         author = db.get(User, row.user_id)
         if author:
             create_message(db, author, 'content', '帖子已被管理员删除',
-                           '你的帖子因违规被删除。' + (f'原因：{reason}' if reason else ''),
+                           '你的帖子因违规被删除。' + (f'原因：{reason[:200]}' if reason else ''),
                            link='/posts')
     audit(db, request, 'post.delete', user_id=user.id, detail=str(pid))
     db.commit()
@@ -185,6 +188,9 @@ def delete_comment(cid: int, request: Request, reason: str = '',
     can = is_owner or (post and post.user_id == user.id) or user.role == 'admin'
     if not can:
         raise ApiError(403, 40301, '无权删除该评论')
+    reason = (reason or '').strip()
+    if user.role == 'admin' and not is_owner and not reason:
+        raise ApiError(400, 40001, '管理员删除内容必须填写原因')
     row.deleted_at = utcnow()
     if row.parent_id is None:
         db.execute(update(Comment).where(
@@ -194,7 +200,7 @@ def delete_comment(cid: int, request: Request, reason: str = '',
         author = db.get(User, row.user_id)
         if author:
             create_message(db, author, 'content', '评论已被管理员删除',
-                           '你的评论因违规被删除。' + (f'原因：{reason}' if reason else ''),
+                           '你的评论因违规被删除。' + (f'原因：{reason[:200]}' if reason else ''),
                            link=f'/posts/{row.post_id}')
     audit(db, request, 'comment.delete', user_id=user.id, detail=str(cid))
     db.commit()

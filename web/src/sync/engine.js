@@ -6,6 +6,7 @@ import { reactive, toRaw } from 'vue'
 import { db, uid } from '../db'
 import { syncApi } from '../api'
 import { flushCommunity } from './community'
+import { flushMistakeImages } from './attachments'
 import { useAuthStore } from '../stores/auth'
 
 // Vue 的 reactive 会把对象包成 Proxy，IndexedDB 无法克隆 Proxy（DataCloneError）。
@@ -53,9 +54,13 @@ export const syncState = reactive({ pendingConflicts: [] })
 
 function stripLocal(row, type) {
   const { _rev, ...clean } = row
-  if (type === 'mistake' && Array.isArray(clean.images)) {
+  if (type === 'mistake') {
     // Blob 无法 JSON 化，只同步已上传的附件 key
-    clean.images = clean.images.filter((x) => typeof x === 'string')
+    for (const field of ['images', 'answerImages']) {
+      if (Array.isArray(clean[field])) {
+        clean[field] = clean[field].filter((x) => typeof x === 'string')
+      }
+    }
   }
   clean.type = type
   return clean
@@ -322,6 +327,9 @@ export async function syncNow() {
   }
   syncing = true
   try {
+    // 先把离线拍的错题图补传为附件 key，再推送记录
+    const uploaded = await flushMistakeImages()
+    for (const row of uploaded) await enqueueRecord('mistakes', row)
     await flushCommunity()
     await pushOutbox()
     const changed = await pullAll()
@@ -366,13 +374,19 @@ export async function initSyncForUser() {
   }
 }
 
-// 登出/换号时调用：清空 outbox 与同步状态，防止上一个账号的待发变更在新账号下被推送
-// （多账号数据隔离）。本地学习数据按既有设计保留；公用设备请在「我的」里用「清空本地记录」。
+// 账号切换时清空内存中的冲突裁决状态（数据本身按账号分库保留）
+export function resetSyncRuntime() {
+  heldIds.clear()
+  syncState.pendingConflicts.splice(0, syncState.pendingConflicts.length)
+  syncing = false
+  queued = false
+}
+
+// 登出/换号时清理当前库的待发队列（仅在明确「清空本地记录」时使用）
 export async function resetSyncState() {
   await db.outbox.clear()
   await db.syncMeta.clear()
   await db.localPosts.clear()
   await db.localFavs.clear()
-  heldIds.clear()
-  syncState.pendingConflicts.splice(0, syncState.pendingConflicts.length)
+  resetSyncRuntime()
 }
