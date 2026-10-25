@@ -5,6 +5,7 @@ import { schoolApi, attachmentApi, aiApi } from '../api'
 import { useToast } from '../composables/useToast'
 import BlobImage from '../components/BlobImage.vue'
 import { db, uid } from '../db'
+import { toPlain } from '../utils/plain'
 const router = useRouter()
 const { toast } = useToast()
 const rows = ref([]), selected = ref(''), busy = ref(false)
@@ -37,14 +38,14 @@ async function save() {
     const row = selected.value ? await schoolApi.update(selected.value, body)
       : await schoolApi.create({ ...body, key: form.value.key.trim() || uid('school-') })
     rows.value = [...rows.value.filter(r => r.key !== row.key), row]
-    await db.kv.put({key:'schools:catalog',value:rows.value})
+    await db.kv.put({key:'schools:catalog',value:toPlain(rows.value)})
     choose(row.key); toast('已保存，梦校墙重新进入后更新')
   } catch (e) { toast(e.message) }
   finally { busy.value = false }
 }
 async function removeSchool(){
  if(!selected.value||!confirm('删除自己的这所梦校？其他成员的梦校不受影响。'))return
- try{await schoolApi.remove(selected.value);rows.value=await schoolApi.list();await db.kv.put({key:'schools:catalog',value:rows.value});choose(rows.value[0]?.key||'')}catch(e){toast(e.message)}
+ try{await schoolApi.remove(selected.value);rows.value=await schoolApi.list();await db.kv.put({key:'schools:catalog',value:toPlain(rows.value)});choose(rows.value[0]?.key||'')}catch(e){toast(e.message)}
 }
 async function research(){
  if(!form.value.name.trim())return toast('请先填写学校名称')

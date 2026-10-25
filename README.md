@@ -138,7 +138,7 @@ npm run build
 - 前端回归测试使用 Vitest + fake-indexeddb，覆盖实际 Dexie 库、Pinia store、账号切换、图片补传与备份序列化。
 - CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）在 push / PR 到 `main`、`dev` 时执行：后端迁移可执行性 + 全量 pytest；前端 `npm ci` + `npm test` + `npm run build`。
 - 第 0 期修复范围、数据兼容规则与人工验收步骤见 [第 0 期修复说明](docs/phase0-acceptance.md)。
-- 最新自动回归：后端130项、前端81项；含图片权限、AI本人摘要/确认导入、共享验证码、原子兑换、并发座位、离线队列与恢复校验。真实SMTP/短信/OAuth/七牛/AI供应商另按统一清单验收。
+- 最新自动回归：后端130项、前端82项；含图片权限、AI本人摘要/确认导入、共享验证码、原子兑换、并发座位、离线队列与恢复校验。真实SMTP/短信/OAuth/七牛/AI供应商另按统一清单验收。
 
 ## 分支与提交规范
 
