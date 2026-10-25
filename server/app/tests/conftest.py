@@ -21,6 +21,7 @@ def client(tmp_path):
         volc_api_key='',   # 测试禁用真实 AI，用例内 monkeypatch
         admin_email='admin@test.com',
         admin_password='Admin2028',
+        auth_email_domains='',   # 测试环境不限制邮箱域名
     )
     app = create_app(settings)
     Base.metadata.create_all(bind=app.state.engine)

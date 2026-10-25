@@ -43,7 +43,7 @@ async function request(method, path, { body, query, auth = true, raw = false } =
   let { res, data } = await perform(url, options)
 
   // access 过期：用 refresh 换一次，重试原请求（只重试一次）
-  if (res.status === 401 && auth && authStore.refreshToken && !path.includes('/auth/refresh')) {
+  if (res.status === 401 && auth && authStore.canRefresh && !path.includes('/auth/refresh')) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null
@@ -92,7 +92,7 @@ export async function streamPost(path, body, onEvent, { signal } = {}) {
     })
 
   let res = await doFetch(authStore.accessToken)
-  if (res.status === 401 && authStore.refreshToken) {
+  if (res.status === 401 && authStore.canRefresh) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null
@@ -164,7 +164,7 @@ export async function fetchBlob(url) {
     fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} })
   let res = await doFetch(authStore.accessToken)
   // access 过期：复用全局刷新一次后重试，避免令牌过期瞬间图片被误判为加载失败
-  if (res.status === 401 && authStore.refreshToken) {
+  if (res.status === 401 && authStore.canRefresh) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null

@@ -366,13 +366,19 @@ export async function initSyncForUser() {
   }
 }
 
-// 登出/换号时调用：清空 outbox 与同步状态，防止上一个账号的待发变更在新账号下被推送
-// （多账号数据隔离）。本地学习数据按既有设计保留；公用设备请在「我的」里用「清空本地记录」。
+// 账号切换时清空内存中的冲突裁决状态（数据本身按账号分库保留）
+export function resetSyncRuntime() {
+  heldIds.clear()
+  syncState.pendingConflicts.splice(0, syncState.pendingConflicts.length)
+  syncing = false
+  queued = false
+}
+
+// 登出/换号时清理当前库的待发队列（仅在明确「清空本地记录」时使用）
 export async function resetSyncState() {
   await db.outbox.clear()
   await db.syncMeta.clear()
   await db.localPosts.clear()
   await db.localFavs.clear()
-  heldIds.clear()
-  syncState.pendingConflicts.splice(0, syncState.pendingConflicts.length)
+  resetSyncRuntime()
 }

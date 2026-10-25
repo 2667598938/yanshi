@@ -42,16 +42,20 @@ def test_full_register_login_refresh_flow(client):
     reg = resp.json()['data']
     assert reg['user']['nickname'] == '研友一号'
     assert reg['user']['role'] == 'member'
+    # refresh token 只在 httpOnly Cookie，不返回给前端
+    assert 'refresh_token' not in reg
+    assert client.cookies.get('yanshi_refresh')
 
     # 4. me
     headers = {'Authorization': 'Bearer ' + reg['access_token']}
     me = client.get('/api/v1/auth/me', headers=headers).json()['data']
     assert me['email'] == email
 
-    # 5. 刷新令牌
-    resp = client.post('/api/v1/auth/refresh', json={'refresh_token': reg['refresh_token']})
+    # 5. 刷新令牌（Cookie）
+    resp = client.post('/api/v1/auth/refresh')
     assert resp.status_code == 200, resp.text
     assert 'access_token' in resp.json()['data']
+    assert 'refresh_token' not in resp.json()['data']
 
     # 6. 更新资料
     resp = client.put('/api/v1/users/me', json={'nickname': '新昵称', 'daily_goal_min': 360}, headers=headers)
@@ -118,18 +122,21 @@ def test_change_password_revokes_old_tokens(client):
     ah = {'Authorization': 'Bearer ' + admin['access_token']}
     member = _make_plain_member(client, ah, 'chg@test.com')
     old_headers = {'Authorization': 'Bearer ' + member['access_token']}
-    old_refresh = member['refresh_token']
+    old_refresh = client.cookies.get('yanshi_refresh')
 
     # 修改密码
     r = client.put('/api/v1/users/me/password', headers=old_headers,
                    json={'old_password': 'Friend2028', 'new_password': 'BrandNew2028'})
     assert r.status_code == 200, r.text
+    assert client.cookies.get('yanshi_refresh') != old_refresh
 
     # 旧 access token 立即失效（token_version 已 +1）
     r = client.get('/api/v1/auth/me', headers=old_headers)
     assert r.status_code == 401, r.text
     # 旧 refresh token 已被吊销
-    r = client.post('/api/v1/auth/refresh', json={'refresh_token': old_refresh})
+    client.cookies.clear()
+    client.cookies.set('yanshi_refresh', old_refresh, path='/api/v1/auth')
+    r = client.post('/api/v1/auth/refresh')
     assert r.status_code == 401, r.text
     # 新密码可以登录
     assert login(client, 'chg@test.com', 'BrandNew2028')['access_token']
@@ -138,18 +145,66 @@ def test_change_password_revokes_old_tokens(client):
 def test_refresh_rotation_revokes_old_refresh(client):
     admin = login(client, **ADMIN)
     ah = {'Authorization': 'Bearer ' + admin['access_token']}
-    member = _make_plain_member(client, ah, 'rot@test.com')
-    rt1 = member['refresh_token']
+    _make_plain_member(client, ah, 'rot@test.com')
+    rt1 = client.cookies.get('yanshi_refresh')
 
     # 旋转一次得到新 refresh
-    r = client.post('/api/v1/auth/refresh', json={'refresh_token': rt1})
+    r = client.post('/api/v1/auth/refresh')
     assert r.status_code == 200, r.text
-    rt2 = r.json()['data']['refresh_token']
+    rt2 = client.cookies.get('yanshi_refresh')
     assert rt2 and rt2 != rt1
 
     # 旧 refresh 重放 -> 401（一次性，已吊销）
-    r = client.post('/api/v1/auth/refresh', json={'refresh_token': rt1})
+    client.cookies.clear()
+    client.cookies.set('yanshi_refresh', rt1, path='/api/v1/auth')
+    r = client.post('/api/v1/auth/refresh')
     assert r.status_code == 401, r.text
     # 新 refresh 可用
-    r = client.post('/api/v1/auth/refresh', json={'refresh_token': rt2})
+    client.cookies.clear()
+    client.cookies.set('yanshi_refresh', rt2, path='/api/v1/auth')
+    r = client.post('/api/v1/auth/refresh')
     assert r.status_code == 200, r.text
+
+
+def test_refresh_cookie_is_http_only(client):
+    resp = client.post('/api/v1/auth/login', json=ADMIN)
+    cookie = resp.headers.get('set-cookie', '').lower()
+    assert 'yanshi_refresh=' in cookie
+    assert 'httponly' in cookie
+    assert 'samesite=lax' in cookie
+    assert 'path=/api/v1/auth' in cookie
+
+
+def test_email_code_five_minutes_and_attempt_limit(client):
+    email = 'code-limit@test.com'
+    assert client.post('/api/v1/auth/email-code',
+                       json={'email': email, 'scene': 'register'}).status_code == 200
+    code = read_latest_code(client.app.state.settings.mail_directory)
+    mail_text = sorted(client.app.state.settings.mail_directory.glob('*.txt'),
+                       key=lambda p: p.stat().st_mtime)[-1].read_text(encoding='utf-8')
+    assert '5 分钟' in mail_text
+
+    # 连错 5 次后验证码作废，即使输入正确也失败
+    for _ in range(5):
+        r = client.post('/api/v1/auth/register', json={
+            'email': email, 'code': '000000', 'password': 'Friend2028',
+            'nickname': '验证码测试', 'accepted_terms': True})
+        assert r.status_code == 400
+    r = client.post('/api/v1/auth/register', json={
+        'email': email, 'code': code, 'password': 'Friend2028',
+        'nickname': '验证码测试', 'accepted_terms': True})
+    assert r.status_code == 400
+
+
+def test_email_domain_restriction(client):
+    settings = client.app.state.settings
+    settings.auth_email_domains = 'qq.com'
+    try:
+        r = client.post('/api/v1/auth/email-code',
+                        json={'email': 'not-qq@test.com', 'scene': 'register'})
+        assert r.status_code == 400
+        r = client.post('/api/v1/auth/email-code',
+                        json={'email': 'ok@qq.com', 'scene': 'register'})
+        assert r.status_code == 200
+    finally:
+        settings.auth_email_domains = ''

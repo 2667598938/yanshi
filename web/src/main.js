@@ -3,13 +3,9 @@ import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
 import './assets/styles/main.css'
-import { initDb } from './db'
 import { useAuthStore } from './stores/auth'
 import { useTimerStore } from './stores/timer'
-import { useSubjectsStore } from './stores/subjects'
-import { useTasksStore } from './stores/tasks'
-import { useMistakesStore } from './stores/mistakes'
-import { initSyncForUser } from './sync/engine'
+import { afterLogin, afterLogout } from './sync/account'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -17,28 +13,28 @@ app.use(router)
 
 const auth = useAuthStore()
 
-// 先初始化本地库并载入数据，再挂载，避免首屏闪烁；之后恢复未结束的番茄
-initDb()
-  .then(async () => {
-    // 已登录：校验/刷新账号信息并启动云同步（不阻塞本地数据加载）
-    if (auth.isLoggedIn) {
-      try {
-        await auth.fetchMe()
-        initSyncForUser()
-      } catch {
+// 先用 refresh Cookie 恢复会话，再切换该账号的本地库并载入数据，最后挂载
+async function boot() {
+  await auth.restore().catch(() => {})
+  if (auth.user) {
+    await afterLogin(auth.user.id)
+    try {
+      await auth.fetchMe()
+    } catch (e) {
+      // access 确实失效：清理登录态；纯离线/网络错误则保留缓存用户
+      if (e.status && e.status < 500) {
         auth.clear()
+        await afterLogout()
       }
     }
-    await Promise.all([
-      useSubjectsStore().load(),
-      useTimerStore().load(),
-      useTasksStore().load(),
-      useMistakesStore().load(),
-    ])
-    useTimerStore().resumeOnLoad()
-    app.mount('#app')
-  })
-  .catch((e) => {
-    console.error('本地数据初始化失败', e)
-    app.mount('#app')
-  })
+  } else {
+    await afterLogout()
+  }
+  useTimerStore().resumeOnLoad()
+  app.mount('#app')
+}
+
+boot().catch((e) => {
+  console.error('本地数据初始化失败', e)
+  app.mount('#app')
+})

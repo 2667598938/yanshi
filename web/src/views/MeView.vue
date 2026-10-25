@@ -14,7 +14,7 @@ import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 import { fmtDate } from '../utils/time'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
 import { db } from '../db'
-import { resetSyncState, syncNow } from '../sync/engine'
+import { syncNow } from '../sync/engine'
 import { blobToDataUrl } from '../utils/image'
 import { fmtMinutes, todayKey } from '../utils/date'
 import { authApi, publicApi, attachmentApi, messageApi } from '../api'
@@ -153,9 +153,8 @@ async function onAvatarChange(e) {
 }
 
 async function logout() {
+  // 各账号使用独立本地库，登出后切换到游客库，未同步数据仍保留在原账号库
   await auth.logout()
-  // 清理待发队列与同步状态，防止换号/公用设备时把上一个账号的本地改动推到新账号
-  await resetSyncState()
   router.replace('/login')
 }
 

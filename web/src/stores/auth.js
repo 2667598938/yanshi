@@ -1,44 +1,41 @@
 import { defineStore } from 'pinia'
 import { authApi } from '../api'
+import { afterLogin, afterLogout } from '../sync/account'
 
-const AUTH_KEY = 'yanshi:auth'
+// 只缓存非敏感的展示资料；access token 常驻内存，refresh token 在 httpOnly Cookie
+const SESSION_KEY = 'yanshi:session'
+const LEGACY_KEY = 'yanshi:auth'
 
-function load() {
+function loadCachedUser() {
   try {
-    const raw = localStorage.getItem(AUTH_KEY)
-    return raw ? JSON.parse(raw) : { accessToken: '', refreshToken: '', user: null }
+    const raw = localStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
   } catch {
-    return { accessToken: '', refreshToken: '', user: null }
+    return null
   }
 }
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    accessToken: load().accessToken || '',
-    refreshToken: load().refreshToken || '',
-    user: load().user || null,
+    accessToken: '',
+    user: loadCachedUser(),
   }),
   getters: {
-    isLoggedIn: (s) => !!s.accessToken && !!s.user,
+    isLoggedIn: (s) => !!s.user,
+    canRefresh: (s) => !!s.user,
     isAdmin: (s) => s.user?.role === 'admin',
     isVip: (s) => !!s.user?.vip_until && new Date(s.user.vip_until) > new Date(),
   },
   actions: {
     persist() {
-      localStorage.setItem(
-        AUTH_KEY,
-        JSON.stringify({
-          accessToken: this.accessToken,
-          refreshToken: this.refreshToken,
-          user: this.user,
-        })
-      )
+      if (this.user) localStorage.setItem(SESSION_KEY, JSON.stringify(this.user))
+      else localStorage.removeItem(SESSION_KEY)
     },
-    setSession({ access_token, refresh_token, user }) {
+    async acceptSession({ access_token, user }) {
       this.accessToken = access_token
-      this.refreshToken = refresh_token
       this.user = user
       this.persist()
+      await afterLogin(user.id)
     },
     setUser(user) {
       this.user = user
@@ -46,41 +43,55 @@ export const useAuthStore = defineStore('auth', {
     },
     async login(email, password) {
       const data = await authApi.login(email, password)
-      this.setSession(data)
+      await this.acceptSession(data)
       return data
     },
     async emailLogin(payload) {
       const data = await authApi.emailLogin(payload)
-      this.setSession(data)
+      await this.acceptSession(data)
       return data
     },
     async exchangeOAuth(ticket) {
       const data = await authApi.oauthExchange(ticket)
-      this.setSession(data)
+      await this.acceptSession(data)
       return data
     },
     async phoneLogin(phone, code) {
       const data = await authApi.phoneVerify(phone, code)
-      this.setSession(data)
+      await this.acceptSession(data)
       return data
     },
     async register(payload) {
       const data = await authApi.register(payload)
-      this.setSession(data)
+      await this.acceptSession(data)
       return data
     },
-    // 用 refresh_token 换新 access，成功返回 true
-    async tryRefresh() {
-      if (!this.refreshToken) return false
+    // 启动/刷新时用 httpOnly Cookie 恢复会话；离线时保留本地缓存资料
+    async restore() {
+      localStorage.removeItem(LEGACY_KEY) // 清理旧版本遗留的 token
       try {
-        const data = await authApi.refresh(this.refreshToken)
+        const data = await authApi.refresh()
         this.accessToken = data.access_token
-        if (data.refresh_token) this.refreshToken = data.refresh_token
         if (data.user) this.user = data.user
         this.persist()
         return true
       } catch {
-        this.clear()
+        this.accessToken = ''
+        return false
+      }
+    },
+    // 用 refresh Cookie 换新 access，成功返回 true
+    async tryRefresh() {
+      if (!this.user) return false
+      try {
+        const data = await authApi.refresh()
+        this.accessToken = data.access_token
+        if (data.user) this.user = data.user
+        this.persist()
+        return true
+      } catch (e) {
+        // 网络不可用时保留登录态，等联网后重试；只有明确失效才登出
+        if (e.status && e.status < 500) this.clear()
         return false
       }
     },
@@ -91,17 +102,18 @@ export const useAuthStore = defineStore('auth', {
     },
     async logout() {
       try {
-        if (this.accessToken) await authApi.logout()
+        await authApi.logout()
       } catch {
         /* 忽略网络错误，本地照常登出 */
       }
       this.clear()
+      await afterLogout()
     },
     clear() {
       this.accessToken = ''
-      this.refreshToken = ''
       this.user = null
-      localStorage.removeItem(AUTH_KEY)
+      localStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(LEGACY_KEY)
     },
   },
 })

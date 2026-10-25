@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     # 登录渠道：一期只开 email；wechat / qq / phone 代码完整但开关关闭
     auth_channels: str = 'email'          # 逗号分隔：email,wechat,qq,phone
+    # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，测试环境用空值）
+    auth_email_domains: str = 'qq.com'
     wechat_app_id: str = ''
     wechat_app_secret: str = ''
     qq_app_id: str = ''

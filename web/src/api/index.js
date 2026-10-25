@@ -22,8 +22,7 @@ export const authApi = {
     http.post('/auth/phone/verify-code', { phone, code }, { auth: false }),
   register: (body) => http.post('/auth/register', body, { auth: false }),
   login: (email, password) => http.post('/auth/login', { email, password }, { auth: false }),
-  refresh: (refresh_token) =>
-    http.post('/auth/refresh', { refresh_token }, { auth: false }),
+  refresh: () => http.post('/auth/refresh', {}, { auth: false }),
   logout: () => http.post('/auth/logout', {}),
   resetPassword: (body) => http.post('/auth/reset-password', body, { auth: false }),
   me: () => http.get('/auth/me'),
