@@ -6,6 +6,7 @@ import './assets/styles/main.css'
 import { useAuthStore } from './stores/auth'
 import { useTimerStore } from './stores/timer'
 import { afterLogin, afterLogout } from './sync/account'
+import { useProfileStore } from './stores/profile'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -20,6 +21,7 @@ async function boot() {
     await afterLogin(auth.user.id)
     try {
       await auth.fetchMe()
+      await useProfileStore().load(true)
     } catch (e) {
       // access 确实失效：清理登录态；纯离线/网络错误则保留缓存用户
       if (e.status && e.status < 500) {
@@ -38,3 +40,11 @@ boot().catch((e) => {
   console.error('本地数据初始化失败', e)
   app.mount('#app')
 })
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((error) => {
+      console.warn('离线页面缓存暂不可用', error)
+    })
+  })
+}

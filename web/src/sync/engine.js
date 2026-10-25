@@ -3,6 +3,8 @@
 // - syncNow：先 push outbox（expectedRevision 乐观并发 + operationId 幂等），再 pull 全量按 revision 合并
 // - 错题图片 Blob 不进同步体，只同步附件 key（图片上传见 api/attachment）
 import { reactive } from 'vue'
+import Dexie from 'dexie'
+import { calibrateClock } from '../utils/clock'
 import { db, uid } from '../db'
 import { syncApi } from '../api'
 import { flushCommunity } from './community'
@@ -15,6 +17,7 @@ const TYPE_BY_TABLE = {
   sessions: 'session',
   tasks: 'task',
   mistakes: 'mistake',
+  kv: 'preferences',
 }
 const TABLE_BY_TYPE = {
   subject: 'subjects',
@@ -22,8 +25,10 @@ const TABLE_BY_TYPE = {
   task: 'tasks',
   mistake: 'mistakes',
   userSchool: null, // 梦校关系存 kv，不进分表
+  preferences: 'kv',
+  profile: 'kv',
 }
-const SYNCABLE_TABLES = ['subjects', 'sessions', 'tasks', 'mistakes']
+const SYNCABLE_TABLES = ['subjects', 'sessions', 'tasks', 'mistakes', 'kv']
 // 帖子/收藏走各自的服务端接口，不能混入学习数据的通用同步命令
 const COMMUNITY_TYPES = new Set(['post', 'favorite'])
 const TYPE_LABEL = {
@@ -32,6 +37,8 @@ const TYPE_LABEL = {
   task: '任务',
   mistake: '错题',
   userSchool: '梦校',
+  preferences: '专注与休息设置',
+  profile: '个人资料',
 }
 
 // 冲突挂起：等待用户裁决的记录 id（这些记录在裁决前既不重发、也不被 pull 覆盖）
@@ -55,9 +62,18 @@ function stripLocal(row, type) {
 
 async function upsertOutbox(recordId, type, expectedRevision, record) {
   const clean = record ? plain(record) : null
+  const held = syncState.pendingConflicts.find((item) => item.id === recordId)
+  if (held) {
+    await db.syncMeta.put({ key: `conflict:${recordId}`, value: { ...plain(held), localRecord: clean } })
+    const update = () => { held.localRecord = clean }
+    if (Dexie.currentTransaction) Dexie.currentTransaction.on('complete', update)
+    else update()
+    return
+  }
   const existing = await db.outbox.where('recordId').equals(recordId).first()
+  const version = uid('change-')
   if (existing) {
-    await db.outbox.update(existing, { record: clean, expectedRevision })
+    await db.outbox.update(existing.id, { record: clean, expectedRevision, version })
   } else {
     await db.outbox.add({
       recordId,
@@ -65,6 +81,7 @@ async function upsertOutbox(recordId, type, expectedRevision, record) {
       expectedRevision,
       record: clean,
       opId: '',
+      version,
       createdAt: Date.now(),
     })
   }
@@ -72,7 +89,7 @@ async function upsertOutbox(recordId, type, expectedRevision, record) {
 
 // 记录新增/修改后调用
 export async function enqueueRecord(table, row) {
-  const type = TYPE_BY_TABLE[table]
+  const type = table === 'kv' ? row?.syncType : TYPE_BY_TABLE[table]
   if (!type || !row || !row.id) return
   await upsertOutbox(row.id, type, row._rev || 0, stripLocal(row, type))
   scheduleSync()
@@ -82,33 +99,45 @@ export async function enqueueRecord(table, row) {
 export async function enqueueDelete(table, id) {
   const type = TYPE_BY_TABLE[table]
   if (!type || !id) return
-  const live = await db[table].get(id)
-  const expectedRevision = live?._rev || 0
-  await db[table].delete(id)
-  const existing = await db.outbox.where('recordId').equals(id).first()
-  if (expectedRevision === 0) {
-    // 服务器从未有过这条：直接丢弃本地未推送变更
-    if (existing) await db.outbox.delete(existing.id)
-    scheduleSync()
-    return
-  }
-  if (existing) {
-    await db.outbox.update(existing, { record: null, expectedRevision })
-  } else {
-    await db.outbox.add({
-      recordId: id,
-      type,
-      expectedRevision,
-      record: null,
-      opId: '',
-      createdAt: Date.now(),
-    })
-  }
+  await db.transaction('rw', db[table], db.outbox, db.syncMeta, async () => {
+    const live = await db[table].get(id)
+    const existing = await db.outbox.where('recordId').equals(id).first()
+    const expectedRevision = live?._rev || existing?.expectedRevision || 0
+    const batch = await db.syncMeta.get('pendingLearningCommand')
+    const inFlight = batch?.value?.items.some((item) => item.recordId === id)
+    await db[table].delete(id)
+    if (expectedRevision === 0 && !inFlight && !heldIds.has(id)) {
+      if (existing) await db.outbox.delete(existing.id)
+    } else {
+      await upsertOutbox(id, type, expectedRevision, null)
+    }
+  })
   scheduleSync()
 }
 
-async function applyRevision(id, revision, record) {
-  const table = record ? TABLE_BY_TYPE[record.type] : null
+export async function writeRecord(table, row, { create = false } = {}) {
+  const value = plain(row)
+  await db.transaction('rw', db[table], db.outbox, db.syncMeta, async () => {
+    await db[table][create ? 'add' : 'put'](value)
+    await enqueueRecord(table, value)
+  })
+  return value
+}
+
+export async function patchRecord(table, id, patch) {
+  let value = null
+  await db.transaction('rw', db[table], db.outbox, db.syncMeta, async () => {
+    const current = await db[table].get(id)
+    if (!current) return
+    value = { ...current, ...plain(patch) }
+    await db[table].put(value)
+    await enqueueRecord(table, value)
+  })
+  return value
+}
+
+async function applyRevision(id, revision, record, type) {
+  const table = TABLE_BY_TYPE[record?.type || type]
   if (!table) return
   const local = await db[table].get(id)
   if (local) {
@@ -121,12 +150,10 @@ async function applyRevision(id, revision, record) {
 async function holdConflict(conflict, items) {
   const { id, revision: serverRevision, record: serverRecord } = conflict
   if (heldIds.has(id)) return
-  const local = items.find((x) => x.recordId === id)
+  const local = await db.outbox.where('recordId').equals(id).first() || items.find((x) => x.recordId === id)
   if (!local) return
   heldIds.add(id)
-  const it = await db.outbox.where('recordId').equals(id).first()
-  if (it) await db.outbox.delete(it.id)
-  syncState.pendingConflicts.push({
+  const entry = {
     id,
     type: local.type,
     label: TYPE_LABEL[local.type] || '学习记录',
@@ -134,40 +161,47 @@ async function holdConflict(conflict, items) {
     expectedRevision: local.expectedRevision,
     serverRevision, // 服务端当前版本
     serverRecord, // 服务端当前内容；null 表示云端已删除
+  }
+  await db.transaction('rw', db.outbox, db.syncMeta, async () => {
+    if (local.id) await db.outbox.delete(local.id)
+    await db.syncMeta.put({ key: `conflict:${id}`, value: plain(entry) })
   })
+  syncState.pendingConflicts.push(entry)
 }
 
 // 用户裁决单条冲突：
 //   'local' 保留本机：把本地待发改动 rebase 到服务端最新 revision 后重发（覆盖云端）
 //   'cloud' 采用云端：丢弃本地待发改动，本地直接采用服务端记录
 export async function resolveConflict(id, choice) {
+  if (!['local', 'cloud'].includes(choice)) throw new Error('无效的冲突处理方式')
   const idx = syncState.pendingConflicts.findIndex((c) => c.id === id)
   if (idx < 0) return
-  const c = syncState.pendingConflicts[idx]
+  const c = plain(syncState.pendingConflicts[idx])
   heldIds.delete(id)
+  syncState.pendingConflicts.splice(idx, 1)
+  try {
+  await db.transaction('rw', ...SYNCABLE_TABLES.map((table) => db[table]), db.outbox, db.syncMeta, async () => {
   if (choice === 'local') {
+    await applyRevision(c.id, c.serverRevision, c.localRecord, c.type)
     if (c.localRecord) {
       await upsertOutbox(c.id, c.type, c.serverRevision, c.localRecord)
     } else {
       // 本地删除：以服务端最新 revision 重新入队删除墓碑
-      const it = await db.outbox.where('recordId').equals(c.id).first()
-      if (it) {
-        await db.outbox.update(it, { record: null, expectedRevision: c.serverRevision })
-      } else {
-        await db.outbox.add({
-          recordId: c.id,
-          type: c.type,
-          expectedRevision: c.serverRevision,
-          record: null,
-          opId: '',
-          createdAt: Date.now(),
-        })
-      }
+      await upsertOutbox(c.id, c.type, c.serverRevision, null)
     }
   } else {
     await applyServerRecord(c.id, c.serverRevision, c.serverRecord)
+    const old = await db.outbox.where('recordId').equals(id).first()
+    if (old) await db.outbox.delete(old.id)
   }
-  syncState.pendingConflicts.splice(idx, 1)
+  await db.syncMeta.delete(`conflict:${id}`)
+  await db.syncMeta.delete('pullCursor')
+  })
+  } catch (error) {
+    heldIds.add(id)
+    syncState.pendingConflicts.push(c)
+    throw error
+  }
   await reloadStores()
   scheduleSync()
 }
@@ -191,10 +225,14 @@ async function applyServerRecord(id, revision, record) {
 }
 
 async function pushOutbox() {
+  let batch = (await db.syncMeta.get('pendingLearningCommand'))?.value
+  if (!batch) {
+  await db.transaction('rw', db.outbox, db.mistakes, db.syncMeta, async () => {
   const all = await db.outbox.orderBy('createdAt').limit(200).toArray()
   const items = []
   for (const it of all) {
     if (COMMUNITY_TYPES.has(it.type)) continue
+    if (heldIds.has(it.recordId)) continue
     if (it.type === 'mistake' && it.record) {
       const local = await db.mistakes.get(it.recordId)
       // 图片未全部补传时保留队列，避免云端不完整记录回拉覆盖本机 Blob。
@@ -204,27 +242,47 @@ async function pushOutbox() {
     items.push(it)
   }
   if (!items.length) return
-  const changes = items.map((it) => ({
+  // 将批次与操作ID持久化；响应丢失或页面重启时重放完全相同的命令。
+  batch = { operationId: uid('op-'), items }
+  await db.syncMeta.put({ key: 'pendingLearningCommand', value: plain(batch) })
+  })
+  }
+  if (!batch) return
+  const changes = batch.items.map((it) => ({
     id: it.recordId,
     expectedRevision: it.expectedRevision,
     record: it.record,
   }))
   try {
-    const data = await syncApi.commands(uid('op-'), changes)
-    for (const ch of data.changed || []) {
-      await applyRevision(ch.id, ch.revision, ch.record)
-      const it = await db.outbox.where('recordId').equals(ch.id).first()
-      if (it) await db.outbox.delete(it.id)
-    }
+    const data = await syncApi.commands(batch.operationId, changes)
+    if ((data.changed || []).length !== batch.items.length) throw new Error('同步响应不完整，保留待确认批次')
+    await db.transaction('rw', ...SYNCABLE_TABLES.map((table) => db[table]), db.outbox, db.syncMeta, async () => {
+      for (const ch of data.changed) {
+        const sent = batch.items.find((item) => item.recordId === ch.id)
+        const current = await db.outbox.where('recordId').equals(ch.id).first()
+        if (current && current.version === sent.version) {
+          await applyServerRecord(ch.id, ch.revision, ch.record)
+          await db.outbox.delete(current.id)
+        } else if (current) {
+          // 请求期间又有本机修改：仅更新基准版本，不覆盖新内容或删除新队列。
+          await applyRevision(ch.id, ch.revision, ch.record, sent.type)
+          await db.outbox.update(current.id, { expectedRevision: ch.revision })
+        }
+      }
+      await db.syncMeta.delete('pendingLearningCommand')
+    })
+    return true
   } catch (e) {
     if (e.code === 40902) {
       // 服务端在首个冲突处整批回滚、只回该条冲突；挂起它交用户裁决，其余下一轮再推
       const conflict = e?.data?.conflicts?.[0]
-      if (conflict) await holdConflict(conflict, items)
+      if (conflict) await holdConflict(conflict, batch.items)
       else console.warn('同步冲突缺少明细，稍后重试')
+      await db.syncMeta.delete('pendingLearningCommand')
     } else if (e.code === 40903) {
       // 操作 ID 复用：下轮换新 opId 即可（outbox 保留）
       console.warn('操作 ID 复用，下轮换新 opId 重试')
+      await db.syncMeta.delete('pendingLearningCommand')
     } else {
       throw e
     }
@@ -232,7 +290,8 @@ async function pushOutbox() {
 }
 
 async function pullAll() {
-  const data = await syncApi.records()
+  const cursor = (await db.syncMeta.get('pullCursor'))?.value
+  const data = await syncApi.records(cursor === undefined ? undefined : { since: cursor })
   const records = data.records || []
   let changed = false
   for (const { id, record, revision } of records) {
@@ -264,6 +323,12 @@ async function pullAll() {
     }
   }
   await db.syncMeta.put({ key: 'lastPullAt', value: Date.now() })
+  if (data.cursor !== undefined) await db.syncMeta.put({ key: 'pullCursor', value: data.cursor })
+  if (data.hasMore) queued = true
+  if (Number.isFinite(data.serverTime)) {
+    syncState.serverOffsetMs = data.serverTime - Date.now()
+    calibrateClock(data.serverTime)
+  }
   return changed
 }
 
@@ -286,6 +351,10 @@ async function reloadStores() {
   tk.loaded = true
   const ms = m.useMistakesStore()
   await ms.load(true)
+  const { useLearningSettingsStore } = await import('../stores/learningSettings')
+  await useLearningSettingsStore().load(true)
+  const { useProfileStore } = await import('../stores/profile')
+  await useProfileStore().load(true)
 }
 
 // 首次登录：把本地所有未同步记录入队（换设备也能恢复）
@@ -294,13 +363,15 @@ async function bootstrapLocal() {
     const rows = await db[table].toArray()
     for (const row of rows) {
       if (row._rev) continue
+      if (heldIds.has(row.id)) continue
+      if (table === 'kv' && !['profile', 'preferences'].includes(row.syncType)) continue
       const existing = await db.outbox.where('recordId').equals(row.id).first()
       if (!existing) {
         await db.outbox.add({
           recordId: row.id,
-          type: TYPE_BY_TABLE[table],
+          type: table === 'kv' ? row.syncType : TYPE_BY_TABLE[table],
           expectedRevision: 0,
-          record: stripLocal(row, TYPE_BY_TABLE[table]),
+          record: stripLocal(row, table === 'kv' ? row.syncType : TYPE_BY_TABLE[table]),
           opId: '',
           createdAt: Date.now(),
         })
@@ -322,6 +393,8 @@ export async function pauseSyncForAccountSwitch() {
   clearTimeout(timer)
   queued = false
   await syncCompletion
+  const timerModule = await import('../stores/timer')
+  if (timerModule.waitForTimerPersistence) await timerModule.waitForTimerPersistence()
 }
 
 export function resumeSyncAfterAccountSwitch() {
@@ -344,9 +417,9 @@ export async function syncNow() {
     const uploaded = await flushMistakeImages()
     for (const row of uploaded) await enqueueRecord('mistakes', row)
     await flushCommunity()
-    await pushOutbox()
+    const pushed = await pushOutbox()
     const changed = await pullAll()
-    if (changed) await reloadStores()
+    if (changed || pushed || uploaded.length) await reloadStores()
     await db.syncMeta.put({ key: 'lastSyncAt', value: Date.now() })
     return true
   } catch (e) {
@@ -373,6 +446,12 @@ export function scheduleSync(delay = 1500) {
 export async function initSyncForUser() {
   const auth = useAuthStore()
   if (!auth.isLoggedIn) return
+  const persisted = await db.syncMeta.toArray()
+  for (const row of persisted) {
+    if (!row.key.startsWith('conflict:') || heldIds.has(row.value.id)) continue
+    heldIds.add(row.value.id)
+    syncState.pendingConflicts.push(row.value)
+  }
   const bootDone = await db.syncMeta.get('bootstrapDone')
   if (!bootDone) {
     await bootstrapLocal()

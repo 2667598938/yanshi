@@ -33,7 +33,7 @@ export const authApi = {
 
 // ------------------------------------------------------------ 数据同步
 export const syncApi = {
-  records: () => http.get('/sync/records'),
+  records: (query) => http.get('/sync/records', { query }),
   commands: (operationId, changes) =>
     http.post('/sync/commands', { operationId, changes }),
 }

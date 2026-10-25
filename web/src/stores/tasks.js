@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { db, uid } from '../db'
 import { todayKey, dayKey } from '../utils/date'
-import { enqueueRecord, enqueueDelete } from '../sync/engine'
+import { writeRecord, patchRecord, enqueueDelete } from '../sync/engine'
 
 // 学习计划 / 任务清单。任务完成与否是"真学会"的指标之一，与时长并列。
 export const useTasksStore = defineStore('tasks', {
@@ -51,17 +51,15 @@ export const useTasksStore = defineStore('tasks', {
         doneAt: null,
         createdAt: Date.now(),
       }
-      await db.tasks.add(item)
+      await writeRecord('tasks', item, { create: true })
       this.list.push(item)
-      await enqueueRecord('tasks', item)
       return item
     },
     async update(id, patch) {
-      await db.tasks.update(id, patch)
+      const row = await patchRecord('tasks', id, patch)
       const i = this.list.findIndex((x) => x.id === id)
       if (i >= 0) {
-        this.list[i] = { ...this.list[i], ...patch }
-        await enqueueRecord('tasks', this.list[i])
+        if (row) this.list[i] = row
       }
     },
     async toggle(id) {
@@ -69,10 +67,7 @@ export const useTasksStore = defineStore('tasks', {
       if (!t) return
       const done = t.done ? 0 : 1
       const doneAt = done ? Date.now() : null
-      await db.tasks.update(id, { done, doneAt })
-      t.done = done
-      t.doneAt = doneAt
-      await enqueueRecord('tasks', t)
+      await this.update(id, { done, doneAt })
     },
     async remove(id) {
       await enqueueDelete('tasks', id)

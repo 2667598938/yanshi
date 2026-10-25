@@ -31,3 +31,12 @@ class LearningOperation(Base):
     signature = Column(String(64), nullable=False)          # 命令语义内容的 sha256
     result = Column(Text, nullable=False)                   # JSON：首次成功的返回，用于幂等重放
     created_at = Column(DateTime, default=now, nullable=False, index=True)
+
+
+class LearningChange(Base):
+    __tablename__ = 'learning_changes'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    record_id = Column(String(500), nullable=False)
+    revision = Column(Integer, nullable=False)

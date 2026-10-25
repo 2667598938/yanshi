@@ -10,15 +10,19 @@
 import hashlib
 import json
 import threading
+from datetime import timezone
 
 from sqlalchemy import BLOB, cast, func, select
+from pydantic import ValidationError
 
 from ..errors import ApiError
-from ..models import LearningOperation, LearningRecord
+from ..models import LearningOperation, LearningRecord, LearningChange, User
+from ..schemas.sync import LearningPreferences
+from ..schemas.account import ProfileUpdate
 from ..time import utcnow
 
 # 允许的学习记录类型（与前端 v0.2 的分表对应；userSchool 为梦校）
-ALLOWED_TYPES = {'subject', 'session', 'task', 'mistake', 'userSchool'}
+ALLOWED_TYPES = {'subject', 'session', 'task', 'mistake', 'userSchool', 'preferences', 'profile'}
 PROTECTED_KEYS = {'user_id', 'userId', 'owner', 'apiKey', 'password', 'token', 'revision'}
 
 MAX_RECORD_BYTES = 2 * 1024 * 1024   # 单条记录 2MB（图片走附件，不应进入 body）
@@ -94,6 +98,25 @@ def list_records(db, user_id: int) -> list[dict]:
     ]
 
 
+def pull_records(db, user_id: int, since: int | None = None):
+    latest = db.scalar(select(func.coalesce(func.max(LearningChange.id), 0)).where(
+        LearningChange.user_id == user_id)) or 0
+    if since is None or since > latest:
+        return {'records': list_records(db, user_id), 'cursor': latest, 'hasMore': False,
+                'serverTime': int(utcnow().replace(tzinfo=timezone.utc).timestamp() * 1000)}
+    changes = db.scalars(select(LearningChange).where(
+        LearningChange.user_id == user_id, LearningChange.id > since,
+    ).order_by(LearningChange.id).limit(200)).all()
+    ids = {row.record_id for row in changes}
+    rows = db.scalars(select(LearningRecord).where(
+        LearningRecord.user_id == user_id, LearningRecord.id.in_(ids))).all() if ids else []
+    cursor = changes[-1].id if changes else latest
+    return {'records': [{'id': row.id, 'revision': row.revision,
+                         'record': None if row.deleted else json.loads(row.body)} for row in rows],
+            'cursor': cursor, 'hasMore': cursor < latest,
+            'serverTime': int(utcnow().replace(tzinfo=timezone.utc).timestamp() * 1000)}
+
+
 def _validate_record(record_id: str, record):
     if not isinstance(record, dict):
         raise ApiError(400, 40004, '记录内容无效')
@@ -103,6 +126,16 @@ def _validate_record(record_id: str, record):
         raise ApiError(400, 40004, '不支持的记录类型')
     if any(k in record for k in PROTECTED_KEYS):
         raise ApiError(400, 40004, '记录包含受保护字段')
+    if record.get('type') in {'preferences', 'profile'}:
+        expected_id = 'learning-settings' if record['type'] == 'preferences' else 'profile'
+        if record_id != expected_id or record.get('key') != expected_id:
+            raise ApiError(400, 40004, '个人设置记录标识无效')
+        try:
+            schema = LearningPreferences if record['type'] == 'preferences' else ProfileUpdate
+            parsed = schema.model_validate(record.get('value'))
+            record['value'] = {k: v for k, v in parsed.model_dump(exclude_unset=record['type'] == 'profile').items() if v is not None}
+        except ValidationError:
+            raise ApiError(400, 40004, '个人设置内容无效') from None
     return record['type']
 
 
@@ -167,6 +200,10 @@ def execute_commands(db, user_id: int, command_dict: dict) -> dict:
                     record_type = _validate_record(record_id, record)
                     # 番茄记录由服务端重算时长与状态，避免客户端伪造/挂起误差
                     record = _normalize_session(record)
+                    if record_type == 'profile':
+                        user = db.get(User, user_id)
+                        for key, value in record['value'].items():
+                            setattr(user, key, value)
                     # 类型不可变
                     if old and not old.deleted:
                         old_type = json.loads(old.body).get('type')
@@ -189,6 +226,7 @@ def execute_commands(db, user_id: int, command_dict: dict) -> dict:
                         revision=new_revision, deleted=deleted, updated_at=utcnow(),
                     ))
                 changed.append({'id': record_id, 'record': record, 'revision': new_revision})
+                db.add(LearningChange(user_id=user_id, record_id=record_id, revision=new_revision))
 
             # 配额（超了则整体回滚，不写入）
             total = db.scalar(

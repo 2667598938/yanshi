@@ -17,3 +17,11 @@ class SyncCommand(BaseModel):
 
     operationId: str = Field(min_length=1, max_length=100)
     changes: list[Change] = Field(min_length=1, max_length=200)
+
+
+class LearningPreferences(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    focusMin: int = Field(default=25, ge=5, le=180)
+    shortBreakMin: int = Field(default=5, ge=1, le=60)
+    longBreakMin: int = Field(default=15, ge=1, le=180)
+    longBreakEvery: int = Field(default=4, ge=1, le=8)

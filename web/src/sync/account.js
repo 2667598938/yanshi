@@ -40,4 +40,8 @@ async function reloadLocal() {
 
   const ms = m.useMistakesStore()
   await ms.load(true)
+  const { useLearningSettingsStore } = await import('../stores/learningSettings')
+  await useLearningSettingsStore().load(true)
+  const { useProfileStore } = await import('../stores/profile')
+  await useProfileStore().load(true)
 }

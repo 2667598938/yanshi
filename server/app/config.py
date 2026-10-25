@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     auth_channels: str = 'email'          # 逗号分隔：email,wechat,qq,phone
     # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，测试环境用空值）
     auth_email_domains: str = 'qq.com'
+    auth_qq_numeric_only: bool = True
     wechat_app_id: str = ''
     wechat_app_secret: str = ''
     qq_app_id: str = ''

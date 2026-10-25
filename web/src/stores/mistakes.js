@@ -81,7 +81,7 @@ export const useMistakesStore = defineStore('mistakes', {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       })
-      await db.transaction('rw', db.mistakes, db.outbox, async () => {
+      await db.transaction('rw', db.mistakes, db.outbox, db.syncMeta, async () => {
         await db.mistakes.add(item)
         await enqueueRecord('mistakes', item)
       })
@@ -90,7 +90,7 @@ export const useMistakesStore = defineStore('mistakes', {
     },
     async update(id, patch) {
       const changes = toPlain({ ...patch, updatedAt: Date.now() })
-      await db.transaction('rw', db.mistakes, db.outbox, async () => {
+      await db.transaction('rw', db.mistakes, db.outbox, db.syncMeta, async () => {
         await db.mistakes.update(id, changes)
         const row = await db.mistakes.get(id)
         if (row) await enqueueRecord('mistakes', row)
@@ -129,7 +129,7 @@ export const useMistakesStore = defineStore('mistakes', {
         nextReviewAt = scheduleAt(stage, now)
       }
       const patch = toPlain({ stage, mastered, nextReviewAt, history })
-      await db.transaction('rw', db.mistakes, db.outbox, async () => {
+      await db.transaction('rw', db.mistakes, db.outbox, db.syncMeta, async () => {
         await db.mistakes.update(id, patch)
         await enqueueRecord('mistakes', { ...toPlain(m), ...patch })
       })

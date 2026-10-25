@@ -124,7 +124,8 @@ const encourage = computed(() => {
         @click="router.push('/focus')"
       >
         <component :is="timer.isActive ? TimerIcon : Play" :size="20" :stroke-width="2.4" />
-        <span v-if="timer.isActive && timer.isStopwatch">
+        <span v-if="timer.isResting">{{ timer.rest?.finished ? '休息结束 · 开始下一次' : `休息中 · 剩余 ${fmtClock(timer.restRemainingSec)}` }}</span>
+        <span v-else-if="timer.isActive && timer.isStopwatch">
           正向计时 · 已学 {{ fmtClock(timer.elapsedSec) }}
         </span>
         <span v-else-if="timer.isActive">

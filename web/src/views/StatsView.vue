@@ -21,6 +21,7 @@ import {
   filterSessions, sumMin, weeklySeries, subjectBreakdown,
   buildYearWeeks, buildMonthWeeks, buildWeekDays, monthLabels,
   daySubjectDetail, firstDate, weekStartKey,
+  periodBounds, contentBreakdown,
 } from '../utils/stats'
 import { useToast } from '../composables/useToast'
 
@@ -36,6 +37,15 @@ const rows = computed(() => timer.effectiveSessions)
 const today = todayKey()
 const thisMonday = weekStartKey(today)
 const isEmpty = computed(() => timer.totalMin === 0)
+const contentPeriod = ref('day')
+const contentDate = ref(today)
+const contentStats = computed(() => contentBreakdown(filterSessions(rows.value, periodBounds(contentPeriod.value, contentDate.value || today))))
+const contentTotal = computed(() => contentStats.value.reduce((sum, row) => sum + row.sec, 0))
+const pieStyle = computed(() => {
+  let offset = 0
+  const slices = contentStats.value.map((row) => { const start = offset; offset += row.pct; return `${row.color} ${start}% ${offset}%` })
+  return { background: slices.length ? `conic-gradient(${slices.join(',')})` : '#e2e8f0' }
+})
 
 // ===== 本周 =====
 const weekRows = computed(() => filterSessions(rows.value, { start: thisMonday, end: today }))
@@ -232,6 +242,16 @@ function exportCsv() {
     </div>
 
     <div class="page">
+      <div class="card content-summary">
+        <div class="card-title">学习内容分布</div>
+        <div class="pill-row"><button v-for="[key, label] in [['day','日'],['week','周'],['month','月'],['year','年']]" :key="key" class="pill" :class="{ active: contentPeriod === key }" @click="contentPeriod = key">{{ label }}</button></div>
+        <input v-model="contentDate" aria-label="统计日期" type="date" class="input" />
+        <div class="content-chart">
+          <div class="content-pie" role="img" :aria-label="`本周期专注${Math.round(contentTotal / 60)}分钟`" :style="pieStyle" />
+          <div v-if="contentStats.length" class="content-legend"><div v-for="item in contentStats" :key="item.name"><span :style="{ color: item.color }">●</span> {{ item.name }}<small>{{ (item.sec / 60).toFixed(1) }}分钟 · {{ item.pct.toFixed(1) }}%</small></div></div>
+          <p v-else>本周期还没有专注记录</p>
+        </div>
+      </div>
       <!-- 空态 -->
       <div v-if="isEmpty" class="card empty-block">
         <TimerIcon :size="40" :stroke-width="1.5" class="empty-ic" />
@@ -441,6 +461,7 @@ function exportCsv() {
 </template>
 
 <style scoped>
+.content-summary { padding: 18px; }.content-summary .input { margin-top: 12px; }.content-chart { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 18px; }.content-pie { width: 160px; height: 160px; flex-shrink: 0; border-radius: 50%; }.content-legend { flex: 1; min-width: 160px; display: grid; gap: 12px; font-size: 13px; overflow-wrap: anywhere; }.content-legend small { display: block; color: var(--sub); padding-left: 16px; margin-top: 3px; }
 .empty-block {
   text-align: center;
   padding: 44px 20px;

@@ -1,4 +1,5 @@
 import secrets
+import re
 from datetime import timedelta
 from typing import Optional
 
@@ -33,6 +34,9 @@ def ensure_email_domain(request: Request, email: str) -> None:
     allowed = {x.strip().lower() for x in raw.split(',') if x.strip()}
     if allowed and email.rsplit('@', 1)[-1].lower() not in allowed:
         raise ApiError(400, 40001, '仅支持 QQ 邮箱登录')
+    if allowed == {'qq.com'} and request.app.state.settings.auth_qq_numeric_only \
+            and not re.fullmatch(r'[1-9]\d{4,10}@qq\.com', email.lower()):
+        raise ApiError(400, 40001, '请使用QQ数字邮箱，暂不支持邮箱别名')
 
 
 def verify_code(store, key: str, code: str) -> bool:
@@ -51,6 +55,7 @@ def email_code(body: EmailCodeInput, request: Request):
         email = body.email
         ensure_email_domain(request, email)
         store.limit('email-minute:' + digest(email), 1, 60)
+        store.limit('email-five-minute:' + digest(email), 3, 300)
         store.limit('email-day:' + digest(email), 10, 86400)
         store.limit('email-ip:' + request.client.host, 20, 3600)
 

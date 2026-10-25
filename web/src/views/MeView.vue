@@ -10,12 +10,14 @@ import {
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
+import { useProfileStore } from '../stores/profile'
 import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 import { fmtDate } from '../utils/time'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
-import { db } from '../db'
-import { syncNow } from '../sync/engine'
+import { db, currentKey } from '../db'
+import { syncNow, enqueueDelete, pauseSyncForAccountSwitch, resumeSyncAfterAccountSwitch } from '../sync/engine'
 import { buildBackup } from '../utils/backup'
+import { inspectBackup, restoreBackup } from '../utils/restore'
 import { fmtMinutes, todayKey } from '../utils/date'
 import { authApi, publicApi, attachmentApi, messageApi } from '../api'
 import BlobImage from '../components/BlobImage.vue'
@@ -25,6 +27,7 @@ const router = useRouter()
 const timer = useTimerStore()
 const app = useAppStore()
 const auth = useAuthStore()
+const profile = useProfileStore()
 const { toast } = useToast()
 
 const sheetType = ref(null)
@@ -39,6 +42,42 @@ const legal = ref(null)
 const legalTab = ref('terms')
 const syncing = ref(false)
 const lastSyncAt = ref(0)
+const backupInput = ref(null)
+const restorePreview = ref(null)
+const overwriteBackup = ref(false)
+const restoring = ref(false)
+const deleteCloudRecords = ref(false)
+
+async function readBackup(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  try {
+    if (file.size > 100 * 1024 * 1024) throw new Error('备份文件不能超过100MB')
+    const backup = JSON.parse(await file.text())
+    const counts = inspectBackup(backup)
+    restorePreview.value = { backup, counts }
+    overwriteBackup.value = false
+  } catch (error) { toast(error.message || '备份文件读取失败') }
+}
+async function importBackup() {
+  if (restoring.value || !restorePreview.value) return
+  restoring.value = true
+  await pauseSyncForAccountSwitch()
+  try {
+    const result = await restoreBackup(restorePreview.value.backup, { overwrite: overwriteBackup.value })
+    const modules = await Promise.all([import('../stores/subjects'), import('../stores/tasks'), import('../stores/mistakes'), import('../stores/learningSettings')])
+    const ss = modules[0].useSubjectsStore(); ss.loaded = false; await ss.load()
+    const ts = modules[1].useTasksStore(); ts.loaded = false; await ts.load()
+    await modules[2].useMistakesStore().load(true)
+    await modules[3].useLearningSettingsStore().load(true)
+    timer.sessions = await db.sessions.toArray()
+    await profile.load(true)
+    restorePreview.value = null
+    toast(`已恢复${result.imported}条，跳过${result.skipped}条重复记录`)
+  } catch (error) { toast(error.message || '恢复失败，数据未完整写入') }
+  finally { restoring.value = false; resumeSyncAfterAccountSwitch() }
+}
 
 const lastSyncText = computed(() => {
   if (!lastSyncAt.value) return '离线优先'
@@ -77,6 +116,7 @@ const goals = [
 ]
 
 function open(type) {
+  if (type === 'clear') deleteCloudRecords.value = false
   if (type === 'nickname' || type === 'profile') {
     nickDraft.value = auth.user?.nickname || app.nickname
     signatureDraft.value = auth.user?.signature || ''
@@ -95,12 +135,11 @@ async function saveProfile() {
   if (name.length < 2) return toast('昵称至少 2 个字')
   if (signatureDraft.value.trim().length > 80) return toast('签名最多 80 个字')
   try {
-    const user = await authApi.updateMe({
+    await profile.save({
       nickname: name,
       signature: signatureDraft.value.trim(),
       figure_id: figureDraft.value,
     })
-    auth.setUser(user)
     app.setNickname(name)
     close()
     toast('资料已更新')
@@ -111,8 +150,7 @@ async function saveProfile() {
 
 async function pickSchool(key) {
   try {
-    const user = await authApi.updateMe({ target_school: key })
-    auth.setUser(user)
+    await profile.save({ target_school: key })
     app.setDreamSchool(key)
     close()
     toast('梦校已更新')
@@ -123,8 +161,7 @@ async function pickSchool(key) {
 
 async function pickGoal(min) {
   try {
-    const user = await authApi.updateMe({ daily_goal_min: min })
-    auth.setUser(user)
+    await profile.save({ daily_goal_min: min })
     app.setDailyGoal(min)
     close()
     toast('今日目标已更新')
@@ -188,13 +225,30 @@ async function exportBackup() {
 }
 
 async function clearData() {
-  await db.sessions.clear()
-  await db.tasks.clear()
-  await db.mistakes.clear()
-  localStorage.removeItem('yanshi:current')
-  close()
-  toast('已清空专注 / 任务 / 错题记录')
-  setTimeout(() => location.reload(), 600)
+  await pauseSyncForAccountSwitch()
+  try {
+    await db.transaction('rw', db.sessions, db.tasks, db.mistakes, db.outbox, db.syncMeta, async () => {
+      for (const table of ['sessions', 'tasks', 'mistakes']) {
+        for (const row of await db[table].toArray()) {
+          if (deleteCloudRecords.value) await enqueueDelete(table, row.id)
+          else {
+            const pending = await db.outbox.where('recordId').equals(row.id).first()
+            const conflict = await db.syncMeta.get(`conflict:${row.id}`)
+            if (row._rev && !pending && !conflict) await db[table].delete(row.id)
+          }
+        }
+      }
+      await db.syncMeta.delete('pullCursor')
+    })
+    if (deleteCloudRecords.value) {
+      timer.current = null; timer.rest = null; timer.saveCycle(); timer.stopTicker()
+      localStorage.removeItem(currentKey())
+    }
+    close()
+    toast(deleteCloudRecords.value ? '学习记录已删除，联网后同步删除' : '已清除已同步缓存，未同步内容保留')
+    setTimeout(() => location.reload(), 600)
+  } catch { toast('删除失败，请重试') }
+  finally { resumeSyncAfterAccountSwitch() }
 }
 
 async function toggleNotify() {
@@ -208,8 +262,7 @@ async function toggleNotify() {
     enabled = true
   }
   try {
-    const user = await authApi.updateMe({ notify_enabled: enabled })
-    auth.setUser(user)
+    await profile.save({ notify_enabled: enabled })
     app.setNotifyEnabled(enabled)
     toast(enabled ? '已开启到点通知' : '已关闭通知')
   } catch (e) {
@@ -220,8 +273,7 @@ async function toggleNotify() {
 async function togglePrivacy() {
   const next = !auth.user?.privacy_mode
   try {
-    const user = await authApi.updateMe({ privacy_mode: next })
-    auth.setUser(user)
+    await profile.save({ privacy_mode: next })
     toast(next ? '已开启隐私模式：成员列表与排行榜将匿名显示' : '已关闭隐私模式')
   } catch (e) {
     toast(e.message)
@@ -242,6 +294,17 @@ onMounted(() => {
 
 <template>
   <div>
+    <input ref="backupInput" type="file" accept="application/json,.json" hidden @change="readBackup" />
+    <div v-if="restorePreview" class="mask" @click.self="!restoring && (restorePreview = null)">
+      <div class="sheet">
+        <div class="sheet-title">恢复研时备份</div>
+        <p class="sheet-sub">科目{{ restorePreview.counts.subjects }}条、专注{{ restorePreview.counts.sessions }}条、任务{{ restorePreview.counts.tasks }}条、错题{{ restorePreview.counts.mistakes }}条。</p>
+        <p class="sheet-sub">默认保留相同ID的现有记录；云端图片引用需要原账号和对应存储仍可访问。</p>
+        <label><input v-model="overwriteBackup" type="checkbox" :disabled="restoring" /> 覆盖相同ID记录（保留云端版本校验）</label>
+        <button class="btn btn-primary btn-block mt16" :disabled="restoring" @click="importBackup">{{ restoring ? '正在恢复…' : '合并恢复' }}</button>
+        <button class="btn btn-ghost btn-block mt8" :disabled="restoring" @click="restorePreview = null">取消</button>
+      </div>
+    </div>
     <div class="nav"><div class="nav-title">我的</div></div>
 
     <div class="page">
@@ -294,6 +357,10 @@ onMounted(() => {
             <span class="row-label">每日专注目标</span>
             <span class="row-val">{{ fmtMinutes(auth.user?.daily_goal_min || app.dailyGoalMin) }}</span>
             <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="router.push('/settings/learning')">
+            <span class="row-ic c-orange"><Clock3 :size="18" /></span>
+            <span class="row-label">专注与休息设置</span><ChevronRight :size="17" class="row-arrow" />
           </div>
           <div class="row" @click="toggleNotify">
             <span class="row-ic c-purple"><Bell :size="18" /></span>
@@ -426,8 +493,11 @@ onMounted(() => {
         <div class="card menu">
           <div class="row" @click="exportBackup">
             <span class="row-ic c-green"><Download :size="18" /></span>
-            <span class="row-label">导出完整备份（JSON）</span>
+            <span class="row-label">导出备份（本地图片及云端引用）</span>
             <ChevronRight :size="17" class="row-arrow" />
+          </div>
+          <div class="row" @click="backupInput?.click()">
+            <span class="row-ic c-blue"><Download :size="18" /></span><span class="row-label">从备份恢复</span><ChevronRight :size="17" class="row-arrow" />
           </div>
           <div class="row" @click="openLegal('terms')">
             <span class="row-ic c-blue"><FileText :size="18" /></span>
@@ -530,7 +600,8 @@ onMounted(() => {
 
         <template v-else-if="sheetType === 'clear'">
           <div class="sheet-title">清空本地记录？</div>
-          <div class="sheet-sub">仅清空本设备的专注 / 任务 / 错题显示副本，云端数据不受影响；建议先导出备份。</div>
+          <div class="sheet-sub">默认清除本机已同步缓存，保留未同步记录；联网后可重新拉取。勾选下方选项会删除所有设备上的学习记录，请先导出备份。</div>
+          <label><input v-model="deleteCloudRecords" type="checkbox" /> 同时删除云端学习记录（所有设备）</label>
           <button class="btn btn-danger btn-block" @click="clearData"><Trash2 :size="17" />确认清空</button>
           <button class="btn btn-ghost btn-block mt8" @click="close">取消</button>
         </template>

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   Pause, Play, Bell, BellOff, Check, X, Minus, Plus,
   Settings2, NotebookPen, Timer, Hourglass,
@@ -11,6 +11,7 @@ import SubjectIcon from '../components/SubjectIcon.vue'
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useSubjectsStore } from '../stores/subjects'
+import { useLearningSettingsStore } from '../stores/learningSettings'
 import {
   DURATIONS, MIN_DURATION, MAX_DURATION, ACTIVITIES,
 } from '../data/subjects'
@@ -22,14 +23,17 @@ const app = useAppStore()
 const subjects = useSubjectsStore()
 const { toast } = useToast()
 const router = useRouter()
+const route = useRoute()
+const settings = useLearningSettingsStore()
+const learningContent = ref(timer.current?.learningContent || String(route.query.content || ''))
 
 const ACT_ICONS = { Headphones, PenLine, RotateCcw, BookMarked }
 
 // idle 配置
 const mode = ref(timer.current?.mode || 'timer')
-const subjId = ref(timer.current?.subjectId || '')
+const subjId = ref(timer.current?.subjectId || String(route.query.subjectId || ''))
 const activity = ref(timer.current?.activityType || '')
-const plan = ref(timer.current?.mode === 'timer' ? timer.current.plannedMin || 25 : 25)
+const plan = ref(timer.current?.mode === 'timer' ? timer.current.plannedMin || settings.value.focusMin : settings.value.focusMin)
 const customOpen = ref(false)
 const customVal = ref(40)
 
@@ -38,7 +42,7 @@ const note = ref('')
 const finished = ref(null)
 
 const phase = computed(() =>
-  !timer.current ? 'idle' : timer.isPaused ? 'paused' : 'focusing'
+  timer.rest ? (timer.rest.finished ? 'restReady' : 'resting') : !timer.current ? 'idle' : timer.isPaused ? 'paused' : 'focusing'
 )
 const currentSubject = computed(
   () =>
@@ -52,23 +56,27 @@ const isStopwatch = computed(() =>
   phase.value === 'idle' ? mode.value === 'stopwatch' : timer.current?.mode === 'stopwatch'
 )
 const ringColor = computed(() => {
+  if (timer.rest) return '#1f9d63'
   if (phase.value === 'paused') return '#94a3b8'
   return isStopwatch.value ? '#3a7fc4' : '#f2705b'
 })
 const ringStart = computed(() => (isStopwatch.value ? '#82b4e8' : '#ff9d8a'))
 const ringProgress = computed(() => {
+  if (timer.rest) return 1 - timer.restRemainingSec / timer.rest.plannedSec
   if (phase.value === 'idle') return 0
   if (timer.current?.mode === 'stopwatch') return (timer.elapsedSec % 60) / 60
   return timer.progress
 })
 const displayTime = computed(() => {
+  if (timer.rest) return fmtClock(timer.restRemainingSec)
   if (phase.value === 'idle')
     return isStopwatch.value ? '00:00' : fmtClock(plan.value * 60)
   if (timer.current?.mode === 'stopwatch') return fmtClock(timer.elapsedSec)
   return fmtClock(timer.remainingSec)
 })
 const phaseText = computed(
-  () => ({ idle: '准备开始', focusing: '专注中', paused: '已暂停' }[phase.value])
+  () => ({ idle: '准备开始', focusing: '专注中', paused: '已暂停',
+    resting: timer.rest?.kind === 'long' ? '长休息' : '短休息', restReady: '休息结束，等待手动开始' }[phase.value])
 )
 
 function start() {
@@ -82,6 +90,8 @@ function start() {
     mode: mode.value,
     plannedMin: plan.value,
     activityType: activity.value,
+    learningContent: learningContent.value,
+    taskId: route.query.taskId || null,
   })
   toast(mode.value === 'stopwatch' ? '开始正向计时，大雪深埋' : '开始专注，大雪深埋')
 }
@@ -175,6 +185,7 @@ watch(
       <button class="notify-btn" @click="toggleNotify">
         <component :is="app.notifyEnabled ? Bell : BellOff" :size="18" :stroke-width="2.2" />
       </button>
+      <button class="notify-btn" aria-label="专注与休息设置" @click="router.push('/settings/learning')"><Settings2 :size="18" /></button>
     </div>
 
     <div class="page focus-page">
@@ -194,7 +205,11 @@ watch(
           </div>
         </FocusRing>
 
-        <template v-if="phase !== 'idle'">
+        <div v-if="timer.rest" class="active-controls">
+          <button v-if="timer.rest.finished" class="ctl-main" @click="timer.startNext()"><Play :size="20" />开始下一个番茄</button>
+          <button class="ctl-end" @click="timer.endRest()">{{ timer.rest.finished ? '返回设置' : '跳过休息' }}</button>
+        </div>
+        <template v-else-if="phase !== 'idle'">
           <div class="active-controls">
             <button class="ctl-main" @click="toggle">
               <component :is="timer.isPaused ? Play : Pause" :size="22" :stroke-width="2.4" />
@@ -225,7 +240,7 @@ watch(
           >
             <Timer :size="16" />
             <span>正向计时</span>
-            <small>无上限，手动结束</small>
+            <small>最多180分钟，手动结束</small>
           </button>
         </div>
 
@@ -271,6 +286,11 @@ watch(
         </div>
 
         <!-- 倒计时时长（正向计时不显示） -->
+        <div class="card">
+          <label class="cfg-label" for="learning-content">自由学习内容</label>
+          <input id="learning-content" v-model="learningContent" class="input" maxlength="100" list="learning-history" placeholder="如：高数第三章课后题，可选择历史内容" />
+          <datalist id="learning-history"><option v-for="item in timer.contentHistory" :key="item" :value="item" /></datalist>
+        </div>
         <div v-if="mode === 'timer'" class="card">
           <div class="cfg-label">专注时长（分钟）</div>
           <div class="pill-row">
@@ -349,7 +369,7 @@ watch(
             <Check :size="18" />记录并结束（按实际时长）
           </button>
           <button class="btn btn-danger btn-block mt8" @click="giveup">
-            <X :size="18" />放弃（不记录）
+              <X :size="18" />放弃（保留已专注时长）
           </button>
           <button class="btn btn-ghost btn-block mt8" @click="sheet = false">继续专注</button>
         </template>

@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ChevronLeft, Plus, Check, Trash2, Pencil, AlertTriangle,
+  ChevronLeft, Plus, Check, Trash2, Pencil, AlertTriangle, Play,
 } from 'lucide-vue-next'
 import SubjectIcon from '../components/SubjectIcon.vue'
 import { useTasksStore } from '../stores/tasks'
@@ -67,6 +67,10 @@ function openEdit(t) {
   fCriteria.value = t.acceptCriteria || ''
   fDue.value = t.dueDate || today
   sheet.value = true
+}
+function focusTask(task) {
+  router.push({ path: '/focus', query: { taskId: task.id, subjectId: task.subjectId,
+    content: task.title.slice(0, 100) } })
 }
 async function save() {
   if (!fTitle.value.trim()) {
@@ -167,6 +171,7 @@ async function remove(id) {
             </span>
           </div>
         </div>
+        <button class="edit" title="为此任务专注" @click="focusTask(t)"><Play :size="15" /></button>
         <button class="edit" @click="openEdit(t)"><Pencil :size="15" /></button>
       </div>
     </div>
@@ -191,6 +196,7 @@ async function remove(id) {
               <span class="due">{{ dateLabel(t.dueDate) }}</span>
             </div>
           </div>
+          <button class="edit" title="为此任务专注" @click="focusTask(t)"><Play :size="15" /></button>
           <button class="edit" @click="openEdit(t)"><Pencil :size="15" /></button>
         </div>
       </div>

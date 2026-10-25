@@ -16,7 +16,10 @@ export async function buildBackup(database, settings) {
     mistakes.push(item)
   }
   return {
-    app: 'yanshi', version: 3, exportedAt: new Date().toISOString(), settings,
+    app: 'yanshi', version: 4, exportedAt: new Date().toISOString(), settings,
+    ownerId: database.name?.match(/_u(\d+)$/)?.[1] || null,
+    learningSettings: (await database.kv?.get?.('learning-settings'))?.value || null,
+    profile: (await database.kv?.get?.('profile'))?.value || null,
     subjects, sessions, tasks, mistakes,
   }
 }

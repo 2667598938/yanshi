@@ -2,8 +2,14 @@ import { defineStore } from 'pinia'
 import { dayKey, todayKey, calcStreak, lastNDays } from '../utils/date'
 import { db, currentKey, uid } from '../db'
 import { enqueueRecord, enqueueDelete } from '../sync/engine'
+import { useLearningSettingsStore } from './learningSettings'
+import { clockNow } from '../utils/clock'
 
 let ticker = null
+let pendingSave = Promise.resolve()
+export async function waitForTimerPersistence() {
+  await pendingSave.catch(() => {})
+}
 const MAX_FOCUS_SEC = 180 * 60          // 单颗上限 180 分钟
 const MAX_PAUSE_MS = 30 * 60 * 1000    // 单次暂停上限 30 分钟
 
@@ -15,6 +21,13 @@ function loadCurrent() {
   }
 }
 
+function loadCycle() {
+  try {
+    const value = JSON.parse(localStorage.getItem(`${currentKey()}:cycle`))
+    return { rest: value?.rest || null, cycleCount: Math.max(0, Number(value?.cycleCount) || 0) }
+  } catch { return { rest: null, cycleCount: 0 } }
+}
+
 // 模式：timer 倒计时（到点自动完成）；stopwatch 正向计时（手动结束）
 // 状态：idle → focusing ⇄ paused；180 分钟 / 暂停 30 分钟自动 quit；放弃保留实际时长
 export const useTimerStore = defineStore('timer', {
@@ -22,12 +35,17 @@ export const useTimerStore = defineStore('timer', {
     sessions: [],
     loaded: false,
     current: loadCurrent(),
-    now: Date.now(),
+    now: clockNow(),
     lastFinished: null, // { session, at, auto }
+    ...loadCycle(),
+    persisting: false,
   }),
 
   getters: {
-    isActive: (s) => !!s.current,
+    isActive: (s) => !!s.current || !!s.rest,
+    isResting: (s) => !!s.rest,
+    restRemainingSec: (s) => s.rest ? Math.max(0, Math.ceil((s.rest.startedAt + s.rest.plannedSec * 1000 - s.now) / 1000)) : 0,
+    contentHistory: (s) => [...new Set([...s.sessions].reverse().map((row) => row.learningContent).filter(Boolean))].slice(0, 50),
     isPaused: (s) => !!s.current?.paused,
     isStopwatch: (s) => s.current?.mode === 'stopwatch',
 
@@ -105,12 +123,20 @@ export const useTimerStore = defineStore('timer', {
     ensureTicker() {
       if (ticker) return
       ticker = setInterval(() => {
-        this.now = Date.now()
+        this.now = clockNow()
         this.checkLimits()
       }, 500)
     },
     // 统一结束判定：暂停超 30 分钟 quit；专注超 180 分钟 quit；倒计时到点 done
     checkLimits() {
+      if (this.rest) {
+        if (this.restRemainingSec === 0 && !this.rest.finished) {
+          this.rest.finished = true
+          this.saveCycle()
+          this.stopTicker()
+        }
+        return
+      }
       const c = this.current
       if (!c) return
       if (c.paused) {
@@ -129,7 +155,7 @@ export const useTimerStore = defineStore('timer', {
       if (c.mode === 'timer' && this.remainingSec <= 0) this.finish(true)
     },
     stopTicker() {
-      if (ticker && !this.current) {
+      if (ticker && !this.current && (!this.rest || this.rest.finished)) {
         clearInterval(ticker)
         ticker = null
       }
@@ -138,13 +164,40 @@ export const useTimerStore = defineStore('timer', {
       if (this.current) localStorage.setItem(currentKey(), JSON.stringify(this.current))
       else localStorage.removeItem(currentKey())
     },
+    saveCycle() {
+      localStorage.setItem(`${currentKey()}:cycle`, JSON.stringify({ rest: this.rest, cycleCount: this.cycleCount }))
+    },
+    startRest(previous) {
+      const settings = useLearningSettingsStore().value
+      const long = this.cycleCount % settings.longBreakEvery === 0
+      this.rest = { kind: long ? 'long' : 'short', startedAt: clockNow(), finished: false,
+        plannedSec: (long ? settings.longBreakMin : settings.shortBreakMin) * 60,
+        nextFocus: { subjectId: previous.subjectId, mode: previous.mode,
+          activityType: previous.activityType, learningContent: previous.learningContent || '' } }
+      this.now = clockNow()
+      this.saveCycle()
+      this.ensureTicker()
+    },
+    endRest() {
+      this.rest = null
+      this.saveCycle()
+      this.stopTicker()
+    },
+    startNext() {
+      if (!this.rest?.finished) return
+      const next = { ...this.rest.nextFocus, plannedMin: useLearningSettingsStore().value.focusMin }
+      this.endRest()
+      this.start(next)
+    },
     resumeOnLoad() {
       this.current = loadCurrent()
-      this.now = Date.now()
+      Object.assign(this, loadCycle())
+      this.now = clockNow()
       if (this.current) {
         this.ensureTicker()
         this.checkLimits() // 息屏/挂起恢复后立即校正
       }
+      if (this.rest && !this.rest.finished) { this.ensureTicker(); this.checkLimits() }
     },
     // 切换账号后重建计时状态（每个账号的进行中番茄互不影响）
     resetForAccount() {
@@ -156,44 +209,48 @@ export const useTimerStore = defineStore('timer', {
       this.loaded = false
       this.lastFinished = null
       this.current = loadCurrent()
-      this.now = Date.now()
+      Object.assign(this, loadCycle())
+      this.now = clockNow()
       if (this.current) this.ensureTicker()
+      if (this.rest && !this.rest.finished) { this.ensureTicker(); this.checkLimits() }
     },
 
-    start({ subjectId, mode = 'timer', plannedMin = 25, activityType = '' }) {
-      if (this.current) return
+    start({ subjectId, mode = 'timer', plannedMin = 25, activityType = '', learningContent = '', taskId = null }) {
+      if (this.current || this.rest || this.persisting) return
       this.current = {
         id: uid('s_'),
         subjectId,
         mode,
         activityType,
+        learningContent: String(learningContent).trim().slice(0, 100),
+        taskId,
         plannedMin: mode === 'stopwatch' ? 0 : plannedMin,
-        startedAt: Date.now(),
+        startedAt: clockNow(),
         pauseAccum: 0,
         maxPauseMs: 0,
         pausedAt: null,
         paused: false,
       }
-      this.now = Date.now()
+      this.now = clockNow()
       this.saveCurrent()
       this.ensureTicker()
     },
     pause() {
       if (this.current && !this.current.paused) {
         this.current.paused = true
-        this.current.pausedAt = Date.now()
+        this.current.pausedAt = clockNow()
         this.saveCurrent()
       }
     },
     resume() {
       if (this.current && this.current.paused) {
-        const pauseMs = Math.max(0, Date.now() - this.current.pausedAt)
+        const pauseMs = Math.max(0, clockNow() - this.current.pausedAt)
         if (pauseMs >= MAX_PAUSE_MS) return this.finish(false, '', 'pause_timeout')
         this.current.pauseAccum += pauseMs
         this.current.maxPauseMs = Math.max(this.current.maxPauseMs || 0, pauseMs)
         this.current.paused = false
         this.current.pausedAt = null
-        this.now = Date.now()
+        this.now = clockNow()
         this.saveCurrent()
       }
     },
@@ -201,7 +258,8 @@ export const useTimerStore = defineStore('timer', {
     // note 为本颗番茄备注
     async finish(auto, note = '', reason = 'completed') {
       const c = this.current
-      if (!c) return
+      if (!c || this.persisting) return
+      this.persisting = true
       // 到点后 500ms ticker 可能在本函数 await 期间再次触发；先同步摘除当前计时并停表，
       // 保证一次专注只落库一次（避免重复进入导致同 id 再写 sessions 触发 Dexie 主键冲突）
       this.current = null
@@ -210,7 +268,7 @@ export const useTimerStore = defineStore('timer', {
       const rawSec = Math.max(
         0,
         Math.floor(
-          ((c.paused ? c.pausedAt : Date.now()) - c.startedAt - c.pauseAccum) / 1000
+          ((c.paused ? c.pausedAt : clockNow()) - c.startedAt - c.pauseAccum) / 1000
         )
       )
       let actualSec = rawSec
@@ -221,12 +279,14 @@ export const useTimerStore = defineStore('timer', {
       // 倒计时在挂起后恢复时仍以原定完成时刻结算，避免回拉重算为挂起时长。
       const endedAt = auto && c.mode === 'timer'
         ? c.startedAt + (c.pauseAccum || 0) + actualSec * 1000
-        : c.paused ? c.pausedAt : Date.now()
+        : c.paused ? c.pausedAt : clockNow()
       const session = {
         id: c.id,
         subjectId: c.subjectId,
         mode: c.mode,
         activityType: c.activityType || '',
+        learningContent: c.learningContent || '',
+        taskId: c.taskId || null,
         plannedMin: c.plannedMin || 0,
         actualSec,
         status,
@@ -235,22 +295,39 @@ export const useTimerStore = defineStore('timer', {
         endedAt,
         pauseAccum: c.pauseAccum || 0, // 毫秒，累计已恢复的暂停，用于时长扣减
         maxPauseMs: Math.max(c.maxPauseMs || 0,
-          c.paused ? Math.max(0, Date.now() - c.pausedAt) : 0),
+          c.paused ? Math.max(0, clockNow() - c.pausedAt) : 0),
         date: dayKey(new Date(c.startedAt)), // 跨零点按开始时刻归日
         note: (note || '').trim(),
         createdAt: endedAt,
       }
       let duplicated = false
-      await db.sessions.add(session).catch((e) => {
+      pendingSave = db.transaction('rw', db.sessions, db.outbox, db.syncMeta, async () => {
+        await db.sessions.add(session)
+        await enqueueRecord('sessions', session)
+      })
+      await pendingSave.catch((e) => {
         // 极端情况下同 id 已存在（不应发生，摘除已防重入），则不重复入队
         if (e?.name === 'ConstraintError') duplicated = true
-        else throw e
+        else {
+          this.current = c
+          this.saveCurrent()
+          this.ensureTicker()
+          this.persisting = false
+          throw e
+        }
       })
       if (!duplicated) {
         this.sessions.push(session)
-        await enqueueRecord('sessions', session)
+        if (status === 'done' && actualSec > 0) {
+          this.cycleCount += 1
+          this.startRest(c)
+        } else if (status === 'quit') {
+          this.cycleCount = 0
+          this.saveCycle()
+        }
       }
-      this.lastFinished = { session, at: Date.now(), auto: !!auto }
+      this.lastFinished = { session, at: clockNow(), auto: !!auto }
+      this.persisting = false
       return session
     },
     // 放弃本颗：保留实际专注时长，记为 quit（不再直接丢弃）
@@ -263,17 +340,20 @@ export const useTimerStore = defineStore('timer', {
       this.sessions = this.sessions.filter((x) => x.id !== id)
     },
     async updateSession(id, patch) {
-      await db.sessions.update(id, patch)
+      const { patchRecord } = await import('../sync/engine')
+      const row = await patchRecord('sessions', id, patch)
       const i = this.sessions.findIndex((x) => x.id === id)
       if (i >= 0) {
-        this.sessions[i] = { ...this.sessions[i], ...patch }
-        await enqueueRecord('sessions', this.sessions[i])
+        if (row) this.sessions[i] = row
       }
     },
     async clearAll() {
       await db.sessions.clear()
       this.sessions = []
       this.current = null
+      this.rest = null
+      this.cycleCount = 0
+      this.saveCycle()
       this.lastFinished = null
       this.saveCurrent()
       this.stopTicker()

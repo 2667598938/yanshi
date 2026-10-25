@@ -42,6 +42,7 @@ const routes = [
   { path: '/mistakes', name: 'mistakes', component: () => import('../views/MistakesView.vue'), meta: { title: '错题本', hideTabbar: true } },
   { path: '/mistake/edit', name: 'mistake-edit', component: () => import('../views/MistakeEditView.vue'), meta: { title: '记一道错题', hideTabbar: true } },
   { path: '/subjects', name: 'subjects', component: () => import('../views/SubjectManageView.vue'), meta: { title: '科目管理', hideTabbar: true } },
+  { path: '/settings/learning', name: 'learning-settings', component: () => import('../views/LearningSettingsView.vue'), meta: { title: '专注与休息设置', hideTabbar: true } },
 ]
 
 const router = createRouter({

@@ -13,6 +13,30 @@ export function filterSessions(sessions, { start, end, subjectId, activityType }
   )
 }
 
+export function periodBounds(period, key = todayKey()) {
+  const date = new Date(key + 'T00:00:00')
+  if (!Number.isFinite(date.getTime())) throw new Error('日期无效')
+  const year = date.getFullYear(), month = date.getMonth()
+  if (period === 'day') return { start: key, end: key }
+  if (period === 'week') { const start = weekStartKey(key); return { start, end: addDaysKey(start, 6) } }
+  if (period === 'month') return { start: dayKey(new Date(year, month, 1)), end: dayKey(new Date(year, month + 1, 0)) }
+  if (period === 'year') return { start: `${year}-01-01`, end: `${year}-12-31` }
+  throw new Error('统计周期无效')
+}
+
+export function contentBreakdown(rows) {
+  const grouped = new Map()
+  for (const row of rows) {
+    const name = row.learningContent?.trim() || '未填写学习内容'
+    grouped.set(name, (grouped.get(name) || 0) + Math.max(0, Number(row.actualSec) || 0))
+  }
+  const total = [...grouped.values()].reduce((sum, sec) => sum + sec, 0)
+  const colors = ['#f2705b', '#3a7fc4', '#1f9d63', '#8b6ccc', '#d49b32', '#d265a1', '#379a9a', '#76859b']
+  return [...grouped].map(([name, sec]) => ({ name, sec, pct: total ? sec / total * 100 : 0,
+    color: colors[[...name].reduce((hash, char) => hash + char.codePointAt(0), 0) % colors.length] }))
+    .filter((row) => row.sec > 0).sort((a, b) => b.sec - a.sec || a.name.localeCompare(b.name))
+}
+
 export function sumMin(rows) {
   return rows.reduce((a, x) => a + x.actualSec / 60, 0)
 }
