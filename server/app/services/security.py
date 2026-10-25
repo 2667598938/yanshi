@@ -17,9 +17,12 @@ REFRESH_COOKIE_PATH = '/api/v1/auth'
 
 def set_refresh_cookie(response, token: str, settings) -> None:
     """refresh token 只放 httpOnly Cookie，前端不可读。"""
+    # 只有生产环境且对外地址是 HTTPS 时才加 Secure；否则 http://IP:端口 内测时
+    # 浏览器不会保存 Cookie，登录 2 小时后会掉线。
+    secure = settings.environment == 'production' and settings.public_origin.startswith('https://')
     response.set_cookie(
         key=REFRESH_COOKIE, value=token, max_age=settings.refresh_seconds,
-        httponly=True, secure=settings.environment == 'production',
+        httponly=True, secure=secure,
         samesite='lax', path=REFRESH_COOKIE_PATH,
     )
 

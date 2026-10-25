@@ -47,6 +47,8 @@ class Settings(BaseSettings):
 
     # 图片存储：本地开发用 data/uploads；生产切七牛 Kodo（私有 bucket + S3 签名 URL）
     image_storage: str = 'local'   # local | qiniu
+    # 生产环境默认禁止本地图片存储（要求七牛）；未备案内测用 IP:端口 时可临时打开
+    allow_local_image_storage: bool = False
     image_directory: Path = BASE_DIR / 'data' / 'uploads'
     image_max_avatar_bytes: int = 2 * 1024 * 1024
     image_max_bytes: int = 5 * 1024 * 1024
