@@ -117,6 +117,11 @@ export const useTimerStore = defineStore('timer', {
         if (this.now - c.pausedAt >= MAX_PAUSE_MS) this.finish(false, '', 'pause_timeout')
         return
       }
+      // 恢复后台计时：按先到的边界结算；25 分钟倒计时早于 180 分钟上限。
+      if (c.mode === 'timer' && this.plannedSec < MAX_FOCUS_SEC && this.remainingSec <= 0) {
+        this.finish(true)
+        return
+      }
       if (this.elapsedSec >= MAX_FOCUS_SEC) {
         this.finish(false, '', 'timeout')
         return
@@ -135,6 +140,7 @@ export const useTimerStore = defineStore('timer', {
     },
     resumeOnLoad() {
       this.current = loadCurrent()
+      this.now = Date.now()
       if (this.current) {
         this.ensureTicker()
         this.checkLimits() // 息屏/挂起恢复后立即校正
@@ -164,6 +170,7 @@ export const useTimerStore = defineStore('timer', {
         plannedMin: mode === 'stopwatch' ? 0 : plannedMin,
         startedAt: Date.now(),
         pauseAccum: 0,
+        maxPauseMs: 0,
         pausedAt: null,
         paused: false,
       }
@@ -180,7 +187,10 @@ export const useTimerStore = defineStore('timer', {
     },
     resume() {
       if (this.current && this.current.paused) {
-        this.current.pauseAccum += Date.now() - this.current.pausedAt
+        const pauseMs = Math.max(0, Date.now() - this.current.pausedAt)
+        if (pauseMs >= MAX_PAUSE_MS) return this.finish(false, '', 'pause_timeout')
+        this.current.pauseAccum += pauseMs
+        this.current.maxPauseMs = Math.max(this.current.maxPauseMs || 0, pauseMs)
         this.current.paused = false
         this.current.pausedAt = null
         this.now = Date.now()
@@ -208,7 +218,10 @@ export const useTimerStore = defineStore('timer', {
       // 规则：真实时长封顶 180 分钟；超时/暂停超时/放弃均记为 quit
       actualSec = Math.min(actualSec, MAX_FOCUS_SEC)
       const status = ['timeout', 'pause_timeout', 'abandoned'].includes(reason) ? 'quit' : 'done'
-      const endedAt = c.paused && !auto ? c.pausedAt : Date.now()
+      // 倒计时在挂起后恢复时仍以原定完成时刻结算，避免回拉重算为挂起时长。
+      const endedAt = auto && c.mode === 'timer'
+        ? c.startedAt + (c.pauseAccum || 0) + actualSec * 1000
+        : c.paused ? c.pausedAt : Date.now()
       const session = {
         id: c.id,
         subjectId: c.subjectId,
@@ -220,6 +233,9 @@ export const useTimerStore = defineStore('timer', {
         end_reason: reason,
         startedAt: c.startedAt,
         endedAt,
+        pauseAccum: c.pauseAccum || 0, // 毫秒，累计已恢复的暂停，用于时长扣减
+        maxPauseMs: Math.max(c.maxPauseMs || 0,
+          c.paused ? Math.max(0, Date.now() - c.pausedAt) : 0),
         date: dayKey(new Date(c.startedAt)), // 跨零点按开始时刻归日
         note: (note || '').trim(),
         createdAt: endedAt,

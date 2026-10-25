@@ -32,39 +32,46 @@ export const useAuthStore = defineStore('auth', {
       else localStorage.removeItem(SESSION_KEY)
     },
     async acceptSession({ access_token, user }) {
-      this.accessToken = access_token
-      this.user = user
-      this.persist()
-      await afterLogin(user.id)
+      const sync = await import('../sync/engine')
+      await sync.pauseSyncForAccountSwitch()
+      try {
+        this.accessToken = access_token
+        this.user = user
+        this.persist()
+        await afterLogin(user.id)
+      } finally {
+        sync.resumeSyncAfterAccountSwitch()
+      }
     },
     setUser(user) {
       this.user = user
       this.persist()
     },
+    async authenticate(request) {
+      const sync = await import('../sync/engine')
+      await sync.pauseSyncForAccountSwitch()
+      try {
+        const data = await request()
+        await this.acceptSession(data)
+        return data
+      } finally {
+        sync.resumeSyncAfterAccountSwitch()
+      }
+    },
     async login(email, password) {
-      const data = await authApi.login(email, password)
-      await this.acceptSession(data)
-      return data
+      return this.authenticate(() => authApi.login(email, password))
     },
     async emailLogin(payload) {
-      const data = await authApi.emailLogin(payload)
-      await this.acceptSession(data)
-      return data
+      return this.authenticate(() => authApi.emailLogin(payload))
     },
     async exchangeOAuth(ticket) {
-      const data = await authApi.oauthExchange(ticket)
-      await this.acceptSession(data)
-      return data
+      return this.authenticate(() => authApi.oauthExchange(ticket))
     },
     async phoneLogin(phone, code) {
-      const data = await authApi.phoneVerify(phone, code)
-      await this.acceptSession(data)
-      return data
+      return this.authenticate(() => authApi.phoneVerify(phone, code))
     },
     async register(payload) {
-      const data = await authApi.register(payload)
-      await this.acceptSession(data)
-      return data
+      return this.authenticate(() => authApi.register(payload))
     },
     // 启动/刷新时用 httpOnly Cookie 恢复会话；离线时保留本地缓存资料
     async restore() {
@@ -101,13 +108,19 @@ export const useAuthStore = defineStore('auth', {
       return data
     },
     async logout() {
+      const sync = await import('../sync/engine')
+      await sync.pauseSyncForAccountSwitch()
       try {
-        await authApi.logout()
-      } catch {
-        /* 忽略网络错误，本地照常登出 */
+        try {
+          await authApi.logout()
+        } catch {
+          /* 忽略网络错误，本地照常登出 */
+        }
+        this.clear()
+        await afterLogout()
+      } finally {
+        sync.resumeSyncAfterAccountSwitch()
       }
-      this.clear()
-      await afterLogout()
     },
     clear() {
       this.accessToken = ''

@@ -7,7 +7,7 @@ export async function afterLogin(userId) {
   await reloadLocal()
   const { initSyncForUser, resetSyncRuntime } = await import('./engine')
   resetSyncRuntime()
-  initSyncForUser()
+  await initSyncForUser()
 }
 
 export async function afterLogout() {
@@ -39,6 +39,5 @@ async function reloadLocal() {
   tk.loaded = true
 
   const ms = m.useMistakesStore()
-  ms.list = await db.mistakes.toArray()
-  ms.loaded = true
+  await ms.load(true)
 }

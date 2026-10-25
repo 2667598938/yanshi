@@ -205,7 +205,17 @@ async function applyServerRecord(id, revision, record) {
 
 async function pushOutbox() {
   const all = await db.outbox.orderBy('createdAt').limit(200).toArray()
-  const items = all.filter((it) => !COMMUNITY_TYPES.has(it.type))
+  const items = []
+  for (const it of all) {
+    if (COMMUNITY_TYPES.has(it.type)) continue
+    if (it.type === 'mistake' && it.record) {
+      const local = await db.mistakes.get(it.recordId)
+      // 图片未全部补传时保留队列，避免云端不完整记录回拉覆盖本机 Blob。
+      if (local && ['images', 'answerImages'].some((field) =>
+        (local[field] || []).some((image) => typeof image !== 'string'))) continue
+    }
+    items.push(it)
+  }
   if (!items.length) return
   const changes = items.map((it) => ({
     id: it.recordId,
@@ -288,8 +298,7 @@ async function reloadStores() {
   tk.list = await db.tasks.toArray()
   tk.loaded = true
   const ms = m.useMistakesStore()
-  ms.list = await db.mistakes.toArray()
-  ms.loaded = true
+  await ms.load(true)
 }
 
 // 首次登录：把本地所有未同步记录入队（换设备也能恢复）
@@ -317,15 +326,32 @@ let syncing = false
 let queued = false
 let timer = null
 let periodicStarted = false
+let accountSwitches = 0
+let syncCompletion = Promise.resolve()
+
+// 换号前等待当前批次结束，期间禁止新批次；旧请求始终在旧账号/旧库下收尾。
+export async function pauseSyncForAccountSwitch() {
+  accountSwitches += 1
+  clearTimeout(timer)
+  queued = false
+  await syncCompletion
+}
+
+export function resumeSyncAfterAccountSwitch() {
+  accountSwitches = Math.max(0, accountSwitches - 1)
+  if (!accountSwitches) scheduleSync(0)
+}
 
 export async function syncNow() {
   const auth = useAuthStore()
-  if (!auth.isLoggedIn) return
+  if (!auth.isLoggedIn || accountSwitches) return
   if (syncing) {
     queued = true
     return
   }
   syncing = true
+  let completeSync
+  syncCompletion = new Promise((resolve) => { completeSync = resolve })
   try {
     // 先把离线拍的错题图补传为附件 key，再推送记录
     const uploaded = await flushMistakeImages()
@@ -341,6 +367,7 @@ export async function syncNow() {
     return false
   } finally {
     syncing = false
+    completeSync()
     if (queued) {
       queued = false
       syncNow()
@@ -350,7 +377,7 @@ export async function syncNow() {
 
 export function scheduleSync(delay = 1500) {
   const auth = useAuthStore()
-  if (!auth.isLoggedIn) return
+  if (!auth.isLoggedIn || accountSwitches) return
   clearTimeout(timer)
   timer = setTimeout(() => syncNow(), delay)
 }
@@ -376,9 +403,9 @@ export async function initSyncForUser() {
 
 // 账号切换时清空内存中的冲突裁决状态（数据本身按账号分库保留）
 export function resetSyncRuntime() {
+  clearTimeout(timer)
   heldIds.clear()
   syncState.pendingConflicts.splice(0, syncState.pendingConflicts.length)
-  syncing = false
   queued = false
 }
 

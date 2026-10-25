@@ -17,10 +17,11 @@ async function migrateRows(rows) {
   for (const row of rows) {
     if (typeof row.nextReviewAt !== 'string') continue
     const dueMs = new Date(`${row.nextReviewAt}T00:00:00`).getTime()
-    row.stage = row.mastered ? Math.min(row.stage || 0, 7) : OLD_TO_NEW_STAGE[Math.min(row.stage || 0, 5)]
+    row.stage = row.mastered ? REVIEW_INTERVALS.length : OLD_TO_NEW_STAGE[Math.min(Math.max(row.stage || 0, 0), 5)]
     row.nextReviewAt = row.mastered ? null : (Number.isFinite(dueMs) ? dueMs : Date.now())
     changed = true
     await db.mistakes.put(row)
+    await enqueueRecord('mistakes', row)
   }
   return changed
 }
@@ -50,10 +51,12 @@ export const useMistakesStore = defineStore('mistakes', {
     },
   },
   actions: {
-    async load() {
-      if (this.loaded) return
-      this.list = await db.mistakes.toArray()
-      await migrateRows(this.list)
+    async load(force = false) {
+      if (this.loaded && !force) return
+      const rows = await db.mistakes.toArray()
+      // 迁移持久化完成后再交给 Pinia，避免把响应式 Proxy 写入 IndexedDB。
+      await migrateRows(rows)
+      this.list = rows
       this.loaded = true
     },
     async add(payload) {

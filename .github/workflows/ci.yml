@@ -62,5 +62,8 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      - name: 前端回归测试
+        run: npm test
+
       - name: 构建
         run: npm run build

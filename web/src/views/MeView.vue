@@ -15,7 +15,7 @@ import { fmtDate } from '../utils/time'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
 import { db } from '../db'
 import { syncNow } from '../sync/engine'
-import { blobToDataUrl } from '../utils/image'
+import { buildBackup } from '../utils/backup'
 import { fmtMinutes, todayKey } from '../utils/date'
 import { authApi, publicApi, attachmentApi, messageApi } from '../api'
 import BlobImage from '../components/BlobImage.vue'
@@ -172,23 +172,8 @@ async function openLegal(tab) {
 
 async function exportBackup() {
   try {
-    const [subjects_, sessions_, tasks_, mistakes_] = await Promise.all([
-      db.subjects.toArray(), db.sessions.toArray(), db.tasks.toArray(), db.mistakes.toArray(),
-    ])
-    const mm = []
-    for (const m of mistakes_) {
-      const images = []
-      for (const b of m.images || []) {
-        if (typeof b === 'string') { images.push(b); continue }
-        try { images.push(await blobToDataUrl(b)) } catch { /* 跳过 */ }
-      }
-      mm.push({ ...m, images })
-    }
-    const payload = {
-      app: 'yanshi', version: 3, exportedAt: new Date().toISOString(),
-      settings: JSON.parse(localStorage.getItem('yanshi:app') || '{}'),
-      subjects: subjects_, sessions: sessions_, tasks: tasks_, mistakes: mm,
-    }
+    const payload = await buildBackup(db,
+      JSON.parse(localStorage.getItem('yanshi:app') || '{}'))
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -196,9 +181,9 @@ async function exportBackup() {
     a.download = `研时备份_${todayKey()}.json`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast('已导出完整备份（含错题图片）')
+    toast('已导出备份（含本地题图、解析图及云端图片引用）')
   } catch {
-    toast('导出失败，请稍后再试')
+    toast('导出失败，图片可能无法读取，请重试')
   }
 }
 
