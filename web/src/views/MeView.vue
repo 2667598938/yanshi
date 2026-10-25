@@ -280,13 +280,13 @@ async function toggleNotify() {
 }
 
 async function togglePrivacy() {
-  const next = !auth.user?.privacy_mode
+  const next = !auth.user?.is_private_mode
+  if (next && !confirm('开启隐私模式后，小组内其他成员将无法查看你的自习状态、错题、任务、番茄记录、学习热力等全部学习数据；仅管理员仍可管理你的账号（管理员后台用于运维，不展示学习明细）。')) return
   try {
-    await profile.save({ privacy_mode: next })
-    toast(next ? '已开启隐私模式：成员列表与排行榜将匿名显示' : '已关闭隐私模式')
-  } catch (e) {
-    toast(e.message)
-  }
+    const result = await authApi.updateMe({ is_private_mode: next })
+    auth.setUser({ ...auth.user, is_private_mode: result.is_private_mode, privacy_mode: result.is_private_mode })
+    toast(next ? '隐私模式已开启，组员无法读取你的学习数据' : '已关闭隐私，恢复受邀小组共享')
+  } catch (e) { toast('隐私设置未生效，请联网后重试：' + e.message) }
 }
 
 onMounted(() => {
@@ -308,7 +308,7 @@ onMounted(() => {
     <div v-if="restorePreview" class="mask" @click.self="!restoring && (restorePreview = null)">
       <div class="sheet">
         <div class="sheet-title">恢复研时备份</div>
-        <p class="sheet-sub">科目{{ restorePreview.counts.subjects }}条、专注{{ restorePreview.counts.sessions }}条、任务{{ restorePreview.counts.tasks }}条、错题{{ restorePreview.counts.mistakes }}条。</p>
+        <p class="sheet-sub">科目{{ restorePreview.counts.subjects }}条、专注{{ restorePreview.counts.sessions }}条、任务{{ restorePreview.counts.tasks }}条、错题{{ restorePreview.counts.mistakes }}条、时间节点{{ restorePreview.counts.timeNodes }}条。</p>
         <p class="sheet-sub">默认保留相同ID的现有记录；云端图片引用需要原账号和对应存储仍可访问。</p>
         <label><input v-model="overwriteBackup" type="checkbox" :disabled="restoring" /> 覆盖相同ID记录（保留云端版本校验）</label>
         <button class="btn btn-primary btn-block mt16" :disabled="restoring" @click="importBackup">{{ restoring ? '正在恢复…' : '合并恢复' }}</button>
@@ -379,9 +379,9 @@ onMounted(() => {
           </div>
           <div class="row" @click="togglePrivacy">
             <span class="row-ic c-purple"><EyeOff :size="18" /></span>
-            <span class="row-label">隐私模式</span>
-            <span class="row-val">房间匿名 / 不上榜</span>
-            <span class="switch" :class="{ on: auth.user?.privacy_mode }"><span class="knob"></span></span>
+            <span class="row-label">小组隐私模式</span>
+            <span class="row-val">一键停止全部学习数据共享</span>
+            <span class="switch" :class="{ on: auth.user?.is_private_mode }"><span class="knob"></span></span>
           </div>
         </div>
       </div>
@@ -503,6 +503,11 @@ onMounted(() => {
         </div>
       </div>
 
+      <div class="group"><div class="card menu">
+        <div class="row" @click="router.push('/group')">小组学习数据 · 默认互通<ChevronRight :size="17" /></div>
+        <div class="row" @click="router.push('/schools/manage')">我的梦校 · 新增、删除、排序<ChevronRight :size="17" /></div>
+        <div class="row" @click="router.push('/settings/time-nodes')">时间节点管理与自定义寄语<ChevronRight :size="17" /></div>
+      </div></div>
       <!-- 数据与关于 -->
       <div class="group">
         <div class="group-title">数据与关于</div>

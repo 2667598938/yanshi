@@ -16,7 +16,7 @@ def profile_write(function):
 
 
 def snapshot_profile(db, user):
-    value = {field: getattr(user, field) for field in ProfileUpdate.model_fields}
+    value = {field: getattr(user, field) for field in ProfileUpdate.model_fields if field not in {'privacy_mode','is_private_mode'}}
     record = {'id': 'profile', 'key': 'profile', 'type': 'profile', 'value': value}
     row = db.get(LearningRecord, (user.id, 'profile'))
     revision = row.revision + 1 if row else 1

@@ -2,17 +2,17 @@ import { db, activeAccountId } from '../db'
 import { writeRecord } from '../sync/engine'
 import { validateLearningSettings } from '../stores/learningSettings'
 
-const TABLES = ['subjects', 'sessions', 'tasks', 'mistakes']
+const TABLES = ['subjects', 'sessions', 'tasks', 'mistakes', 'timeNodes']
 const PROFILE_FIELDS = new Set(['nickname', 'target_school', 'signature', 'figure_id',
-  'daily_goal_min', 'exam_date', 'notify_enabled', 'privacy_mode'])
+  'daily_goal_min', 'exam_date', 'notify_enabled', 'privacy_mode', 'custom_motto'])
 
 export function inspectBackup(backup) {
-  if (!backup || backup.app !== 'yanshi' || ![3, 4].includes(backup.version)) throw new Error('不是支持的研时备份文件')
+  if (!backup || backup.app !== 'yanshi' || ![3, 4, 5].includes(backup.version)) throw new Error('不是支持的研时备份文件')
   if (backup.ownerId && String(backup.ownerId) !== String(activeAccountId())) throw new Error('请登录备份所属账号后恢复')
   const ids = new Set()
   const counts = {}
   for (const table of TABLES) {
-    const rows = backup[table]
+    const rows = backup[table] ?? (table==='timeNodes' && backup.version<5 ? [] : undefined)
     if (!Array.isArray(rows)) throw new Error('备份数据不完整')
     counts[table] = rows.length
     for (const row of rows) {
@@ -47,7 +47,7 @@ export async function restoreBackup(backup, { overwrite = false } = {}) {
   // 在进入事务前完成所有图片解码；任何损坏图片都会阻止整次恢复。
   const prepared = {}
   for (const table of TABLES) {
-    prepared[table] = backup[table].map((source) => {
+    prepared[table] = (backup[table] || []).map((source) => {
       const { _rev, type, ...row } = source
       if (table === 'mistakes') {
         for (const field of ['images', 'answerImages']) {
@@ -68,11 +68,12 @@ export async function restoreBackup(backup, { overwrite = false } = {}) {
         result.imported += 1
       }
     }
-    for (const [key, type, value] of [
+    for (let [key, type, value] of [
       ['learning-settings', 'preferences', backup.learningSettings],
       ['profile', 'profile', backup.profile],
     ]) {
       if (!value) continue
+      if (type==='profile') { value = Object.fromEntries(Object.entries(value).filter(([key])=>key!=='privacy_mode')) }
       const current = await db.kv.get(key)
       if (current && !overwrite) continue
       await writeRecord('kv', { key, id: key, syncType: type, value,

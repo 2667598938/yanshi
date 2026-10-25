@@ -18,7 +18,7 @@ def test_profile_sync_updates_only_editable_fields_and_is_versioned(client):
     assert result.status_code == 200, result.text
     user = client.get('/api/v1/auth/me', headers=h)
     assert user.json()['data']['nickname'] == '同步昵称'
-    assert user.json()['data']['privacy_mode'] is True
+    assert user.json()['data']['privacy_mode'] is False  # 隐私只能由在线账号接口修改
     assert write(client, h, 'profile', {'nickname': '旧版本'}).status_code == 409
 
 

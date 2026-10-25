@@ -51,8 +51,9 @@ const currentProvider = computed(() => PROVIDERS.find((p) => p.id === provider.v
 function pickProvider(p) {
   provider.value = p.id
   baseUrl.value = p.base || ''
-  model.value = p.model || ''
-  models.value = p.model ? [{ id: p.model }] : []
+  model.value = ''
+  models.value = []
+  apiKey.value = ''
   supportsImages.value = false
   supportsTools.value = false
 }
@@ -82,12 +83,14 @@ async function load() {
 async function fetchModels() {
   if (!apiKey.value.trim() && !configured.value) return toast('请先填写 API Key')
   fetching.value = true
+  const requestedProvider=provider.value, requestedBase=baseUrl.value, requestedKey=apiKey.value
   try {
     const data = await aiApi.models({
       provider: provider.value,
       base_url: baseUrl.value.trim(),
       api_key: apiKey.value.trim(),
     })
+    if(provider.value!==requestedProvider || baseUrl.value!==requestedBase || apiKey.value!==requestedKey)return
     const details = new Map((data.details || []).map(item => [item.id, item]))
     models.value = (data.models || []).map((id) => ({ id, ...details.get(id) }))
     if (data.fallback) {
@@ -114,7 +117,7 @@ async function save() {
       base_url: baseUrl.value.trim(),
       model: model.value.trim(),
       supports_images: supportsImages.value,
-      supports_tools: supportsTools.value,
+      supports_tools: false,
       api_key: apiKey.value.trim(),
     })
     apiKey.value = ''
@@ -234,7 +237,7 @@ onMounted(load)
 
           <div class="field-hint">模型列表不保证提供能力信息；请根据服务商说明确认当前模型能力。</div>
           <label class="field-label"><input v-model="supportsImages" type="checkbox" /> 该模型支持图片输入</label>
-          <label class="field-label"><input v-model="supportsTools" type="checkbox" /> 该模型支持工具调用</label>
+          <label v-if="false" class="field-label"><input v-model="supportsTools" type="checkbox" /> 该模型支持工具调用</label>
           <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
             <Save :size="17" />{{ saving ? '保存中…' : '保存设置' }}
           </button>

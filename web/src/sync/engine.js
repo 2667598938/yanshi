@@ -13,6 +13,7 @@ import { useAuthStore } from '../stores/auth'
 import { toPlain as plain } from '../utils/plain'
 
 const TYPE_BY_TABLE = {
+  timeNodes: 'timeNode',
   subjects: 'subject',
   sessions: 'session',
   tasks: 'task',
@@ -20,6 +21,7 @@ const TYPE_BY_TABLE = {
   kv: 'preferences',
 }
 const TABLE_BY_TYPE = {
+  timeNode: 'timeNodes',
   subject: 'subjects',
   session: 'sessions',
   task: 'tasks',
@@ -28,10 +30,11 @@ const TABLE_BY_TYPE = {
   preferences: 'kv',
   profile: 'kv',
 }
-const SYNCABLE_TABLES = ['subjects', 'sessions', 'tasks', 'mistakes', 'kv']
+const SYNCABLE_TABLES = ['subjects', 'sessions', 'tasks', 'mistakes', 'kv', 'timeNodes']
 // 帖子/收藏走各自的服务端接口，不能混入学习数据的通用同步命令
 const COMMUNITY_TYPES = new Set(['post', 'postEdit', 'postDelete', 'favorite'])
 const TYPE_LABEL = {
+  timeNode: '个人时间节点',
   subject: '科目',
   session: '专注记录',
   task: '任务',
@@ -356,6 +359,8 @@ async function reloadStores() {
   await useLearningSettingsStore().load(true)
   const { useProfileStore } = await import('../stores/profile')
   await useProfileStore().load(true)
+  const { useTimeNodesStore } = await import('../stores/timeNodes')
+  await useTimeNodesStore().load(true)
 }
 
 // 首次登录：把本地所有未同步记录入队（换设备也能恢复）
@@ -402,6 +407,8 @@ export function resumeSyncAfterAccountSwitch() {
   accountSwitches = Math.max(0, accountSwitches - 1)
   if (!accountSwitches) scheduleSync(0)
 }
+
+export async function waitForSync() { await syncCompletion }
 
 export async function syncNow() {
   const auth = useAuthStore()

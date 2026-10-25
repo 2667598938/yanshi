@@ -9,7 +9,7 @@ def test_budget_survives_new_requests_and_context_zero(client, friend, fake_ark)
     for text in ('first', 'second'):
         assert client.post('/api/v1/ai/chat', headers=friend,
             json={'conversation_id': cid, 'content': text}).status_code == 200
-    assert len(fake_ark['messages']) == 2
+    assert len(fake_ark['messages']) == 3  # 无历史仍注入本人业务摘要
     assert client.post('/api/v1/ai/chat', headers=friend, json={'content': 'third'}).status_code == 429
     usage = client.get('/api/v1/ai/usage', headers=friend).json()['data']
     assert (usage['requests'], usage['succeeded'], usage['remaining']) == (2, 2, 0)

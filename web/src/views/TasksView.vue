@@ -23,6 +23,7 @@ const fSubject = ref('')
 const fPhase = ref('custom')
 const fCriteria = ref('')
 const fDue = ref(todayKey())
+const fEstimated = ref(0)
 
 const today = todayKey()
 const overdue = computed(() =>
@@ -57,6 +58,7 @@ function openAdd() {
   fPhase.value = 'custom'
   fCriteria.value = ''
   fDue.value = today
+  fEstimated.value = 0
   sheet.value = true
 }
 function openEdit(t) {
@@ -66,6 +68,7 @@ function openEdit(t) {
   fPhase.value = t.phase
   fCriteria.value = t.acceptCriteria || ''
   fDue.value = t.dueDate || today
+  fEstimated.value = t.estimatedMin || 0
   sheet.value = true
 }
 function focusTask(task) {
@@ -83,6 +86,7 @@ async function save() {
     phase: fPhase.value,
     acceptCriteria: fCriteria.value,
     dueDate: fDue.value,
+    estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(fEstimated.value)||0))),
   }
   if (editingId.value) {
     await tasks.update(editingId.value, payload)
@@ -251,6 +255,7 @@ async function remove(id) {
       ></textarea>
 
       <div class="f-label">截止日期</div>
+      <label>预计用时（分钟，0为未设）</label><input v-model.number="fEstimated" class="input" type="number" min="0" max="1440" />
       <input v-model="fDue" type="date" class="input" />
 
       <button class="btn btn-primary btn-block mt16" @click="save">

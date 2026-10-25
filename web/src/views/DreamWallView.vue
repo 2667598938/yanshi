@@ -3,12 +3,13 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { schoolApi } from '../api'
 import { db } from '../db'
 import BlobImage from '../components/BlobImage.vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, MapPin, Quote, ChevronRight } from 'lucide-vue-next'
 import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 
 const router = useRouter()
-const schools = ref(SCHOOLS)
+const route = useRoute()
+const schools = ref([])
 const active = ref(null)
 const albumIndex = ref(0)
 const image = computed(() => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view)
@@ -18,7 +19,7 @@ let lastManual = 0
 function pickSchool(school) { active.value = school; albumIndex.value = 0; lastManual = Date.now() }
 function pickAlbum(index) { albumIndex.value = index; lastManual = Date.now() }
 function merge(rows) {
-  if (!rows?.length) return
+  if (!Array.isArray(rows)) return
   schools.value = rows.map((row) => {
     const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
     return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
@@ -35,7 +36,8 @@ onMounted(async () => {
     if (alive) merge(cached?.value)
     const rows = await schoolApi.list()
     if (!alive) return
-    merge(rows); await db.kv.put({ key: 'schools:catalog', value: rows })
+    merge(rows); const requested=schools.value.find(row=>row.key===route.query.school); if(requested)pickSchool(requested)
+    await db.kv.put({ key: 'schools:catalog', value: rows })
   } catch { /* 断网使用本机目录与七校素材 */ }
 })
 onBeforeUnmount(() => { alive = false; clearInterval(interval) })
@@ -51,9 +53,11 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
     <div class="page">
       <div class="wall-hero">
         <div class="wh-title">把想去的地方，贴在每天看得见的地方</div>
-        <div class="wh-sub">七所梦校 · 总有一个名字让你坐直</div>
+        <div class="wh-sub">我的自由梦校墙 · 随时新增、删除与排序</div>
       </div>
 
+      <button class="btn btn-primary mb16" @click="router.push('/schools/manage')">管理我的梦校</button>
+      <p v-if="!schools.length">还没有梦校，点击上方按钮添加。</p>
       <div class="school-grid">
         <button
           v-for="s in schools"
@@ -88,6 +92,7 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
         <div v-if="active.album?.length > 1" class="motto">
           <button v-for="(key, i) in active.album" :key="key" class="btn btn-outline btn-sm" @click="pickAlbum(i)">{{ i + 1 }}</button>
         </div>
+        <p v-if="active.description || active.info?.description">{{ active.description || active.info?.description }}</p>
         <div class="motto"><Quote :size="15" />{{ active.motto }}</div>
         <button class="btn btn-ghost btn-block" @click="active = null">收好，继续学</button>
       </div>

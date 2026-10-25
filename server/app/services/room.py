@@ -102,7 +102,8 @@ def room_summary(db, room, user, member_count=None, online_count=None):
             RoomMember.room_id == room.id)) or 0
     if online_count is None:
         cutoff = utcnow() - timedelta(seconds=ONLINE_WINDOW_SEC)
-        online_count = db.scalar(select(func.count()).select_from(RoomPresence).where(
+        online_count = db.scalar(select(func.count()).select_from(RoomPresence).join(User,User.id == RoomPresence.user_id).where(
+            ((User.is_private_mode == False) | (User.id == user.id)),
             RoomPresence.room_id == room.id,
             RoomPresence.status != 'offline',
             RoomPresence.last_heartbeat_at >= cutoff)) or 0
@@ -138,7 +139,8 @@ def list_rooms(db, user):
             RoomMember.room_id.in_(ids)).group_by(RoomMember.room_id)).all())
     cutoff = utcnow() - timedelta(seconds=ONLINE_WINDOW_SEC)
     online = dict(db.execute(
-        select(RoomPresence.room_id, func.count()).where(
+        select(RoomPresence.room_id, func.count()).join(User,User.id == RoomPresence.user_id).where(
+            ((User.is_private_mode == False) | (User.id == user.id)),
             RoomPresence.room_id.in_(ids),
             RoomPresence.status != 'offline',
             RoomPresence.last_heartbeat_at >= cutoff,
@@ -501,10 +503,11 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
             p and p.status != 'offline'
             and (now - p.last_heartbeat_at).total_seconds() <= ONLINE_WINDOW_SEC
         )
-        if online:
+        if online and (not u.is_private_mode or u.id == current_user.id):
             online_count += 1
-        private = bool(u.privacy_mode)
-        hide = private and u.id != current_user.id
+        private = bool(u.is_private_mode)
+        from .group import same_group
+        hide = u.id != current_user.id and (private or not same_group(db,current_user.id,u.id))
         display_status = p.status if online else 'offline'
         focus_sec = None
         if online and p and p.status == 'focusing' and p.focus_started_at:
@@ -513,7 +516,7 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
         g = goals.get(m.user_id)
         item = {
             'user_id': u.id,
-            'nickname': '匿名研友' if hide else u.nickname,
+            'nickname': u.nickname,
             'avatar_key': '' if hide else (u.avatar_key or ''),
             'figure_id': 'figure-1' if hide else (u.figure_id or 'figure-1'),
             'role': m.role,
@@ -522,7 +525,7 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
             'online': False if hide else online,
             'privacy': private,
             'presence': {
-                'status': 'offline' if hide else display_status,
+                'status': 'private' if hide else display_status,
                 'subject_name': '' if hide else (p.subject_name if online else ''),
                 'activity_type': '' if hide else (p.activity_type if online else ''),
                 'mode': '' if hide else (p.mode if online else ''),
@@ -530,16 +533,19 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
                     p.focus_started_at if online and p.status == 'focusing' else None),
                 'focus_sec': None if hide else focus_sec,
             },
-            'today_sec': 0 if hide else agg['today_sec'],
-            'week_sec': 0 if hide else agg['week_sec'],
-            'total_sec': 0 if hide else agg['total_sec'],
-            'streak': 0 if hide else _streak(agg['dates'], today_str),
+            'today_sec': None if hide else agg['today_sec'],
+            'week_sec': None if hide else agg['week_sec'],
+            'total_sec': None if hide else agg['total_sec'],
+            'streak': None if hide else _streak(agg['dates'], today_str),
             'goal': None if hide or not g else {
                 'target_school': g.target_school, 'target_score': g.target_score, 'words': g.words,
             },
         }
+        if hide:
+            for key in ('target_school','exam_year','today_sec','week_sec','total_sec','streak','goal'): item.pop(key,None)
+            item['presence'] = {'status': 'private' if private else 'unshared'}
         member_payload.append(item)
-        if not private:
+        if not hide and not private:
             rankable.append(item)
 
     ranking = {
@@ -558,7 +564,7 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
                 RoomMessage.room_id == room.id, RoomMessage.deleted_at.is_(None))
             .order_by(RoomMessage.created_at.desc()).limit(limit_messages)
         ).all()
-    user_map = {uid: ('匿名研友' if u.privacy_mode and uid != current_user.id else u.nickname)
+    user_map = {uid: u.nickname
                 for uid, u in users.items()}
     message_payload = [_message_dict(row, user_map, current_user.id) for row in reversed(messages)]
 

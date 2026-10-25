@@ -73,3 +73,18 @@ class ImageStorage:
             raise ApiError(502, 50201, '图片存储暂时不可用') from None
         finally:
             client.close()
+
+    def read_private(self, key):
+        self.path(key)  # 校验对象标识，不接受任意对象路径。
+        client = self._s3_client()
+        body = None
+        try:
+            body = client.get_object(Bucket=self.s.qiniu_bucket, Key=key)['Body']
+            data = body.read(self.s.image_max_bytes + 1)
+            if len(data) > self.s.image_max_bytes: raise ValueError('oversized')
+            return data
+        except Exception:
+            raise ApiError(502,50201,'图片读取失败') from None
+        finally:
+            if body: body.close()
+            client.close()

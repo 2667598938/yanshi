@@ -84,7 +84,16 @@ export const attachmentApi = {
 }
 
 // ------------------------------------------------------------ 院校
+export const groupApi = {
+  members: () => http.get('/group/members'),
+  learning: (id, after = '') => http.get(`/group/members/${id}/learning`, { query: { after } }),
+  presence: (body) => http.post('/group/presence', body),
+}
+export const timeNodeApi = { list: () => http.get('/time-nodes') }
 export const schoolApi = {
+  create: (body) => http.post('/schools', body),
+  update: (key, body) => http.put(`/schools/${key}`, body),
+  remove: (key) => http.del(`/schools/${key}`),
   list: () => http.get('/schools'),
   get: (key) => http.get(`/schools/${key}`),
   adminCreate: (body) => http.post('/admin/schools', body),
@@ -93,6 +102,7 @@ export const schoolApi = {
 
 // ------------------------------------------------------------ AI
 export const aiApi = {
+  importTasks: (id) => http.post(`/ai/messages/${id}/import-tasks`, { confirmed: true }),
   usage: () => http.get('/ai/usage'),
   preferences: (body) => http.put('/ai/preferences', body),
   enabled: () => http.get('/ai/enabled'),

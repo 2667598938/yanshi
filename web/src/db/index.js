@@ -61,6 +61,7 @@ function createDb(name) {
     localFavs: 'resourceId, updatedAt',
   })
 
+  instance.version(4).stores({ timeNodes: 'id' })
   return instance
 }
 
@@ -71,7 +72,7 @@ export function currentKey() {
 
 async function migrateGuestData(guest, target) {
   const tables = ['subjects', 'sessions', 'tasks', 'mistakes', 'outbox',
-    'localPosts', 'localFavs', 'kv']
+    'localPosts', 'localFavs', 'kv', 'timeNodes']
   const snapshots = await guest.transaction('r', tables, async () =>
     Promise.all(tables.map((table) => guest[table].toArray())))
   const migrated = await target.transaction('rw', tables, async () => {

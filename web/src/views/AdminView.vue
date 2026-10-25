@@ -315,7 +315,7 @@ onMounted(() => {
       <div v-if="overview" class="ov-grid">
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}/{{ overview.room_capacity }}</div><div class="ov-l">成员</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.vip_count || 0 }}</div><div class="ov-l">VIP</div></div>
-        <div class="ov"><div class="ov-n tnum">{{ overview.online_count }}</div><div class="ov-l">在线</div></div>
+
         <div class="ov"><div class="ov-n tnum">{{ fmtSec(overview.total_focus_sec) }}</div><div class="ov-l">累计专注</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtBytes(overview.attachment_bytes) }}</div><div class="ov-l">图片占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.record_count }}</div><div class="ov-l">同步记录</div></div>
@@ -362,7 +362,7 @@ onMounted(() => {
               <span v-if="m.status === 'deleted'" class="tag tag-used">已注销</span>
             </div>
             <div class="member-sub">
-              {{ m.email }} · {{ SCHOOL_MAP[m.target_school]?.short || '未填梦校' }}
+              {{ m.email }}
               <span v-if="m.is_vip"> · {{ m.vip_permanent ? '永久VIP' : `到期 ${fmtDate(m.vip_until)}` }}</span>
             </div>
           </div>

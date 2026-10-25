@@ -37,8 +37,8 @@ def test_resting_and_idle_presence_and_private_online_flag(client):
         db.scalar(select(User).where(User.email == 'rest@test.com')).privacy_mode = True
         db.commit()
     state = client.get('/api/v1/room', headers=owner).json()['data']
-    hidden = next(member for member in state['members'] if member['nickname'] == '匿名研友')
-    assert hidden['online'] is False and hidden['presence']['status'] == 'offline'
-    assert state['room']['online_count'] >= 1
+    hidden = next(member for member in state['members'] if member['nickname'] == '休息同学')
+    assert hidden['online'] is False and hidden['presence']['status'] == 'private'
+    assert state['room']['online_count'] == 0
     mine = client.get('/api/v1/room', headers=guest).json()['data']
     assert any(member['nickname'] == '休息同学' and member['online'] for member in mine['members'])

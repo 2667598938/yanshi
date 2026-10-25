@@ -47,6 +47,7 @@ export const useTasksStore = defineStore('tasks', {
         phase: payload.phase || 'custom',
         acceptCriteria: payload.acceptCriteria || '',
         dueDate: payload.dueDate || todayKey(),
+        estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(payload.estimatedMin)||0))),
         done: 0,
         doneAt: null,
         createdAt: Date.now(),

@@ -22,7 +22,7 @@ from ..schemas.account import ProfileUpdate
 from ..time import utcnow
 
 # 允许的学习记录类型（与前端 v0.2 的分表对应；userSchool 为梦校）
-ALLOWED_TYPES = {'subject', 'session', 'task', 'mistake', 'userSchool', 'preferences', 'profile'}
+ALLOWED_TYPES = {'subject', 'session', 'task', 'mistake', 'userSchool', 'preferences', 'profile', 'timeNode'}
 PROTECTED_KEYS = {'user_id', 'userId', 'owner', 'apiKey', 'password', 'token', 'revision'}
 
 MAX_RECORD_BYTES = 2 * 1024 * 1024   # 单条记录 2MB（图片走附件，不应进入 body）
@@ -126,6 +126,11 @@ def _validate_record(record_id: str, record):
         raise ApiError(400, 40004, '不支持的记录类型')
     if any(k in record for k in PROTECTED_KEYS):
         raise ApiError(400, 40004, '记录包含受保护字段')
+    if record.get('type') == 'timeNode':
+        from ..schemas.time_node import TimeNodeValue
+        try: record['value'] = TimeNodeValue.model_validate(record.get('value')).model_dump()
+        except ValidationError: raise ApiError(400,40004,'时间节点内容无效') from None
+        if len(record_id) > 100: raise ApiError(400,40004,'时间节点标识过长')
     if record.get('type') in {'preferences', 'profile'}:
         expected_id = 'learning-settings' if record['type'] == 'preferences' else 'profile'
         if record_id != expected_id or record.get('key') != expected_id:
@@ -133,7 +138,7 @@ def _validate_record(record_id: str, record):
         try:
             schema = LearningPreferences if record['type'] == 'preferences' else ProfileUpdate
             parsed = schema.model_validate(record.get('value'))
-            record['value'] = {k: v for k, v in parsed.model_dump(exclude_unset=record['type'] == 'profile').items() if v is not None}
+            record['value'] = {k: v for k, v in parsed.model_dump(exclude_unset=record['type'] == 'profile').items() if v is not None and k not in {'privacy_mode', 'is_private_mode'}}
         except ValidationError:
             raise ApiError(400, 40004, '个人设置内容无效') from None
     return record['type']
@@ -215,6 +220,16 @@ def execute_commands(db, user_id: int, command_dict: dict) -> dict:
                         raise ApiError(413, 41301, '单条学习记录过大，请把图片改为附件上传')
                     deleted = 0
 
+                from ..models import TimeNode
+                previous_type = json.loads(old.body).get('type') if old and not old.deleted else None
+                if (record and record.get('type') == 'timeNode') or previous_type == 'timeNode':
+                    node = db.get(TimeNode,(user_id,record_id))
+                    if record is None or record.get('type') != 'timeNode':
+                        if node: db.delete(node)
+                    else:
+                        if not node:
+                            node = TimeNode(user_id=user_id,id=record_id); db.add(node)
+                        for key,value in record['value'].items(): setattr(node,key,value)
                 new_revision = old_revision + 1
                 if old:
                     old.body = body_text

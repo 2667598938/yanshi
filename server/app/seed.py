@@ -12,6 +12,7 @@ from .time import utcnow
 
 def seed(db, settings: Settings, echo=print):
     now = utcnow()
+    from .services.group import enroll
 
     defaults = {
         'site_name': '研时',
@@ -45,7 +46,7 @@ def seed(db, settings: Settings, echo=print):
         ('zju', '浙江大学', '浙大', 7),
     ]
     for key, name, short, order in builtin_schools:
-        if not db.scalar(select(School.id).where(School.key == key)):
+        if not db.scalar(select(School.id).where(School.key == key, School.owner_id.is_(None))):
             db.add(School(key=key, name=name, short=short, is_builtin=True, sort_order=order))
 
     admin = db.scalar(select(User).where(User.email == settings.admin_email))
@@ -58,6 +59,7 @@ def seed(db, settings: Settings, echo=print):
             exam_year=2028, exam_date='2027-12-25',
         )
         db.add(admin)
+        db.flush()
         db.commit()
         echo('========================================================')
         echo(f'初始管理员已创建：{admin.email}')
@@ -66,6 +68,7 @@ def seed(db, settings: Settings, echo=print):
             echo('（密码为随机生成，仅显示一次，请立即登录并修改）')
         echo('========================================================')
 
+    enroll(db, admin.id)
     # 固定一个四人自习室，管理员为房主
     room = db.scalar(select(Room).order_by(Room.id).limit(1))
     if not room:

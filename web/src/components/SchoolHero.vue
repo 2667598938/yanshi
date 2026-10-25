@@ -9,9 +9,9 @@ import { useAppStore } from '../stores/app'
 import { useProfileStore } from '../stores/profile'
 import { useToast } from '../composables/useToast'
 import { daysUntil, weekLabel } from '../utils/date'
-import { quoteOfDay } from '../data/quotes'
+import TimeNodesHome from './TimeNodesHome.vue'
 
-const schools = ref(SCHOOLS)
+const schools = ref([])
 const app = useAppStore()
 const profile = useProfileStore()
 const { toast } = useToast()
@@ -19,7 +19,7 @@ let carousel
 let alive = true
 let lastManual = 0
 function mergeSchools(rows) {
-  if (!rows?.length) return
+  if (!Array.isArray(rows)) return
   schools.value = rows.map((row) => {
     const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
     return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
@@ -31,15 +31,14 @@ function mergeSchools(rows) {
   else if (browseIndex.value >= schools.value.length) browseIndex.value = 0
 }
 const albumIndex = ref(0)
-const campusImage = computed(() => school.value.album?.[albumIndex.value % school.value.album.length] || school.value.view)
+const campusImage = computed(() => school.value.view)
 onMounted(async () => {
   const cached = await db.kv.get('schools:catalog')
   if (!alive) return
   mergeSchools(cached?.value)
   carousel = setInterval(() => {
     if (document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
-    if ((school.value.album?.length || 1) > 1 && albumIndex.value + 1 < school.value.album.length) albumIndex.value += 1
-    else { browseIndex.value = (browseIndex.value + 1) % schools.value.length; albumIndex.value = 0 }
+    if (schools.value.length) browseIndex.value = (browseIndex.value + 1) % schools.value.length
   }, 6000)
   try {
     const rows = await schoolApi.list()
@@ -54,10 +53,10 @@ const dreamIndex = computed(() =>
 )
 const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3)
 
-const school = computed(() => schools.value[browseIndex.value] || schools.value[0])
+const school = computed(() => schools.value[browseIndex.value] || schools.value[0] || { key:'',name:'我的梦校',color:'#526484',logo:'',view:'',motto:'自由添加你的目标院校',city:'' })
 const isDream = computed(() => school.value.key === app.dreamSchool)
 const days = computed(() => daysUntil(app.examDate))
-const quote = quoteOfDay()
+
 
 const examDate = computed(() => {
   const d = new Date(app.examDate + 'T00:00:00')
@@ -86,7 +85,7 @@ async function setDream() {
       <div class="hero-top">
         <BlobImage class="seal" :src="school.logo" :alt="school.name + '校徽'" />
         <div class="school-meta">
-          <div class="school-name">{{ school.name }}</div>
+          <button class="school-name" style="background:transparent;border:none;color:inherit" @click="$router.push({path:'/dream-wall',query:{school:school.key}})">{{ school.name }} · 查看相册</button>
           <div class="school-motto">{{ school.motto }}</div>
           <div class="school-city">
             <MapPin :size="11" :stroke-width="2.4" />
@@ -103,16 +102,7 @@ async function setDream() {
         </button>
       </div>
 
-      <div class="countdown">
-        <div class="cd-label">距考研初试还有</div>
-        <div class="cd-num-row">
-          <span class="cd-num tnum">{{ days }}</span>
-          <span class="cd-unit">天</span>
-        </div>
-        <div class="cd-date">{{ examDate }}</div>
-      </div>
-
-      <div class="quote">“{{ quote }}”</div>
+      <TimeNodesHome />
 
       <div class="school-strip">
         <div

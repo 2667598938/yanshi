@@ -82,7 +82,7 @@ def test_overview_export_audit_config(client):
     data = ov.json()['data']
     assert data['member_count'] == 2
     assert data['room_member_count'] == 2
-    assert 'total_focus_sec' in data and 'attachment_bytes' in data
+    assert 'total_focus_sec' not in data and 'attachment_bytes' in data
 
     ex = client.get('/api/v1/admin/export', headers=ah)
     assert ex.status_code == 200

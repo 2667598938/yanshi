@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ toast: vi.fn(), push: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 2 } }) }))
 vi.mock('../src/composables/useToast', () => ({ useToast: () => ({ toast: mocks.toast }) }))
-vi.mock('../src/api', () => ({ aiApi: { enabled: vi.fn(), key: vi.fn(), scenes: vi.fn(), createConversation: vi.fn(), chatStream: vi.fn() },
+vi.mock('../src/api', () => ({ aiApi: { enabled: vi.fn(), key: vi.fn(), scenes: vi.fn(), createConversation: vi.fn(), chatStream: vi.fn(), importTasks: vi.fn() },
   attachmentApi: { uploadImage: vi.fn() } }))
 let wrapper
 beforeEach(async () => {
@@ -70,4 +70,33 @@ it('部分图片上传失败保留所有选择，重试后按原顺序发送；�
   expect(aiApi.chatStream.mock.calls[0][0].image_keys).toEqual(['ai/first.jpg', 'ai/second.jpg'])
   expect(wrapper.get('.composer input').element.value).toBe('分析这两题')
   expect(wrapper.findAll('.ai-options .ai-images > div')).toHaveLength(2)
+})
+
+
+it('任务建议必须预览并再次确认；取消不会写入，V1隐藏通用工具', async () => {
+  aiApi.enabled.mockResolvedValue({enabled:true,access:true,v1_readonly:true})
+  aiApi.chatStream.mockImplementationOnce(async (_body,cb)=>{
+    cb({type:'delta',text:'明天复习数学'})
+    cb({type:'done',message_id:72,suggested_tasks:[{title:'复习积分',due_date:'2026-10-26',estimated_min:40}]})
+  })
+  aiApi.importTasks.mockResolvedValue({})
+  await render()
+  expect(wrapper.text()).not.toContain('只读学习工具')
+  await wrapper.get('.composer input').setValue('生成明天计划')
+  await wrapper.get('.send-btn').trigger('click');await flushPromises()
+  const click=async(text)=>{await wrapper.findAll('button').find(b=>b.text()===text).trigger('click');await flushPromises()}
+  await click('一键导入为系统任务')
+  expect(wrapper.text()).toContain('复习积分')
+  expect(aiApi.importTasks).not.toHaveBeenCalled()
+  await click('取消')
+  expect(aiApi.importTasks).not.toHaveBeenCalled()
+  await click('一键导入为系统任务');await click('确认批量导入')
+  expect(aiApi.importTasks).toHaveBeenCalledExactlyOnceWith(72)
+})
+
+it('无有效结构化建议时保持普通文本回复且不出现导入按钮', async () => {
+  aiApi.chatStream.mockImplementationOnce(async(_body,cb)=>{cb({type:'delta',text:'```json broken```'});cb({type:'done',message_id:73,suggested_tasks:[]})})
+  await render();await wrapper.get('.composer input').setValue('复盘');await wrapper.get('.send-btn').trigger('click');await flushPromises()
+  expect(wrapper.text()).toContain('broken')
+  expect(wrapper.text()).not.toContain('一键导入为系统任务')
 })

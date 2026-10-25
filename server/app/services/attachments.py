@@ -83,15 +83,24 @@ def used_bytes(db, user_id):
 def can_view(row, user, db=None):
     if row.deleted_at:
         return False
-    if row.uploader_id == user.id or user.role == 'admin':
-        return True
+    if row.uploader_id == user.id: return True
+    if row.biz_type in {'mistake', 'ai'}:
+        if row.biz_type == 'ai' or db is None: return False
+        from .group import can_read
+        from ..models import User, LearningRecord
+        if not can_read(db, user, db.get(User, row.uploader_id)): return False
+        for record in db.scalars(select(LearningRecord).where(LearningRecord.user_id == row.uploader_id, LearningRecord.deleted == 0)).all():
+            value = json.loads(record.body)
+            if value.get('type') == 'mistake' and row.object_key in [*value.get('images', []), *value.get('answerImages', [])]: return True
+        return False
     if row.biz_type == 'inspiration' and db is not None:
         return db.scalar(select(Inspiration.id).where(
             Inspiration.image_key == row.object_key,
             Inspiration.status == 'approved').limit(1)) is not None
     if row.biz_type == 'school' and db is not None:
         return any(school.logo_key == row.object_key or row.object_key in json.loads(school.album_keys or '[]')
-                   for school in db.scalars(select(School)).all())
+                   for school in db.scalars(select(School).where(School.owner_id == user.id)).all())
+    if user.role == 'admin' and row.biz_type == 'inspiration': return True
     return row.biz_type == 'avatar'   # 头像在自习室互相可见，其余仅本人
 
 

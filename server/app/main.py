@@ -14,7 +14,7 @@ from .errors import install_errors, ok
 from .services.persistent_transient import PersistentTransientStore
 from .routers import (
     auth, admin, public, sync, room, attachments, schools, ai, vip, error_types, oauth,
-    messages, resources, posts, inspirations, rooms, phone,
+    messages, resources, posts, inspirations, rooms, phone, group, time_nodes,
 )
 
 
@@ -96,6 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(oauth.router)
     app.include_router(phone.router)
+    app.include_router(group.router)
+    app.include_router(time_nodes.router)
     app.include_router(sync.router)
     app.include_router(room.router)
     app.include_router(rooms.router)

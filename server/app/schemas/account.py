@@ -79,6 +79,8 @@ class ProfileUpdate(Strict):
     exam_date: Optional[str] = Field(default=None, max_length=10)
     notify_enabled: Optional[bool] = None
     privacy_mode: Optional[bool] = None
+    is_private_mode: Optional[bool] = None
+    custom_motto: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator('exam_date')
     @classmethod

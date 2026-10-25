@@ -1,4 +1,5 @@
 from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint)
+from sqlalchemy.orm import synonym
 from ..database import Base
 from ..time import utcnow
 
@@ -28,7 +29,11 @@ class User(Base):
     daily_goal_min = Column(Integer, default=300, server_default='300')
     exam_date = Column(String(10), default='', server_default='')   # 空则用系统配置
     notify_enabled = Column(Boolean, default=False, server_default='0', nullable=False)
-    privacy_mode = Column(Boolean, default=False, server_default='0', nullable=False)
+    is_private_mode = Column(Boolean, default=False, server_default='0', nullable=False)
+    privacy_mode = synonym('is_private_mode')
+    custom_motto = Column(String(500), nullable=False, default='', server_default='')
+    schools_initialized = Column(Boolean, nullable=False, default=False, server_default='0')
+    time_nodes_initialized = Column(Boolean, nullable=False, default=False, server_default='0')
 
     vip_until = Column(DateTime)
     vip_permanent = Column(Boolean, nullable=False, default=False, server_default='0')

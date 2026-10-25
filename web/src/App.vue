@@ -10,6 +10,7 @@ import { useTimerStore } from './stores/timer'
 import { useAppStore } from './stores/app'
 import { useSubjectsStore } from './stores/subjects'
 import { useAuthStore } from './stores/auth'
+import { useGroupPresence } from './composables/useGroupPresence'
 import { useNotificationsStore } from './stores/notifications'
 
 const timer = useTimerStore()
@@ -18,6 +19,7 @@ const subjects = useSubjectsStore()
 const route = useRoute()
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
+useGroupPresence()
 watch(() => auth.user?.id, (id) => { if (id) notifications.start(); else notifications.stop() }, { immediate: true })
 onBeforeUnmount(() => notifications.stop())
 
@@ -67,6 +69,7 @@ watch(
 
 <template>
   <div class="app-shell">
+    <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
     <OfflineBanner />
     <CommunityIssues />
     <main class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }">
@@ -77,3 +80,7 @@ watch(
     <ConflictDialog />
   </div>
 </template>
+
+<style>
+.privacy-banner{position:sticky;top:0;z-index:220;background:#eee9f5;color:#67527d;font-size:12px;padding:7px 12px;text-align:center}
+</style>

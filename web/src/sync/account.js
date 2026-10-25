@@ -44,4 +44,7 @@ async function reloadLocal() {
   await useLearningSettingsStore().load(true)
   const { useProfileStore } = await import('../stores/profile')
   await useProfileStore().load(true)
+  const { useTimeNodesStore } = await import('../stores/timeNodes')
+  useTimeNodesStore().$reset()
+  await useTimeNodesStore().load(true)
 }

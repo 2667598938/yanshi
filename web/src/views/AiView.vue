@@ -6,6 +6,7 @@ import {
   PenLine, CalendarClock, RotateCcw, Settings2, Crown, ChevronRight,
 } from 'lucide-vue-next'
 import { aiApi, attachmentApi } from '../api'
+import { syncNow, waitForSync } from '../sync/engine'
 import { db, uid, activeAccountId } from '../db'
 import BlobImage from '../components/BlobImage.vue'
 import { useAuthStore } from '../stores/auth'
@@ -36,7 +37,9 @@ const historyList = ref([])
 const scrollEl = ref(null)
 const fileInput = ref(null)
 const attachments = ref([])
-const features = ref({ vision: false, tools: false, search: false, model_vision: false, model_tools: false })
+const features = ref({ v1_readonly: true, vision: false, tools: false, search: false, model_vision: false, model_tools: false })
+const taskPreview = ref(null)
+const importing = ref(false)
 const useTools = ref(false)
 const useSearch = ref(false)
 let controller
@@ -106,6 +109,9 @@ async function send() {
   let failed = false
   scrollBottom()
   try {
+    await waitForSync()
+    await syncNow()
+    if (!alive || activeAccountId() !== accountAtSend) return
     if (!conversationId.value) {
       const convo = await aiApi.createConversation({ scene: scene.value })
       if (!alive) return
@@ -123,7 +129,7 @@ async function send() {
           completed = true
           reply.streaming = false
           Object.assign(reply, { prompt_tokens: evt.prompt_tokens, completion_tokens: evt.completion_tokens,
-            latency_ms: evt.latency_ms, tools: evt.tools || [], sources: evt.sources || [] })
+            id: evt.message_id, suggested_tasks: evt.suggested_tasks || [], latency_ms: evt.latency_ms, tools: evt.tools || [], sources: evt.sources || [] })
           if (evt.conversation_id) conversationId.value = evt.conversation_id
           if (evt.title) conversationTitle.value = evt.title
         }
@@ -171,7 +177,7 @@ async function openConversation(id) {
     conversationTitle.value = data.title
     scene.value = data.scene || 'general'
     messages.value = (data.messages || []).map((m) => ({
-      role: m.role, content: m.content, image_keys: m.image_keys || [], tools: m.tools || [], sources: m.sources || [],
+      id: m.id, suggested_tasks: m.suggested_tasks || [], role: m.role, content: m.content, image_keys: m.image_keys || [], tools: m.tools || [], sources: m.sources || [],
       prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens,
       latency_ms: m.latency_ms,
     }))
@@ -222,6 +228,16 @@ onMounted(async () => {
     enabled.value = false
   }
 })
+async function importTasks(){
+ if(!taskPreview.value || importing.value)return
+ importing.value=true
+ try{
+  await aiApi.importTasks(taskPreview.value.id)
+  taskPreview.value=null
+  await waitForSync();await syncNow()
+  toast('任务已导入，可在任务清单查看；重复确认不会重复新增')
+ }catch(e){toast(e.message)}finally{importing.value=false}
+}
 </script>
 
 <template>
@@ -289,6 +305,7 @@ onMounted(async () => {
         <div class="msg-main">
           <div v-if="m.image_keys?.length" class="ai-images"><BlobImage v-for="key in m.image_keys" :key="key" :src="key" alt="题目图片" /></div>
           <div class="bubble">{{ m.content }}<span v-if="m.streaming" class="caret">▍</span></div>
+          <button v-if="m.id && m.suggested_tasks?.length && !m.streaming" class="btn btn-outline" @click="taskPreview=m">一键导入为系统任务</button>
           <div v-if="m.tools?.length" class="msg-usage">已调用：{{ m.tools.map(t => `${t.name}${t.status === 'failed' ? '（失败）' : ''}`).join('、') }}</div>
           <div v-if="m.sources?.length" class="ai-sources"><a v-for="source in m.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.title || '查看来源' }}</a></div>
           <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
@@ -305,8 +322,9 @@ onMounted(async () => {
     <div v-if="!blocked" class="ai-options">
       <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple style="display:none" @change="pickImages" />
       <button class="btn btn-outline btn-sm" :disabled="sending || !features.vision" @click="fileInput?.click()">添加题图（最多4张）</button>
-      <label><input v-model="useTools" type="checkbox" :disabled="sending || !features.tools || !features.model_tools" />只读学习工具</label>
-      <label><input v-model="useSearch" type="checkbox" :disabled="sending || !features.search || !features.model_tools" />联网搜索</label>
+      <label v-if="!features.v1_readonly"><input v-model="useTools" type="checkbox" :disabled="sending || !features.tools || !features.model_tools" />只读学习工具</label>
+      <label v-if="!features.v1_readonly"><input v-model="useSearch" type="checkbox" :disabled="sending || !features.search || !features.model_tools" />联网搜索</label>
+      <div class="msg-usage">对话自动携带本人已同步任务、自习状态与近31天学习摘要；不会读取组员数据或操控页面。回复与密钥仅本人可见。</div>
       <div v-if="!features.model_vision" class="msg-usage">图片需在AI设置中确认模型支持；也可移除图片仅发送文字。</div>
       <div v-if="useTools || useSearch" class="msg-usage">工具模式等待完整结果；仅读取本人已同步数据，最多3次模型请求，不修改学习记录。联网时关键词会发送给搜索服务。</div>
       <div class="ai-images"><div v-for="row in attachments" :key="row.id">
@@ -328,6 +346,17 @@ onMounted(async () => {
       </button>
     </div>
 
+    <div v-if="taskPreview" class="mask" @click.self="!importing && (taskPreview=null)">
+      <div class="sheet" style="max-height:75vh;overflow:auto">
+        <div class="sheet-title">导入任务前请确认</div>
+        <p>下列任务将写入你的任务清单，并遵循小组共享与隐私模式规则。</p>
+        <div v-for="(task,i) in taskPreview.suggested_tasks" :key="i" class="card">
+          <strong>{{task.title}}</strong><p>{{task.due_date || '未设日期'}} · 预计 {{task.estimated_min}} 分钟</p><p>{{task.accept_criteria}}</p>
+        </div>
+        <button class="btn btn-outline" :disabled="importing" @click="taskPreview=null">取消</button>
+        <button class="btn btn-primary" :disabled="importing" @click="importTasks">{{importing?'导入中…':'确认批量导入'}}</button>
+      </div>
+    </div>
     <!-- 历史会话 -->
     <div v-if="showHistory" class="mask" @click.self="showHistory = false">
       <div class="sheet">

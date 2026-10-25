@@ -2,7 +2,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
@@ -85,7 +85,9 @@ def view(key: str, request: Request, user: User = Depends(get_current_user), db=
         if not path.is_file():
             raise ApiError(404, 40401, '图片文件不存在')
         return FileResponse(path, media_type='image/jpeg',
-                            headers={'Cache-Control': 'private, max-age=3600'})
+                            headers={'Cache-Control': 'private, no-store'})
+    if row.biz_type in {'mistake','ai'}:
+        return Response(storage.read_private(key),media_type='image/jpeg',headers={'Cache-Control':'private, no-store'})
     return RedirectResponse(storage.presigned_url(key), status_code=302)
 
 
@@ -93,7 +95,7 @@ def view(key: str, request: Request, user: User = Depends(get_current_user), db=
 def delete_attachment(key: str, request: Request, user: User = Depends(get_current_user),
                       db=Depends(get_db)):
     row = db.scalar(select(Attachment).where(Attachment.object_key == key))
-    if not row or (row.uploader_id != user.id and user.role != 'admin'):
+    if not row or (row.uploader_id != user.id and (user.role != 'admin' or row.biz_type in {'mistake','ai'})):
         raise ApiError(404, 40401, '图片不存在')
     logic.mark_deleted(row)
     if user.avatar_key == key:

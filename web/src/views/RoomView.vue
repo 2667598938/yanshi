@@ -66,6 +66,8 @@ function fmtTime(iso) {
 
 function presenceText(m) {
   const p = m.presence || {}
+  if (p.status === 'private') return { label: '隐私中', color: '#8d7fa3' }
+  if (p.status === 'unshared') return { label: '仅同组可见', color: '#8d7fa3' }
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
   if (p.status === 'resting') return { label: '休息中', color: '#8b6ccc' }
   if (p.status === 'idle') return { label: '空闲', color: '#d49b32' }
@@ -95,6 +97,8 @@ const rankList = computed(() => {
 })
 
 function buildHeartbeat() {
+  if(document.visibilityState !== 'visible')return {status:'offline'}
+  if(timer.isPaused)return {status:'idle'}
   if (timer.rest && !timer.rest.finished) return { status: 'resting' }
   const c = timer.current
   if (c) {
@@ -374,7 +378,7 @@ onBeforeUnmount(() => {
   clearInterval(beatTimer)
   document.removeEventListener('visibilitychange', onVisibility)
   window.removeEventListener('beforeunload', onLeave)
-  if (joined.value) beat('offline')
+  // 在其他页面保持在线，由App级心跳接管；仅关闭/后台才上报离线。
 })
 </script>
 
@@ -500,7 +504,7 @@ onBeforeUnmount(() => {
                 {{ presenceText(seat).label }}
               </div>
             </div>
-            <div class="seat-min tnum">{{ fmtSec(seat.today_sec) }}</div>
+            <div v-if="seat.today_sec != null" class="seat-min tnum">{{ fmtSec(seat.today_sec) }}</div>
             <button
               v-if="isOwner && seat.user_id !== auth.user?.id && seat.role !== 'owner'"
               class="kick-btn"
@@ -550,7 +554,7 @@ onBeforeUnmount(() => {
                 {{ schoolName(m.goal.target_school || m.target_school) }}
                 <span v-if="m.goal.target_score" class="g-score">目标 {{ m.goal.target_score }} 分</span>
               </template>
-              <template v-else>{{ schoolName(m.target_school) }}<span class="g-score">暂未填写目标</span></template>
+              <template v-else-if="m.presence?.status === 'private'">隐私中</template><template v-else-if="m.presence?.status === 'unshared'">仅同组可见</template><template v-else>{{ schoolName(m.target_school) }}<span class="g-score">暂未填写目标</span></template>
             </div>
             <div v-if="m.goal?.words" class="g-words">「{{ m.goal.words }}」</div>
           </div>

@@ -73,8 +73,8 @@ def invite_dict(row):
 def member_dict(row):
     return {
         'id': row.id, 'email': row.email, 'nickname': row.nickname, 'role': row.role,
-        'status': row.status, 'target_school': row.target_school, 'exam_year': row.exam_year,
-        'avatar_key': row.avatar_key or '', 'daily_goal_min': row.daily_goal_min,
+        'status': row.status,
+        'avatar_key': row.avatar_key or '',
         'vip_until': iso(row.vip_until),
         'vip_permanent': bool(row.vip_permanent),
         'is_vip': feature_service.is_vip(row),
@@ -110,12 +110,7 @@ def overview(request: Request, db=Depends(get_db)):
             if p.status != 'offline' and (now - p.last_heartbeat_at).total_seconds() <= 45:
                 online_count += 1
 
-    # 学习时长聚合（实时从同步记录计算）
-    stats = room_service._aggregate_sessions(db, member_ids)
     today_str, _ = room_service._cn_bounds()
-    total_sec = sum(s['total_sec'] for s in stats.values())
-    today_active = sum(1 for s in stats.values() if s['today_sec'] > 0)
-
     record_count = db.scalar(select(func.count()).select_from(LearningRecord))
     operation_count = db.scalar(select(func.count()).select_from(LearningOperation))
     conversation_count = db.scalar(select(func.count()).select_from(AIConversation))
@@ -129,9 +124,7 @@ def overview(request: Request, db=Depends(get_db)):
         'vip_count': sum(1 for u in users if feature_service.is_vip(u)),
         'room_capacity': room.capacity if room else 0,
         'room_member_count': room_member_count,
-        'online_count': online_count,
-        'today_active': today_active,
-        'total_focus_sec': total_sec,
+
         'today': today_str,
         'record_count': record_count,
         'operation_count': operation_count,
@@ -164,6 +157,8 @@ def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db))
     db.add(user)
     db.flush()
     room_service.join_room_quietly(db, user)
+    from ..services.group import enroll
+    enroll(db, user.id)
     audit(db, request, 'admin.create_member', user_id=user.id, detail=body.email)
     db.commit()
     db.refresh(user)
@@ -514,12 +509,9 @@ def update_config(body: dict, request: Request, db=Depends(get_db), admin=Depend
 @router.get('/export')
 def export_data(db=Depends(get_db)):
     users = [{'id': u.id, 'email': u.email, 'nickname': u.nickname, 'role': u.role,
-              'status': u.status, 'target_school': u.target_school, 'exam_year': u.exam_year,
+              'status': u.status,
               'vip_until': iso(u.vip_until), 'created_at': iso(u.created_at)}
              for u in db.scalars(select(User).order_by(User.id)).all()]
-    records = [{'user_id': r.user_id, 'id': r.id, 'body': json.loads(r.body) if isinstance(r.body, str) else r.body,
-                'revision': r.revision, 'deleted': r.deleted,
-                'updated_at': iso(r.updated_at)}
-               for r in db.scalars(select(LearningRecord)).all()]
+    records = []  # 账号运维导出永不导出成员学习明细，管理员也没有隐私绕过。
     payload = {'exported_at': iso(utcnow()), 'users': users, 'records': records}
     return JSONResponse({'code': 0, 'message': 'ok', 'data': payload})

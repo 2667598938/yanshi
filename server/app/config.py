@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     ai_custom_hosts: str = ''
     ai_allow_private_hosts: bool = False
     ai_vision_enabled: bool = True
-    ai_tools_enabled: bool = True
+    ai_tools_enabled: bool = False
     ai_server_vision: bool = False
     ai_server_tools: bool = False
     brave_search_api_key: str = ''

@@ -93,12 +93,12 @@ def test_school_library_and_admin(client):
     fudan = client.get('/api/v1/schools/fudan', headers=f).json()['data']
     assert fudan['name'] == '复旦大学'
 
-    # 普通成员不能维护院校库
+    # 普通成员可维护自己的梦校，管理员的同名院校保持独立
     r = client.post('/api/v1/admin/schools', headers=f,
                     json={'key': 'xjtu', 'name': '西安交通大学'})
-    assert r.status_code == 403
+    assert r.status_code == 200
 
-    # 管理员新增自定义院校
+    # 管理员新增自己的自定义院校
     r = client.post('/api/v1/admin/schools', headers=a,
                     json={'key': 'xjtu', 'name': '西安交通大学', 'short': '西交',
                           'info': {'cutoff': ''}})

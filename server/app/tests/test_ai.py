@@ -68,7 +68,7 @@ def test_conversation_history_and_lifecycle(client, friend, fake_ark):
         assert r.json()['data']['conversation_id'] == cid
 
     # 第二轮应带历史（system + 上一轮 user/assistant + 本轮 user）
-    assert len(fake_ark['messages']) == 4
+    assert len(fake_ark['messages']) == 5  # system + 本人摘要 + 一轮历史 + 当前消息
 
     detail = client.get(f'/api/v1/ai/conversations/{cid}', headers=friend).json()['data']
     assert len(detail['messages']) == 4

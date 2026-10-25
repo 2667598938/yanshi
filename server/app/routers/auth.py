@@ -121,6 +121,9 @@ def register(body: RegisterInput, request: Request, response: Response, db=Depen
         if claimed != 1: raise ApiError(400, 40001, '邀请码已使用，请刷新后重试')
         if invite.vip_days:
             user.vip_until = now + timedelta(days=invite.vip_days)
+    if invite:
+        from ..services.group import enroll
+        enroll(db, user.id)
     join_room_quietly(db, user)  # 房间满员不阻断注册
 
     audit(db, request, 'auth.register', user_id=user.id)
@@ -270,6 +273,8 @@ def logout(request: Request, response: Response, body: Optional[TokenInput] = No
             data = decode(request, token, 'refresh')
             db.execute(update(RefreshToken).where(RefreshToken.id == digest(data['jti']))
                        .values(revoked_at=clock(request)))
+            from ..models import RoomPresence
+            db.execute(update(RoomPresence).where(RoomPresence.user_id == int(data['sub'])).values(status='offline', focus_started_at=None))
             db.commit()
     except ApiError:
         pass
@@ -290,6 +295,8 @@ def update_me(body: ProfileUpdate, request: Request, user=Depends(get_current_us
               db=Depends(get_db)):
     db.refresh(user, with_for_update=True)
     data = body.model_dump(exclude_none=True)
+    if 'privacy_mode' in data and 'is_private_mode' in data and data['privacy_mode'] != data['is_private_mode']:
+        raise ApiError(400,40001,'隐私设置字段冲突')
     for key, value in data.items():
         setattr(user, key, value)
     audit(db, request, 'user.update_profile', user_id=user.id)

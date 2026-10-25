@@ -56,13 +56,13 @@ def test_privacy_mode_anonymizes_and_excludes_ranking(client):
 
     other = client.get('/api/v1/room', headers=ah).json()['data']
     hidden = next(m for m in other['members'] if m['user_id'] == friend_id)
-    assert hidden['nickname'] == '匿名研友'
+    assert hidden['nickname'] == '隐私同学'
     assert hidden['avatar_key'] == ''
     assert hidden['privacy'] is True
     assert hidden['online'] is False         # 他人不获知个人在线状态
-    assert other['room']['online_count'] >= 1  # 聚合在线人数仍包含隐私用户
-    assert hidden['presence']['status'] == 'offline'
-    assert hidden['today_sec'] == 0 and hidden['total_sec'] == 0
+    assert other['room']['online_count'] == 0  # 不通过聚合泄露隐私用户在线与否
+    assert hidden['presence'] == {'status':'private'}
+    assert 'today_sec' not in hidden and 'total_sec' not in hidden
 
     ranking = client.get('/api/v1/room/ranking', headers=ah).json()['data']
     assert all(x['user_id'] != friend_id for x in ranking['items'])

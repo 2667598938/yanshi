@@ -1,3 +1,4 @@
+from .group import StudyGroup, StudyGroupMember, TimeNode
 from .account import User, RefreshToken, Invite, LoginLog, UserErrorType, UserAuth
 from .system import (Config, Announcement, OfficialEvent, Audit, FeatureRequest,
                      UserFeatureGrant, Message, EmailJob, TransientState)

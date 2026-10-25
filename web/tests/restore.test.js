@@ -50,3 +50,12 @@ it('损坏图片、重复ID、其他账号和敏感字段在导入前拒绝', as
   expect(() => inspectBackup(sensitive)).toThrow('不允许')
   expect(await db.mistakes.count()).toBe(0)
 })
+
+
+it('V5备份恢复个人时间节点并同步，旧备份隐私字段不会覆盖在线隐私开关', async()=>{
+ const source={...backup(),version:5,timeNodes:[{id:'node-one',value:{node_name:'复试',target_date:'2028-03-01',show_on_home:true,custom_msg:'加油'}}],profile:{nickname:'备份昵称',privacy_mode:false}}
+ await restoreBackup(source)
+ expect(await db.timeNodes.get('node-one')).toMatchObject({value:{node_name:'复试'}})
+ expect(await db.outbox.where('recordId').equals('node-one').first()).toMatchObject({type:'timeNode'})
+ expect((await db.kv.get('profile')).value).not.toHaveProperty('privacy_mode')
+})
