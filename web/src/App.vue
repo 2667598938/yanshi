@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import TabBar from './components/TabBar.vue'
 import ToastLayer from './components/ToastLayer.vue'
 import ConflictDialog from './components/ConflictDialog.vue'
+import CommunityIssues from './components/CommunityIssues.vue'
 import OfflineBanner from './components/OfflineBanner.vue'
 import { useTimerStore } from './stores/timer'
 import { useAppStore } from './stores/app'
@@ -67,6 +68,7 @@ watch(
 <template>
   <div class="app-shell">
     <OfflineBanner />
+    <CommunityIssues />
     <main class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }">
       <router-view />
     </main>

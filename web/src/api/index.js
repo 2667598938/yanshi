@@ -144,16 +144,19 @@ export const resourceApi = {
   remove: (id, reason = '') => http.del('/resources/' + id, { query: { reason } }),
   like: (id) => http.post(`/resources/${id}/like`, {}),
   favorite: (id) => http.post(`/resources/${id}/favorite`, {}),
-  setFavorite: (id, favorited) => http.put(`/resources/${id}/favorite`, { favorited }),
+  favoriteMirror: (afterId = 0) => http.get('/resources/favorite-mirror', { query: { after_id: afterId } }),
+  setFavorite: (id, favorited, revision) => http.put(`/resources/${id}/favorite`, { favorited, expected_revision: revision }),
 }
 
 export const postApi = {
+  mirror: (afterId = 0) => http.get('/posts/mirror', { query: { after_id: afterId } }),
+  update: (id, content, revision) => http.put(`/posts/${id}`, { content, expected_revision: revision }),
   list: () => http.get('/posts'),
   mine: () => http.get('/posts/mine'),
   get: (id) => http.get(`/posts/${id}`),
   create: (content, clientId = '') =>
     http.post('/posts', clientId ? { content, client_id: clientId } : { content }),
-  remove: (id, reason = '') => http.del('/posts/' + id, { query: { reason } }),
+  remove: (id, reason = '', revision) => http.del('/posts/' + id, { query: { reason, expected_revision: revision } }),
   comments: (id) => http.get(`/posts/${id}/comments`),
   comment: (id, body) => http.post(`/posts/${id}/comments`, body),
   deleteComment: (id, reason = '') => http.del('/comments/' + id, { query: { reason } }),

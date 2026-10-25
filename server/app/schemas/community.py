@@ -14,6 +14,11 @@ class PostInput(Strict):
                                      pattern=r'^[A-Za-z0-9_-]+$')
 
 
+class PostUpdate(Strict):
+    content: str = Field(min_length=1, max_length=2000)
+    expected_revision: int = Field(ge=1)
+
+
 class CommentInput(Strict):
     content: str = Field(min_length=1, max_length=500)
     parent_id: Optional[int] = None

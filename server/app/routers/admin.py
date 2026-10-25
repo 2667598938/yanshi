@@ -213,6 +213,9 @@ def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depend
                        settings=request.app.state.settings)
     audit(db, request, 'admin.update_member', user_id=uid,
           detail=body.model_dump_json(exclude_none=True))
+    if any(getattr(body, field) is not None for field in ('nickname', 'target_school', 'daily_goal_min')):
+        from ..services.profile import snapshot_profile
+        snapshot_profile(db, user)
     db.commit()
     db.refresh(user)
     return ok(member_dict(user))

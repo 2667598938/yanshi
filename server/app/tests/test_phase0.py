@@ -112,7 +112,7 @@ def test_inspiration_image_upload_submit_review_and_visibility(client, action):
     assert submitted.status_code == 200, submitted.text
     iid = submitted.json()['data']['id']
     assert client.post(f'/api/v1/admin/inspirations/{iid}/review', headers=admin,
-                       json={'action': action, 'note': '回归'}).status_code == 200
+                       json={'action': action, 'note': '回归验收备注'}).status_code == 200
     expected = 200 if action == 'approve' else 404
     assert client.get('/api/v1/attachments/view', params={'key': key}, headers=viewer).status_code == expected
     assert client.delete('/api/v1/attachments', params={'key': key}, headers=author).status_code == 200

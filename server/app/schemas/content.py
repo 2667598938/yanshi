@@ -25,6 +25,7 @@ class ResourceInput(Strict):
 
 class FavoriteState(Strict):
     favorited: bool
+    expected_revision: Optional[int] = Field(default=None, ge=0)
 
 
 class ResourceUpdate(Strict):

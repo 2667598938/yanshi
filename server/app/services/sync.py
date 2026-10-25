@@ -158,6 +158,7 @@ def execute_commands(db, user_id: int, command_dict: dict) -> dict:
 
     with sync_write_lock:
         try:
+            db.scalar(select(User).where(User.id == user_id).with_for_update())
             # 幂等：相同 operationId 已处理过
             previous = db.scalar(
                 select(LearningOperation).where(

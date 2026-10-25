@@ -1,6 +1,6 @@
 """励志区「大雪深埋」：用户投稿 + 管理员审核 + 通过后公开展示。"""
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ..deps import audit, get_admin, get_current_user, get_db
 from ..errors import ApiError, ok
@@ -87,6 +87,14 @@ def review_inspiration(iid: int, body: InspirationReview, request: Request,
         raise ApiError(404, 40401, '投稿不存在')
     if row.status != 'pending':
         raise ApiError(400, 40001, '该投稿已处理')
+    if body.action == 'reject' and len(body.note.strip()) < 5:
+        raise ApiError(400, 40001, '驳回原因至少5字')
+    claimed = db.execute(update(Inspiration).where(Inspiration.id == iid,
+        Inspiration.status == 'pending').values(
+            status='approved' if body.action == 'approve' else 'rejected',
+            review_note=body.note.strip(), reviewed_by=admin.id, reviewed_at=utcnow())).rowcount
+    if claimed != 1:
+        raise ApiError(400, 40001, '该投稿已被处理，请刷新')
     row.status = 'approved' if body.action == 'approve' else 'rejected'
     row.review_note = body.note.strip()
     row.reviewed_by = admin.id

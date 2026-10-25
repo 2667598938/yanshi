@@ -53,7 +53,7 @@ def test_posts_and_nested_comments(client):
 
     # 管理员删除帖子 → 作者收到消息
     assert client.delete(f'/api/v1/posts/{pid}', headers=ah,
-                         params={'reason': '内容违规'}).status_code == 200
+                         params={'reason': '内容违规删除'}).status_code == 200
     msgs = client.get('/api/v1/messages', headers=p1).json()['data']
     assert any('帖子' in m['title'] for m in msgs)
     assert client.get(f'/api/v1/posts/{pid}', headers=p1).status_code == 404
@@ -85,7 +85,7 @@ def test_admin_delete_requires_reason(client):
     msgs = client.get('/api/v1/messages', headers=p2).json()['data']
     assert any('评论' in m['title'] and '评论含广告' in m['content'] for m in msgs)
     assert client.delete(f'/api/v1/posts/{pid}', headers=ah,
-                         params={'reason': '内容违规'}).status_code == 200
+                         params={'reason': '内容违规删除'}).status_code == 200
     msgs = client.get('/api/v1/messages', headers=p1).json()['data']
     assert any('帖子' in m['title'] and '内容违规' in m['content'] for m in msgs)
 

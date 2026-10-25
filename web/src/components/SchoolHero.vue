@@ -1,18 +1,58 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import BlobImage from './BlobImage.vue'
+import { schoolApi } from '../api'
+import { db } from '../db'
 import { Check, Target, MapPin } from 'lucide-vue-next'
 import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
 import { useAppStore } from '../stores/app'
+import { useProfileStore } from '../stores/profile'
+import { useToast } from '../composables/useToast'
 import { daysUntil, weekLabel } from '../utils/date'
 import { quoteOfDay } from '../data/quotes'
 
+const schools = ref(SCHOOLS)
 const app = useAppStore()
+const profile = useProfileStore()
+const { toast } = useToast()
+let carousel
+let alive = true
+let lastManual = 0
+function mergeSchools(rows) {
+  if (!rows?.length) return
+  schools.value = rows.map((row) => {
+    const local = SCHOOL_MAP[row.key] || SCHOOLS[0]
+    return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
+      logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
+      album: row.album_keys?.length ? row.album_keys : [local.view] }
+  })
+  if (browseIndex.value >= schools.value.length) browseIndex.value = 0
+}
+const albumIndex = ref(0)
+const campusImage = computed(() => school.value.album?.[albumIndex.value % school.value.album.length] || school.value.view)
+onMounted(async () => {
+  const cached = await db.kv.get('schools:catalog')
+  if (!alive) return
+  mergeSchools(cached?.value)
+  carousel = setInterval(() => {
+    if (document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
+    if ((school.value.album?.length || 1) > 1 && albumIndex.value + 1 < school.value.album.length) albumIndex.value += 1
+    else { browseIndex.value = (browseIndex.value + 1) % schools.value.length; albumIndex.value = 0 }
+  }, 6000)
+  try {
+    const rows = await schoolApi.list()
+    if (!alive) return
+    mergeSchools(rows)
+    await db.kv.put({ key: 'schools:catalog', value: rows })
+  } catch { /* 保留已缓存目录和内置七校素材 */ }
+})
+onBeforeUnmount(() => { alive = false; clearInterval(carousel) })
 const dreamIndex = computed(() =>
-  SCHOOLS.findIndex((s) => s.key === app.dreamSchool)
+  schools.value.findIndex((s) => s.key === app.dreamSchool)
 )
 const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3)
 
-const school = computed(() => SCHOOLS[browseIndex.value])
+const school = computed(() => schools.value[browseIndex.value] || schools.value[0])
 const isDream = computed(() => school.value.key === app.dreamSchool)
 const days = computed(() => daysUntil(app.examDate))
 const quote = quoteOfDay()
@@ -24,20 +64,25 @@ const examDate = computed(() => {
 
 function pick(i) {
   browseIndex.value = i
+  albumIndex.value = 0
+  lastManual = Date.now()
 }
-function setDream() {
-  if (!isDream.value) app.setDreamSchool(school.value.key)
+async function setDream() {
+  if (!isDream.value) {
+    try { await profile.save({ target_school: school.value.key }) }
+    catch (e) { toast(e.message) }
+  }
 }
 </script>
 
 <template>
   <div class="hero" :style="{ '--sc': school.color }">
-    <img :key="school.key" class="hero-bg" :src="school.view" :alt="school.name" />
+    <BlobImage :key="school.key + campusImage" class="hero-bg" :src="campusImage" :alt="school.name" />
     <div class="hero-veil"></div>
 
     <div class="hero-inner">
       <div class="hero-top">
-        <img class="seal" :src="school.logo" :alt="school.name + '校徽'" />
+        <BlobImage class="seal" :src="school.logo" :alt="school.name + '校徽'" />
         <div class="school-meta">
           <div class="school-name">{{ school.name }}</div>
           <div class="school-motto">{{ school.motto }}</div>
@@ -57,7 +102,7 @@ function setDream() {
       </div>
 
       <div class="countdown">
-        <div class="cd-label">距 2028 考研初试还有</div>
+        <div class="cd-label">距考研初试还有</div>
         <div class="cd-num-row">
           <span class="cd-num tnum">{{ days }}</span>
           <span class="cd-unit">天</span>
@@ -69,13 +114,13 @@ function setDream() {
 
       <div class="school-strip">
         <div
-          v-for="(s, i) in SCHOOLS"
+          v-for="(s, i) in schools"
           :key="s.key"
           class="strip-item"
           :class="{ active: i === browseIndex, dream: s.key === app.dreamSchool }"
           @click="pick(i)"
         >
-          <img :src="s.logo" :alt="s.short" />
+          <BlobImage :src="s.logo" :alt="s.short" />
           <span v-if="s.key === app.dreamSchool" class="dream-mark">
             <Check :size="8" :stroke-width="3.5" />
           </span>

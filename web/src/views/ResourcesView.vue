@@ -9,6 +9,7 @@ import { fmtDate as formatDate } from '../utils/time'
 import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
 import { db } from '../db'
+import { favoriteRows, pullCommunityMirrors } from '../sync/community'
 
 const FAV_CACHE = 'resourceFavCache'
 
@@ -37,13 +38,15 @@ async function load() {
   try {
     if (tab.value === 'fav') {
       try {
-        rows.value = await resourceApi.favorites()
+        await pullCommunityMirrors()
+        rows.value = await favoriteRows()
         // 缓存收藏列表，断网时仍可查看
         await db.kv.put({ key: FAV_CACHE, value: rows.value })
       } catch (e) {
         if (e.status && e.status < 500) throw e
         const cached = await db.kv.get(FAV_CACHE)
-        rows.value = cached?.value || []
+        rows.value = await favoriteRows()
+        if (!rows.value.length) rows.value = cached?.value || []
         toast('离线中，显示本机缓存的收藏')
       }
     } else if (tab.value === 'mine') rows.value = await resourceApi.mine()

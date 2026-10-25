@@ -281,10 +281,13 @@ def me(user=Depends(get_current_user)):
 @router.put('/users/me')
 def update_me(body: ProfileUpdate, request: Request, user=Depends(get_current_user),
               db=Depends(get_db)):
+    db.refresh(user, with_for_update=True)
     data = body.model_dump(exclude_none=True)
     for key, value in data.items():
         setattr(user, key, value)
     audit(db, request, 'user.update_profile', user_id=user.id)
+    from ..services.profile import snapshot_profile
+    snapshot_profile(db, user)
     db.commit()
     return ok(user_payload(user))
 

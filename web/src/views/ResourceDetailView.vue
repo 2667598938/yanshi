@@ -51,27 +51,12 @@ async function toggleLike() {
 
 async function toggleFav() {
   const next = !row.value.favorited
-  row.value.favorited = next
-  if (!navigator.onLine) {
-    await queueFavorite(id.value, next)
+  try {
+    await queueFavorite(id.value, next, { ...row.value })
+    row.value.favorited = next
     toast(next ? '已收藏，联网后同步' : '已取消收藏，联网后同步')
     scheduleSync(0)
-    return
-  }
-  try {
-    await resourceApi.setFavorite(id.value, next)
-    toast(next ? '已收藏' : '已取消收藏')
-  } catch (e) {
-    if (!e.status || e.status >= 500) {
-      // 断网/服务不可用：写入离线队列，联网后自动同步
-      await queueFavorite(id.value, next)
-      toast(next ? '已收藏，联网后同步' : '已取消收藏，联网后同步')
-      scheduleSync(0)
-      return
-    }
-    row.value.favorited = !next
-    toast(e.message)
-  }
+  } catch (e) { toast(e.message) }
 }
 
 function edit() {

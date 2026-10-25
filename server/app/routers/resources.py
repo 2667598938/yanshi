@@ -2,7 +2,7 @@
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from ..deps import audit, get_current_user, get_db
@@ -65,12 +65,15 @@ def _lists(db, user, rows):
     liked = set(db.scalars(select(ResourceLike.resource_id).where(
         ResourceLike.user_id == user.id, ResourceLike.resource_id.in_(ids))).all())
     favorited = set(db.scalars(select(ResourceFavorite.resource_id).where(
-        ResourceFavorite.user_id == user.id,
+        ResourceFavorite.user_id == user.id, ResourceFavorite.active.is_(True),
         ResourceFavorite.resource_id.in_(ids))).all())
     full_link = feature_service.has_feature(db, user, 'materials')
     payload = [_resource_dict(r, owners.get(r.user_id), user, int(counts.get(r.id, 0)),
                               r.id in liked, r.id in favorited, full_link)
                for r in rows]
+    revisions = dict(db.execute(select(ResourceFavorite.resource_id, ResourceFavorite.revision).where(
+        ResourceFavorite.user_id == user.id, ResourceFavorite.resource_id.in_(ids))).all())
+    for item in payload: item['favorite_revision'] = revisions.get(item['id'], 0)
     return payload, owners, liked, favorited
 
 
@@ -91,8 +94,8 @@ def list_resources(q: str = '', category: str = '', user=Depends(get_current_use
 @router.get('/favorites')
 def my_favorites(user=Depends(get_current_user), db=Depends(get_db)):
     favs = db.scalars(select(ResourceFavorite).where(
-        ResourceFavorite.user_id == user.id).order_by(
-        ResourceFavorite.id.desc()).limit(100)).all()
+        ResourceFavorite.user_id == user.id, ResourceFavorite.active.is_(True)).order_by(
+        ResourceFavorite.id.desc())).all()
     ids = [f.resource_id for f in favs]
     if not ids:
         return ok([])
@@ -102,6 +105,19 @@ def my_favorites(user=Depends(get_current_user), db=Depends(get_db)):
     rows = sorted(rows, key=lambda r: order.get(r.id, 999))
     payload, _, _, _ = _lists(db, user, rows)
     return ok(payload)
+
+
+@router.get('/favorite-mirror')
+def favorite_mirror(after_id: int = 0, user=Depends(get_current_user), db=Depends(get_db)):
+    states = db.scalars(select(ResourceFavorite).where(ResourceFavorite.user_id == user.id,
+        ResourceFavorite.id > after_id).order_by(ResourceFavorite.id).limit(100)).all()
+    ids = [s.resource_id for s in states]
+    resources = db.scalars(select(Resource).where(Resource.id.in_(ids), Resource.deleted_at.is_(None))).all()
+    payload, _, _, _ = _lists(db, user, resources)
+    by_id = {r['id']: r for r in payload}
+    return ok({'items': [{'resourceId': s.resource_id, 'revision': s.revision,
+        'favorited': bool(s.active and s.resource_id in by_id), 'resource': by_id.get(s.resource_id)}
+        for s in states], 'next': states[-1].id if len(states) == 100 else None})
 
 
 @router.get('/mine')
@@ -209,44 +225,42 @@ def toggle_like(rid: int, request: Request, user=Depends(get_current_user),
     return ok({'liked': liked, 'like_count': int(count)})
 
 
-@router.post('/{rid}/favorite')
-def toggle_favorite(rid: int, request: Request, user=Depends(get_current_user),
-                    db=Depends(get_db)):
+def _set_favorite(rid, favorited, expected, user, db):
     row = db.get(Resource, rid)
-    if not row or row.deleted_at:
-        raise ApiError(404, 40401, '资料不存在')
+    if not row or row.deleted_at: raise ApiError(404, 40401, '资料不存在')
     existing = db.scalar(select(ResourceFavorite).where(
         ResourceFavorite.resource_id == rid, ResourceFavorite.user_id == user.id))
+    revision = existing.revision if existing else 0
+    if existing and existing.active == favorited:
+        return ok({'favorited': favorited, 'revision': revision})
+    if expected is not None and expected != revision:
+        raise ApiError(409, 40902, '收藏已在其他设备更新，请选择保留版本',
+            data={'current': {'resourceId': rid, 'favorited': bool(existing and existing.active),
+                              'revision': revision}})
     if existing:
-        db.delete(existing)
-        favorited = False
+        changed = db.execute(update(ResourceFavorite).where(ResourceFavorite.id == existing.id,
+            ResourceFavorite.revision == revision).values(active=favorited,
+                revision=ResourceFavorite.revision + 1)).rowcount
+        if not changed:
+            db.rollback()
+            raise ApiError(409, 40902, '收藏状态已变化，请刷新后重试')
     else:
-        db.add(ResourceFavorite(resource_id=rid, user_id=user.id))
-        favorited = True
-    try:
-        db.commit()
+        db.add(ResourceFavorite(resource_id=rid, user_id=user.id, active=favorited))
+    try: db.commit()
     except IntegrityError:
         db.rollback()
-        favorited = True
-    return ok({'favorited': favorited})
+        raise ApiError(409, 40902, '收藏状态已变化，请刷新后重试') from None
+    return ok({'favorited': favorited, 'revision': revision + 1})
+
+
+@router.post('/{rid}/favorite')
+def toggle_favorite(rid: int, user=Depends(get_current_user), db=Depends(get_db)):
+    existing = db.scalar(select(ResourceFavorite).where(
+        ResourceFavorite.resource_id == rid, ResourceFavorite.user_id == user.id))
+    return _set_favorite(rid, not bool(existing and existing.active),
+                         existing.revision if existing else 0, user, db)
 
 
 @router.put('/{rid}/favorite')
-def set_favorite(rid: int, body: FavoriteState, user=Depends(get_current_user),
-                 db=Depends(get_db)):
-    """离线同步用：显式设置收藏状态，重复提交幂等。"""
-    row = db.get(Resource, rid)
-    if not row or row.deleted_at:
-        raise ApiError(404, 40401, '资料不存在')
-    existing = db.scalar(select(ResourceFavorite).where(
-        ResourceFavorite.resource_id == rid, ResourceFavorite.user_id == user.id))
-    if body.favorited and not existing:
-        db.add(ResourceFavorite(resource_id=rid, user_id=user.id))
-        try:
-            db.commit()
-        except IntegrityError:
-            db.rollback()
-    elif not body.favorited and existing:
-        db.delete(existing)
-        db.commit()
-    return ok({'favorited': body.favorited})
+def set_favorite(rid: int, body: FavoriteState, user=Depends(get_current_user), db=Depends(get_db)):
+    return _set_favorite(rid, body.favorited, body.expected_revision, user, db)

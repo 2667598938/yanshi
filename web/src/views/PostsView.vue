@@ -9,7 +9,7 @@ import { fmtShort } from '../utils/time'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 import { useAuthStore } from '../stores/auth'
-import { pendingPosts, queuePost, SYNCED_EVENT } from '../sync/community'
+import { pendingPosts, queuePost, cachedPosts, pullCommunityMirrors, SYNCED_EVENT } from '../sync/community'
 import { scheduleSync } from '../sync/engine'
 
 const router = useRouter()
@@ -40,7 +40,10 @@ async function load() {
   loading.value = true
   await loadPending()
   try {
-    rows.value = tab.value === 'mine' ? await postApi.mine() : await postApi.list()
+    if (tab.value === 'mine') {
+      await pullCommunityMirrors().catch(() => {})
+      rows.value = await cachedPosts()
+    } else rows.value = await postApi.list()
   } catch (e) {
     toast(e.message)
   } finally {
@@ -67,21 +70,7 @@ async function publish() {
   if (!text) return toast('写点什么再发布')
   posting.value = true
   try {
-    if (!navigator.onLine) {
-      await saveLocal(text)
-      return
-    }
-    try {
-      const row = await postApi.create(text)
-      rows.value.unshift(row)
-      draft.value = ''
-      showCompose.value = false
-      toast('已发布')
-    } catch (e) {
-      // 鉴权/内容校验错误直接提示；断网或服务不可用（含网关 502）转为本地草稿
-      if (e.status && e.status < 500) return toast(e.message)
-      await saveLocal(text)
-    }
+    await saveLocal(text)
   } finally {
     posting.value = false
   }

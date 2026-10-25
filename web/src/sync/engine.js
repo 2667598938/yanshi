@@ -30,7 +30,7 @@ const TABLE_BY_TYPE = {
 }
 const SYNCABLE_TABLES = ['subjects', 'sessions', 'tasks', 'mistakes', 'kv']
 // 帖子/收藏走各自的服务端接口，不能混入学习数据的通用同步命令
-const COMMUNITY_TYPES = new Set(['post', 'favorite'])
+const COMMUNITY_TYPES = new Set(['post', 'postEdit', 'postDelete', 'favorite'])
 const TYPE_LABEL = {
   subject: '科目',
   session: '专注记录',
