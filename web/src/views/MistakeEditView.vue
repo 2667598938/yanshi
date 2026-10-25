@@ -7,8 +7,7 @@ import {
 import BlobImage from '../components/BlobImage.vue'
 import { useMistakesStore } from '../stores/mistakes'
 import { useSubjectsStore } from '../stores/subjects'
-import { useAuthStore } from '../stores/auth'
-import { attachmentApi, errorTypeApi } from '../api'
+import { errorTypeApi } from '../api'
 import { MISTAKE_REASONS, REVIEW_INTERVALS, intervalLabel } from '../data/subjects'
 import { compressImage } from '../utils/image'
 import { todayKey } from '../utils/date'
@@ -18,7 +17,6 @@ const router = useRouter()
 const route = useRoute()
 const mistakes = useMistakesStore()
 const subjects = useSubjectsStore()
-const auth = useAuthStore()
 const { toast } = useToast()
 
 const QUICK_TAGS = ['数一', '408', '英语阅读', '政治', '竞赛', '真题', '高频']
@@ -39,6 +37,7 @@ const tagInput = ref('')
 const fileRef = ref(null)
 const answerFileRef = ref(null)
 const customReasons = ref([])
+const saving = ref(false)
 
 const reasonOptions = computed(() => {
   const rows = MISTAKE_REASONS.map((r) => ({ value: r.id, name: r.name }))
@@ -126,55 +125,42 @@ function removeAnswerImg(i) {
   answerImages.value.splice(i, 1)
 }
 
-// 登录后把本地图片上传为附件 key（可跨设备同步）；未登录或失败则保留本地 Blob
-async function resolveImages(source) {
-  const out = []
-  for (const b of source.value) {
-    if (typeof b === 'string') {
-      out.push(b)
-      continue
-    }
-    if (auth.isLoggedIn) {
-      try {
-        const file = b instanceof File ? b : new File([b], 'mistake.jpg', { type: 'image/jpeg' })
-        const res = await attachmentApi.uploadImage(file, 'mistake')
-        out.push(res.key)
-        continue
-      } catch {
-        /* 上传失败则退回本地 */
-      }
-    }
-    out.push(b)
-  }
-  return out
-}
-
 async function save() {
-  const payload = {
-    subjectId: fSubject.value,
-    chapter: fChapter.value.trim(),
-    reason: fReason.value,
-    tags: tags.value,
-    content: fContent.value.trim(),
-    idea: fIdea.value.trim(),
-    analysis: fAnalysis.value.trim(),
-    images: await resolveImages(images),
-    answerImages: await resolveImages(answerImages),
-    sourceDate: fDate.value,
-  }
-  if (!payload.content && !images.value.length) {
+  if (saving.value) return
+  if (!fContent.value.trim() && !images.value.length) {
     toast('至少写点题干或上传一张题目截图')
     return
   }
-  if (editingId.value) {
-    await mistakes.update(editingId.value, payload)
-    toast('已更新错题')
-  } else {
-    payload.sessionId = sessionId.value
-    await mistakes.add(payload)
-    toast(`已收录，将在 ${intervalLabel(REVIEW_INTERVALS[0])}后提醒复习`)
+  saving.value = true
+  try {
+    // 先保存本机图片与记录，补传由同步队列完成，不让网络请求阻塞收录。
+    const payload = {
+      subjectId: fSubject.value,
+      chapter: fChapter.value.trim(),
+      reason: fReason.value,
+      tags: tags.value,
+      content: fContent.value.trim(),
+      idea: fIdea.value.trim(),
+      analysis: fAnalysis.value.trim(),
+      images: images.value,
+      answerImages: answerImages.value,
+      sourceDate: fDate.value,
+    }
+    if (editingId.value) {
+      await mistakes.update(editingId.value, payload)
+      toast('已更新错题')
+    } else {
+      payload.sessionId = sessionId.value
+      await mistakes.add(payload)
+      toast(`已收录，将在 ${intervalLabel(REVIEW_INTERVALS[0])}后提醒复习`)
+    }
+    await router.push('/mistakes')
+  } catch (error) {
+    console.error('错题保存失败', error)
+    toast('保存失败，请重试；填写的内容仍保留在当前页')
+  } finally {
+    saving.value = false
   }
-  router.push('/mistakes')
 }
 </script>
 
@@ -307,8 +293,8 @@ async function save() {
       <input v-model="fDate" type="date" class="input" />
     </div>
 
-    <button class="btn btn-tomato btn-block mt12" @click="save">
-      <NotebookPen :size="18" />{{ editingId ? '保存修改' : '收录错题' }}
+    <button class="btn btn-tomato btn-block mt12" :disabled="saving" :aria-busy="saving" @click="save">
+      <NotebookPen :size="18" />{{ saving ? '保存中…' : editingId ? '保存修改' : '收录错题' }}
     </button>
   </div>
 </template>

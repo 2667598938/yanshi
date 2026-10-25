@@ -3,6 +3,7 @@ import { db, uid } from '../db'
 import { todayKey } from '../utils/date'
 import { REVIEW_INTERVALS } from '../data/subjects'
 import { enqueueRecord, enqueueDelete } from '../sync/engine'
+import { toPlain } from '../utils/plain'
 
 // 错题本：图片以 Blob 存 IndexedDB；艾宾浩斯 8 节点（5min → 15d）
 const OLD_TO_NEW_STAGE = [3, 4, 5, 6, 7, 7]
@@ -60,7 +61,7 @@ export const useMistakesStore = defineStore('mistakes', {
       this.loaded = true
     },
     async add(payload) {
-      const item = {
+      const item = toPlain({
         id: uid('mk_'),
         subjectId: payload.subjectId || 'other',
         chapter: payload.chapter || '',
@@ -79,19 +80,24 @@ export const useMistakesStore = defineStore('mistakes', {
         history: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      }
-      await db.mistakes.add(item)
+      })
+      await db.transaction('rw', db.mistakes, db.outbox, async () => {
+        await db.mistakes.add(item)
+        await enqueueRecord('mistakes', item)
+      })
       this.list.push(item)
-      await enqueueRecord('mistakes', item)
       return item
     },
     async update(id, patch) {
-      patch.updatedAt = Date.now()
-      await db.mistakes.update(id, patch)
+      const changes = toPlain({ ...patch, updatedAt: Date.now() })
+      await db.transaction('rw', db.mistakes, db.outbox, async () => {
+        await db.mistakes.update(id, changes)
+        const row = await db.mistakes.get(id)
+        if (row) await enqueueRecord('mistakes', row)
+      })
       const i = this.list.findIndex((x) => x.id === id)
       if (i >= 0) {
-        this.list[i] = { ...this.list[i], ...patch }
-        await enqueueRecord('mistakes', this.list[i])
+        this.list[i] = { ...this.list[i], ...changes }
       }
     },
     async remove(id) {
@@ -122,10 +128,12 @@ export const useMistakesStore = defineStore('mistakes', {
         stage = Math.max(0, stage - 1)
         nextReviewAt = scheduleAt(stage, now)
       }
-      const patch = { stage, mastered, nextReviewAt, history }
-      await db.mistakes.update(id, patch)
+      const patch = toPlain({ stage, mastered, nextReviewAt, history })
+      await db.transaction('rw', db.mistakes, db.outbox, async () => {
+        await db.mistakes.update(id, patch)
+        await enqueueRecord('mistakes', { ...toPlain(m), ...patch })
+      })
       Object.assign(m, patch)
-      await enqueueRecord('mistakes', m)
     },
     // 某日期新增错题数（仪表盘用）
     countByDateRange(startKey, endKey) {

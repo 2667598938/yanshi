@@ -2,26 +2,13 @@
 // - 本地写库后 enqueueRecord/enqueueDelete，进入 outbox（同一条记录的多次改动合并为一条）
 // - syncNow：先 push outbox（expectedRevision 乐观并发 + operationId 幂等），再 pull 全量按 revision 合并
 // - 错题图片 Blob 不进同步体，只同步附件 key（图片上传见 api/attachment）
-import { reactive, toRaw } from 'vue'
+import { reactive } from 'vue'
 import { db, uid } from '../db'
 import { syncApi } from '../api'
 import { flushCommunity } from './community'
 import { flushMistakeImages } from './attachments'
 import { useAuthStore } from '../stores/auth'
-
-// Vue 的 reactive 会把对象包成 Proxy，IndexedDB 无法克隆 Proxy（DataCloneError）。
-// 写入 Dexie 前统一还原成纯对象/数组，保证可结构化克隆。
-function plain(value) {
-  const raw = toRaw(value)
-  if (Array.isArray(raw)) return raw.map(plain)
-  if (raw && typeof raw === 'object') {
-    if (raw instanceof Date || raw instanceof Blob || raw instanceof ArrayBuffer) return raw
-    const out = {}
-    for (const key of Object.keys(raw)) out[key] = plain(raw[key])
-    return out
-  }
-  return raw
-}
+import { toPlain as plain } from '../utils/plain'
 
 const TYPE_BY_TABLE = {
   subjects: 'subject',
