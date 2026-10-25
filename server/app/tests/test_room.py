@@ -59,7 +59,8 @@ def test_privacy_mode_anonymizes_and_excludes_ranking(client):
     assert hidden['nickname'] == '匿名研友'
     assert hidden['avatar_key'] == ''
     assert hidden['privacy'] is True
-    assert hidden['online'] is True          # 仍计入在线
+    assert hidden['online'] is False         # 他人不获知个人在线状态
+    assert other['room']['online_count'] >= 1  # 聚合在线人数仍包含隐私用户
     assert hidden['presence']['status'] == 'offline'
     assert hidden['today_sec'] == 0 and hidden['total_sec'] == 0
 

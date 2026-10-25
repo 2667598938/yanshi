@@ -11,6 +11,7 @@ import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import CopyFallback from '../components/CopyFallback.vue'
+import { FIGURES, FIGURE_MAP } from '../data/figures'
 
 const timer = useTimerStore()
 const subjects = useSubjectsStore()
@@ -66,6 +67,8 @@ function fmtTime(iso) {
 function presenceText(m) {
   const p = m.presence || {}
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
+  if (p.status === 'resting') return { label: '休息中', color: '#8b6ccc' }
+  if (p.status === 'idle') return { label: '空闲', color: '#d49b32' }
   if (p.status === 'focusing') {
     return { label: `专注中 · ${p.subject_name || '学习'}${p.focus_sec ? ' ' + fmtSec(p.focus_sec) : ''}`, color: '#1f9d63' }
   }
@@ -81,7 +84,7 @@ const seats = computed(() => {
 })
 
 const todayTotal = computed(() => members.value.reduce((a, m) => a + (m.today_sec || 0), 0))
-const onlineCount = computed(() => members.value.filter((m) => m.online).length)
+const onlineCount = computed(() => room.value?.online_count || 0)
 const isFull = computed(() =>
   Math.max(room.value?.member_count || 0, members.value.length) >= (room.value?.capacity || 4))
 
@@ -92,6 +95,7 @@ const rankList = computed(() => {
 })
 
 function buildHeartbeat() {
+  if (timer.rest && !timer.rest.finished) return { status: 'resting' }
   const c = timer.current
   if (c) {
     const subj = subjects.byId[c.subjectId]
@@ -104,7 +108,7 @@ function buildHeartbeat() {
       focus_started_at: c.startedAt,
     }
   }
-  return { status: 'online', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null }
+  return { status: 'idle', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null }
 }
 
 async function fetchRoom() {
@@ -150,7 +154,7 @@ async function loadPreview() {
 let beatTimer = null
 function startBeating() {
   if (beatTimer) return
-  beat('online')
+  beat()
   beatTimer = setInterval(() => beat(), 30000)
 }
 
@@ -210,6 +214,20 @@ async function reviewApply(row, approve) {
 async function copyCode() {
   await copyToClipboard(room.value?.code, '房间码已复制，发给研友')
 }
+async function copyInvite() {
+  const url = new URL(`/rooms/${room.value.id}`, location.origin)
+  await copyToClipboard(url.href, room.value.visibility === 'private' ? '申请链接已复制，房主审批后加入' : '房间链接已复制')
+}
+async function leaveRoom() {
+  if (!confirm('退出这个自习室？')) return
+  try {
+    await roomApi.leave(roomId.value)
+    joined.value = false
+    clearInterval(beatTimer)
+    toast('已退出自习室')
+    router.replace('/rooms')
+  } catch (error) { toast(error.message) }
+}
 
 async function beat(statusOverride) {
   try {
@@ -246,7 +264,7 @@ function openGoal() {
   const me = members.value.find((m) => m.user_id === auth.user?.id)
   goalDraft.value = {
     target_school: me?.goal?.target_school || auth.user?.target_school || '',
-    target_score: me?.goal?.target_score ?? auth.user?.exam_year ?? '',
+    target_score: me?.goal?.target_score || '',
     words: me?.goal?.words || '',
   }
   showGoal.value = true
@@ -255,9 +273,9 @@ function openGoal() {
 async function saveGoal() {
   try {
     await roomApi.putGoal({
-      target_school: goalDraft.value.target_school || null,
-      target_score: goalDraft.value.target_score ? Number(goalDraft.value.target_score) : null,
-      words: goalDraft.value.words || null,
+      target_school: String(goalDraft.value.target_school || '').trim(),
+      target_score: String(goalDraft.value.target_score || '').trim(),
+      words: String(goalDraft.value.words || '').trim(),
     }, roomId.value)
     showGoal.value = false
     toast('目标已更新')
@@ -338,15 +356,15 @@ onMounted(async () => {
 
 function onVisibility() {
   if (!joined.value) return
-  beat(document.visibilityState === 'visible' ? (timer.current ? 'focusing' : 'online') : 'offline')
+  beat(document.visibilityState === 'visible' ? undefined : 'offline')
 }
 function onLeave() {
   // 页面关闭尽力上报 offline
   try {
     const url = roomId.value ? `/api/v1/rooms/${roomId.value}/heartbeat` : '/api/v1/room/heartbeat'
     const payload = JSON.stringify({ status: 'offline', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null })
-    navigator.sendBeacon &&
-      navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }))
+    if (auth.accessToken) fetch(url, { method: 'POST', body: payload, keepalive: true,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.accessToken}` } }).catch(() => {})
   } catch {
     /* 关闭页面无法保证 */
   }
@@ -388,6 +406,8 @@ onBeforeUnmount(() => {
             <button v-if="joined && room?.code" class="room-code" @click="copyCode">
               房间码 {{ room.code }}<Copy :size="11" />
             </button>
+            <button v-if="joined" class="room-code" @click="copyInvite">{{ room?.visibility === 'private' ? '申请链接' : '房间链接' }}</button>
+            <button v-if="joined && room?.my_role !== 'owner'" class="room-code" @click="leaveRoom">退出房间</button>
           </div>
         </div>
         <div class="room-stat">
@@ -464,12 +484,15 @@ onBeforeUnmount(() => {
           :class="{ me: !seat.empty && seat.user_id === auth.user?.id, empty: seat.empty, filled: !seat.empty && seat.user_id !== auth.user?.id }"
         >
           <template v-if="!seat.empty">
-            <BlobImage class="seat-avatar" :src="seat.avatar_key" :fallback="schoolLogo(seat.target_school)" :alt="seat.nickname" />
+            <div class="seat-identity">
+              <BlobImage class="seat-avatar" :src="seat.avatar_key" :fallback="schoolLogo(seat.target_school)" :alt="seat.nickname" />
+              <span class="seat-figure" :style="{ background: (FIGURE_MAP[seat.figure_id] || FIGURES[0]).bg }" :title="(FIGURE_MAP[seat.figure_id] || FIGURES[0]).name">{{ (FIGURE_MAP[seat.figure_id] || FIGURES[0]).emoji }}</span>
+            </div>
             <div class="seat-info">
               <div class="seat-name">
                 {{ seat.nickname }}
                 <span v-if="seat.user_id === auth.user?.id" class="me-tag">我</span>
-                <span v-if="seat.role === 'admin'" class="admin-tag">管理员</span>
+                <span v-if="seat.role === 'owner'" class="admin-tag">房主</span>
               </div>
               <div class="seat-school">{{ schoolName(seat.target_school) }}<span v-if="seat.streak"> · 连续{{ seat.streak }}天</span></div>
               <div class="seat-state">
@@ -627,6 +650,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.seat-identity { position: relative; flex-shrink: 0; }.seat-figure { position: absolute; right: -6px; bottom: -3px; border-radius: 50%; width: 25px; height: 25px; display: grid; place-items: center; font-size: 16px; border: 2px solid #fff; }
 .room-head {
   background: linear-gradient(150deg, var(--night2), var(--night));
   border-radius: var(--radius);

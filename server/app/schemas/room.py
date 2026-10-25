@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class HeartbeatInput(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
-    status: Literal['offline', 'online', 'focusing']
+    status: Literal['offline', 'online', 'idle', 'focusing', 'resting']
     subject_client_id: str = Field(default='', max_length=500)
     subject_name: str = Field(default='', max_length=100)
     activity_type: str = Field(default='', max_length=20)

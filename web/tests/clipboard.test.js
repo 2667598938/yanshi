@@ -6,16 +6,16 @@ import RoomsView from '../src/views/RoomsView.vue'
 import RoomView from '../src/views/RoomView.vue'
 import { roomApi } from '../src/api'
 
-const mocks = vi.hoisted(() => ({ toast: vi.fn(), push: vi.fn() }))
+const mocks = vi.hoisted(() => ({ toast: vi.fn(), push: vi.fn(), replace: vi.fn(), timer: { current: null, rest: null } }))
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push: mocks.push, replace: mocks.replace, back: vi.fn() }),
   useRoute: () => ({ params: { id: '2' } }),
 }))
 vi.mock('../src/composables/useToast', () => ({ useToast: () => ({ toast: mocks.toast }) }))
-vi.mock('../src/stores/timer', () => ({ useTimerStore: () => ({ current: null }) }))
+vi.mock('../src/stores/timer', () => ({ useTimerStore: () => mocks.timer }))
 vi.mock('../src/stores/subjects', () => ({ useSubjectsStore: () => ({ byId: {} }) }))
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 2 }, isAdmin: false }) }))
-vi.mock('../src/api', () => ({ roomApi: { get: vi.fn(), list: vi.fn(), heartbeat: vi.fn() } }))
+vi.mock('../src/api', () => ({ roomApi: { get: vi.fn(), list: vi.fn(), heartbeat: vi.fn(), putGoal: vi.fn(), leave: vi.fn() } }))
 
 let wrapper
 let originalClipboard
@@ -27,6 +27,8 @@ function clipboard(value) {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value })
 }
 beforeEach(() => {
+  mocks.timer.current = null
+  mocks.timer.rest = null
   originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
   originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand')
   clipboard(undefined) // 模拟局域网 HTTP 下没有现代 Clipboard API
@@ -34,6 +36,8 @@ beforeEach(() => {
   roomApi.list.mockResolvedValue([room])
   roomApi.get.mockResolvedValue({ room, joined: true, members: [], messages: [], ranking: {} })
   roomApi.heartbeat.mockResolvedValue({})
+  roomApi.putGoal.mockResolvedValue({})
+  roomApi.leave.mockResolvedValue({ left: true })
 })
 afterEach(() => {
   wrapper?.unmount()
@@ -130,4 +134,48 @@ it.each([
   expect(field.element.selectionEnd).toBe(6)
   await wrapper.findAll('button').find((button) => button.text() === '关闭').trigger('click')
   expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+})
+
+it('房间展示选定形象和休息状态，心跳也上报休息', async () => {
+  mocks.timer.rest = { finished: false }
+  roomApi.get.mockResolvedValue({ room: { ...room, online_count: 1 }, joined: true,
+    members: [{ user_id: 2, nickname: 'A', figure_id: 'figure-8', online: true,
+      role: 'owner', presence: { status: 'resting' } }], messages: [], ranking: {} })
+  wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
+  await flushPromises()
+  expect(wrapper.text()).toContain('🌲')
+  expect(wrapper.text()).toContain('休息中')
+  expect(roomApi.heartbeat).toHaveBeenCalledWith({ status: 'resting' }, 2)
+})
+
+it('目标分数字段提交字符串，空字段不传null', async () => {
+  wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
+  await flushPromises()
+  await wrapper.findAll('button').find((button) => button.text() === '填写我的目标').trigger('click')
+  await wrapper.get('input[placeholder="如 400"]').setValue('400')
+  await wrapper.findAll('button').find((button) => button.text() === '保存').trigger('click')
+  await flushPromises()
+  expect(roomApi.putGoal).toHaveBeenCalledWith({ target_school: '', target_score: '400', words: '' }, 2)
+})
+
+it('申请分享链接只暴露预览入口，不附带房间码', async () => {
+  wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
+  await flushPromises()
+  await wrapper.findAll('button').find((button) => button.text() === '申请链接').trigger('click')
+  await flushPromises()
+  const value = wrapper.get('textarea[aria-label="待复制内容"]').element.value
+  expect(new URL(value).pathname).toBe('/rooms/2')
+  expect(value).not.toContain('AB12CD')
+})
+
+it('普通成员可退出房间，立即停止以成员身份继续参与', async () => {
+  vi.stubGlobal('confirm', vi.fn(() => true))
+  roomApi.get.mockResolvedValue({ room: { ...room, my_role: 'member' }, joined: true,
+    members: [], messages: [], ranking: {} })
+  wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
+  await flushPromises()
+  await wrapper.findAll('button').find((button) => button.text() === '退出房间').trigger('click')
+  await flushPromises()
+  expect(roomApi.leave).toHaveBeenCalledWith(2)
+  expect(mocks.replace).toHaveBeenCalledWith('/rooms')
 })

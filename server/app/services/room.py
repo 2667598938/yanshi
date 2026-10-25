@@ -7,6 +7,8 @@ import json
 import secrets
 import string
 import time
+import threading
+from functools import wraps
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -24,6 +26,24 @@ CN = timezone(timedelta(hours=8))
 ONLINE_WINDOW_SEC = 90          # 超过 90 秒无心跳视为离线
 MAX_FOCUS_SEC = 6 * 3600        # 单次进行中专注展示上限
 MESSAGE_LIMIT = 50
+room_write_lock = threading.RLock()
+
+
+def room_write(fn):
+    @wraps(fn)
+    def guarded(db, *args, **kwargs):
+        with room_write_lock:
+            try:
+                for value in args:
+                    if isinstance(value, Room):
+                        db.refresh(value, with_for_update=True)
+                        if value.dissolved_at is not None:
+                            raise ApiError(404, 40401, '自习室已解散')
+                return fn(db, *args, **kwargs)
+            except Exception:
+                db.rollback()
+                raise
+    return guarded
 
 
 def get_default_room(db):
@@ -111,6 +131,7 @@ def list_rooms(db, user):
             for r in visible]
 
 
+@room_write
 def create_room(db, user, name, intro, visibility):
     room = Room(name=name.strip(), intro=(intro or '').strip(), code=_new_room_code(db),
                 owner_id=user.id, capacity=4, visibility=visibility)
@@ -122,6 +143,7 @@ def create_room(db, user, name, intro, visibility):
     return room
 
 
+@room_write
 def join_room(db, user, room, code=''):
     if room.visibility == 'private':
         if code.strip().upper() != room.code.upper():
@@ -165,6 +187,7 @@ def room_preview(db, user, room):
     }
 
 
+@room_write
 def apply_join(db, user, room, message=''):
     """私密房间凭码免审；无码陌生人提交申请，同一人只保留一条待审。"""
     if get_membership(db, room.id, user.id):
@@ -177,7 +200,7 @@ def apply_join(db, user, room, message=''):
         raise ApiError(403, 40302, '自习室已满，暂时无法申请')
     pending = db.scalar(select(RoomJoinApply).where(
         RoomJoinApply.room_id == room.id, RoomJoinApply.user_id == user.id,
-        RoomJoinApply.status == 'pending'))
+        RoomJoinApply.status == 'pending').with_for_update())
     if pending is not None:
         return _apply_dict(pending)
     row = RoomJoinApply(room_id=room.id, user_id=user.id, status='pending',
@@ -209,11 +232,12 @@ def list_applies(db, user, room, status='pending'):
     return {'status': status, 'items': [_apply_dict(r, users.get(r.user_id)) for r in rows]}
 
 
+@room_write
 def review_apply(db, user, room, apply_id, approve):
     """房主通过/驳回；通过时立即写入成员，权限即时生效。"""
     if room.owner_id != user.id and user.role != 'admin':
         raise ApiError(403, 40301, '只有房主可以审批入房申请')
-    row = db.get(RoomJoinApply, apply_id)
+    row = db.scalar(select(RoomJoinApply).where(RoomJoinApply.id == apply_id).with_for_update())
     if row is None or row.room_id != room.id:
         raise ApiError(404, 40401, '申请不存在')
     if row.status != 'pending':
@@ -238,6 +262,7 @@ def review_apply(db, user, room, apply_id, approve):
     return _apply_dict(row, applicant)
 
 
+@room_write
 def leave_room(db, user, room):
     member = get_membership(db, room.id, user.id)
     if member is None:
@@ -253,6 +278,7 @@ def leave_room(db, user, room):
     return {'left': True}
 
 
+@room_write
 def update_room(db, user, room, name=None, intro=None, visibility=None):
     if room.owner_id != user.id and user.role != 'admin':
         raise ApiError(403, 40301, '只有房主可以修改房间')
@@ -267,6 +293,7 @@ def update_room(db, user, room, name=None, intro=None, visibility=None):
     return room_summary(db, room, user)
 
 
+@room_write
 def kick_member(db, user, room, target_user_id):
     if room.owner_id != user.id and user.role != 'admin':
         raise ApiError(403, 40301, '只有房主可以移除成员')
@@ -284,6 +311,7 @@ def kick_member(db, user, room, target_user_id):
     return {'removed': target_user_id}
 
 
+@room_write
 def regenerate_code(db, user, room):
     if room.owner_id != user.id and user.role != 'admin':
         raise ApiError(403, 40301, '只有房主可以更换房间码')
@@ -292,6 +320,7 @@ def regenerate_code(db, user, room):
     return room_summary(db, room, user)
 
 
+@room_write
 def dissolve_room(db, user, room):
     if room.owner_id != user.id and user.role != 'admin':
         raise ApiError(403, 40301, '只有房主可以解散房间')
@@ -310,13 +339,14 @@ def delete_room_members(room_id):
 
 def ensure_member(db, user, room=None, role='member', ignore_capacity=False):
     room = room or get_default_room(db)
+    db.refresh(room, with_for_update=True)
     existing = db.scalar(select(RoomMember).where(
-        RoomMember.room_id == room.id, RoomMember.user_id == user.id))
+        RoomMember.room_id == room.id, RoomMember.user_id == user.id).with_for_update())
     if existing:
         return existing
     if not ignore_capacity:
-        count = db.scalar(select(func.count()).select_from(RoomMember)
-                          .where(RoomMember.room_id == room.id))
+        count = len(db.scalars(select(RoomMember.id).where(
+            RoomMember.room_id == room.id).with_for_update()).all())
         if count >= room.capacity:
             raise ApiError(403, 40301, '自习室已满（固定 4 人）')
     member = RoomMember(room_id=room.id, user_id=user.id, role=role)
@@ -469,7 +499,7 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
             'role': m.role,
             'target_school': '' if hide else (u.target_school or ''),
             'exam_year': 0 if hide else u.exam_year,
-            'online': online,
+            'online': False if hide else online,
             'privacy': private,
             'presence': {
                 'status': 'offline' if hide else display_status,
