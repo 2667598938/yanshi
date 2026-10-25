@@ -7,6 +7,8 @@ import {
 import { resourceApi } from '../api'
 import { fmtDate } from '../utils/time'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 import { useAuthStore } from '../stores/auth'
 import { queueFavorite } from '../sync/community'
 import { scheduleSync } from '../sync/engine'
@@ -15,6 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
 const row = ref(null)
 const loading = ref(true)
@@ -33,12 +36,7 @@ async function load() {
 }
 
 async function copy(text, label = '链接') {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(`已复制${label}`)
-  } catch {
-    toast('复制失败，请手动选择')
-  }
+  await copyToClipboard(text, `已复制${label}`)
 }
 
 async function toggleLike() {
@@ -101,6 +99,7 @@ onMounted(load)
 
 <template>
   <div>
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">资料详情</div>

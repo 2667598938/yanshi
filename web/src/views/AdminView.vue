@@ -11,10 +11,13 @@ import BlobImage from '../components/BlobImage.vue'
 import { fmtDate, fmtShort, fmtDateTime } from '../utils/time'
 import { SCHOOL_MAP } from '../data/schools'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
 const overview = ref(null)
 const members = ref([])
@@ -189,12 +192,7 @@ async function submitReject() {
 }
 
 async function copyCode(code) {
-  try {
-    await navigator.clipboard.writeText(code)
-    toast('邀请码已复制：' + code)
-  } catch {
-    toast('请手动复制：' + code)
-  }
+  await copyToClipboard(code, '邀请码已复制：' + code)
 }
 
 async function createInvite() {
@@ -301,6 +299,7 @@ onMounted(() => {
 
 <template>
   <div class="admin-page">
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>

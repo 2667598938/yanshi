@@ -9,11 +9,14 @@ import { roomApi } from '../api'
 import { SCHOOL_MAP } from '../data/schools'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 
 const timer = useTimerStore()
 const subjects = useSubjectsStore()
 const auth = useAuthStore()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 const route = useRoute()
 const router = useRouter()
 const roomId = computed(() => (route.params.id ? Number(route.params.id) : null))
@@ -205,12 +208,7 @@ async function reviewApply(row, approve) {
 }
 
 async function copyCode() {
-  try {
-    await navigator.clipboard.writeText(room.value?.code || '')
-    toast('房间码已复制，发给研友')
-  } catch {
-    toast('复制失败')
-  }
+  await copyToClipboard(room.value?.code, '房间码已复制，发给研友')
 }
 
 async function beat(statusOverride) {
@@ -364,6 +362,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div>
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.push('/rooms')"><ArrowLeft :size="20" /></button>
       <div>

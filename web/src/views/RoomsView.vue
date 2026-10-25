@@ -6,9 +6,12 @@ import {
 } from 'lucide-vue-next'
 import { roomApi } from '../api'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 
 const router = useRouter()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
 const rows = ref([])
 const loading = ref(true)
@@ -73,12 +76,7 @@ async function joinByCode() {
 }
 
 async function copyCode(code) {
-  try {
-    await navigator.clipboard.writeText(code)
-    toast('房间码已复制')
-  } catch {
-    toast('复制失败')
-  }
+  await copyToClipboard(code, '房间码已复制')
 }
 
 onMounted(load)
@@ -86,6 +84,7 @@ onMounted(load)
 
 <template>
   <div>
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">自习室</div>
