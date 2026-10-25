@@ -12,7 +12,7 @@ import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
 import { useProfileStore } from '../stores/profile'
 import { useNotificationsStore } from '../stores/notifications'
-import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
+import { SCHOOL_MAP } from '../data/schools'
 import { fmtDate } from '../utils/time'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
 import { db, currentKey } from '../db'
@@ -20,7 +20,7 @@ import { syncNow, enqueueDelete, pauseSyncForAccountSwitch, resumeSyncAfterAccou
 import { buildBackup } from '../utils/backup'
 import { inspectBackup, restoreBackup } from '../utils/restore'
 import { fmtMinutes, todayKey } from '../utils/date'
-import { authApi, publicApi, attachmentApi, messageApi } from '../api'
+import { authApi, publicApi, attachmentApi, messageApi, schoolApi } from '../api'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 
@@ -106,10 +106,11 @@ async function manualSync() {
 }
 
 const schoolCatalog = ref([])
+const schoolChoices = computed(()=>schoolCatalog.value.map(row=>({...SCHOOL_MAP[row.key],...row,key:row.key,short:row.short||row.name,logo:row.logo_key||SCHOOL_MAP[row.key]?.logo||''})))
 const school = computed(() => {
   const key = auth.user?.target_school || app.dreamSchool
   const saved = schoolCatalog.value.find(row => row.key === key)
-  return saved ? { ...SCHOOL_MAP[key], ...saved.info, name: saved.name, logo: SCHOOL_MAP[key]?.logo || '' }
+  return saved ? { ...SCHOOL_MAP[key], ...saved.info, name: saved.name, short:saved.short || saved.name, logo:saved.logo_key || SCHOOL_MAP[key]?.logo || '' }
     : SCHOOL_MAP[key] || { name: key || '尚未选择梦校', motto: '', logo: '' }
 })
 const avatar = computed(() => auth.user?.avatar_key || '')
@@ -292,6 +293,7 @@ async function togglePrivacy() {
 onMounted(() => {
   auth.fetchMe().then(() => profile.load(true)).catch(() => {})
   db.kv.get('schools:catalog').then(row => { schoolCatalog.value = row?.value || [] }).catch(() => {})
+  schoolApi.list().then(rows=>{schoolCatalog.value=rows;return db.kv.put({key:'schools:catalog',value:rows})}).catch(()=>{})
   notifications.refresh()
   db.syncMeta.get('lastSyncAt').then((m) => { lastSyncAt.value = m?.value || 0 }).catch(() => {})
   if (auth.user) {
@@ -585,11 +587,11 @@ onMounted(() => {
         </template>
 
         <template v-else-if="sheetType === 'school'">
-          <div class="sheet-title">选择我的梦校</div>
+          <div class="sheet-title">选择我的梦校</div><button class="btn btn-outline" @click="close();router.push('/schools/manage')">新增与管理梦校</button>
           <div class="school-grid">
-            <div v-for="s in SCHOOLS" :key="s.key" class="school-cell"
+            <div v-for="s in schoolChoices" :key="s.key" class="school-cell"
               :class="{ on: s.key === (auth.user?.target_school || app.dreamSchool) }" @click="pickSchool(s.key)">
-              <img :src="s.logo" :alt="s.short" />
+              <BlobImage :src="s.logo" :alt="s.short" />
               <span>{{ s.short }}</span>
               <i v-if="s.key === (auth.user?.target_school || app.dreamSchool)" class="tick"><Check :size="11" :stroke-width="3" /></i>
             </div>

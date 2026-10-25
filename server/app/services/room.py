@@ -183,7 +183,6 @@ def _apply_dict(row, user=None):
         data.update({
             'nickname': user.nickname,
             'avatar_key': user.avatar_key or '',
-            'target_school': user.target_school or '',
         })
     return data
 
