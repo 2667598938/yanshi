@@ -54,7 +54,6 @@ def bullet_quotes(db=Depends(get_db)):
         .join(User, User.id == Inspiration.user_id)
         .where(
             Inspiration.status == "approved",
-            User.role == "admin",
             User.status == "active",
         )
         .order_by(Inspiration.id.desc())

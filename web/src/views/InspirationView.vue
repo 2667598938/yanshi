@@ -98,6 +98,7 @@ onBeforeUnmount(() => clearInterval(timer))
     </div>
 
     <div class="page">
+      <p class="contribution-note">每位成员都可以投稿；审核通过后，将进入励志区和梦校弹幕池。弹幕最多展示前80字。</p>
       <div class="hero">
         <div class="hero-top">
           <span class="hero-tag">大雪深埋</span>
@@ -211,3 +212,5 @@ onBeforeUnmount(() => clearInterval(timer))
 .sheet-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
 .hint { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--faint); }
 </style>
+
+<style scoped>.contribution-note{font-size:13px;line-height:1.7;color:var(--sub);margin:0 0 16px}</style>

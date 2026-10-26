@@ -134,7 +134,7 @@ def test_change_paging_advances_over_private_entries(client):
     assert not last["has_more"] and last["cursor"] > page["cursor"]
 
 
-def test_bullet_pool_requires_admin_author_and_approval(client):
+def test_bullet_pool_accepts_all_approved_authors(client):
     h = headers(client)
     peer = register_friend(client, h, "bullet@test.com", "投稿同学")
     uid = client.get("/api/v1/auth/me", headers=peer).json()["data"]["id"]
@@ -143,11 +143,13 @@ def test_bullet_pool_requires_admin_author_and_approval(client):
             (1, "approved", "管理员已审核"),
             (1, "pending", "未审核"),
             (uid, "approved", "用户已审核"),
+            (uid, "pending", "用户待审核"),
+            (uid, "rejected", "用户已驳回"),
         ]:
             db.add(Inspiration(user_id=owner, status=status, content=content))
         db.commit()
     rows = client.get("/api/v1/inspirations/bullets").json()["data"]
-    assert [row["content"] for row in rows] == ["管理员已审核"]
+    assert [row["content"] for row in rows] == ["用户已审核", "管理员已审核"]
     assert set(rows[0]) == {"id", "content"}
 
 
@@ -172,3 +174,36 @@ def test_bullet_preference_sync_is_personal(client):
         assert value["bulletEnabled"] is False and value["focusMin"] == 25
     shared = client.get("/api/v1/group/members/1/learning", headers=h).json()["data"]
     assert all(row["type"] != "preferences" for row in shared["items"])
+
+
+def test_member_submission_enters_bullets_only_after_admin_approval(client):
+    admin = headers(client)
+    peer = register_friend(client, admin, "submit-bullet@test.com", "互助同学")
+    response = client.post(
+        "/api/v1/inspirations",
+        headers=peer,
+        json={"content": "我们一起坚持到最后", "image_key": ""},
+    )
+    assert response.status_code == 200, response.text
+    iid = response.json()["data"]["id"]
+    assert client.get("/api/v1/inspirations/bullets").json()["data"] == []
+    assert (
+        client.post(
+            f"/api/v1/admin/inspirations/{iid}/review",
+            headers=peer,
+            json={"action": "approve"},
+        ).status_code
+        == 403
+    )
+    approved = client.post(
+        f"/api/v1/admin/inspirations/{iid}/review",
+        headers=admin,
+        json={"action": "approve"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert client.get("/api/v1/inspirations/bullets").json()["data"] == [
+        {"id": iid, "content": "我们一起坚持到最后"}
+    ]
+    assert any(
+        row["id"] == iid for row in client.get("/api/v1/inspirations").json()["data"]
+    )
