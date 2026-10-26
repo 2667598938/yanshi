@@ -51,6 +51,12 @@ def test_incremental_updates_deletions_and_private_ids(client):
         client.get(base + "/changes", headers=admin, params={"since": -1}).status_code
         == 400
     )
+    assert (
+        client.get(
+            base + "/changes", headers=admin, params={"since": 10**40}
+        ).status_code
+        == 400
+    )
 
 
 def test_snapshot_pagination_keeps_first_watermark_and_rechecks_acl(client):

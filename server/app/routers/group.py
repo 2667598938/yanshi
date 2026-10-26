@@ -46,7 +46,7 @@ def learning(
 @router.get("/group/members/{uid}/learning/changes")
 def learning_changes(
     uid: int,
-    since: int = Query(default=0, ge=0),
+    since: int = Query(default=0, ge=0, le=9223372036854775807),
     user=Depends(get_current_user),
     db=Depends(get_db),
 ):
