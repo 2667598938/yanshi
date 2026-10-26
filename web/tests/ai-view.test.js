@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ toast: vi.fn(), push: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 2 } }) }))
 vi.mock('../src/composables/useToast', () => ({ useToast: () => ({ toast: mocks.toast }) }))
-vi.mock('../src/api', () => ({ aiApi: { enabled: vi.fn(), key: vi.fn(), scenes: vi.fn(), createConversation: vi.fn(), chatStream: vi.fn(), importTasks: vi.fn() },
+vi.mock('../src/api', () => ({ aiApi: { enabled: vi.fn(), key: vi.fn(), scenes: vi.fn(), createConversation: vi.fn(), chatStream: vi.fn(), importTasks: vi.fn(), undoTasks: vi.fn() },
   attachmentApi: { uploadImage: vi.fn() } }))
 let wrapper
 beforeEach(async () => {
@@ -73,7 +73,7 @@ it('部分图片上传失败保留所有选择，重试后按原顺序发送；�
 })
 
 
-it('任务建议必须预览并再次确认；取消不会写入，V1隐藏通用工具', async () => {
+it('任务建议必须预览并再次确认；取消不会写入，隐藏通用工具', async () => {
   aiApi.enabled.mockResolvedValue({enabled:true,access:true,v1_readonly:true})
   aiApi.chatStream.mockImplementationOnce(async (_body,cb)=>{
     cb({type:'delta',text:'明天复习数学'})
@@ -91,7 +91,7 @@ it('任务建议必须预览并再次确认；取消不会写入，V1隐藏通�
   await click('取消')
   expect(aiApi.importTasks).not.toHaveBeenCalled()
   await click('一键导入为系统任务');await click('确认批量导入')
-  expect(aiApi.importTasks).toHaveBeenCalledExactlyOnceWith(72)
+  expect(aiApi.importTasks).toHaveBeenCalledExactlyOnceWith(72,[0])
 })
 
 it('无有效结构化建议时保持普通文本回复且不出现导入按钮', async () => {
@@ -99,4 +99,18 @@ it('无有效结构化建议时保持普通文本回复且不出现导入按钮'
   await render();await wrapper.get('.composer input').setValue('复盘');await wrapper.get('.send-btn').trigger('click');await flushPromises()
   expect(wrapper.text()).toContain('broken')
   expect(wrapper.text()).not.toContain('一键导入为系统任务')
+})
+
+it('可选部分任务导入，撤销必须确认并展示保留成果', async()=>{
+ aiApi.chatStream.mockImplementationOnce(async(_body,cb)=>cb({type:'done',message_id:80,suggested_tasks:[{title:'数学',estimated_min:30},{title:'英语',estimated_min:20}]}))
+ aiApi.importTasks.mockResolvedValue({state:'imported',imported_count:1})
+ aiApi.undoTasks.mockResolvedValue({state:'undone',imported_count:1,undo:{deleted:0,kept:[{reason:'已完成'}]}})
+ await render();await wrapper.get('.composer input').setValue('安排计划');await wrapper.get('.send-btn').trigger('click');await flushPromises()
+ const click=async(text)=>{await wrapper.findAll('button').find(b=>b.text()===text).trigger('click');await flushPromises()}
+ await click('一键导入为系统任务');await wrapper.findAll('.sheet input[type="checkbox"]')[1].setValue(false);await click('确认批量导入')
+ expect(aiApi.importTasks).toHaveBeenCalledExactlyOnceWith(80,[0]);expect(wrapper.text()).toContain('已导入 1 项任务')
+ const confirmation=vi.fn().mockReturnValue(false);vi.stubGlobal('confirm',confirmation)
+ await click('撤销本次导入');expect(aiApi.undoTasks).not.toHaveBeenCalled()
+ confirmation.mockReturnValue(true);await click('撤销本次导入');expect(aiApi.undoTasks).toHaveBeenCalledExactlyOnceWith(80)
+ expect(wrapper.text()).toContain('保留 1 项');vi.unstubAllGlobals()
 })

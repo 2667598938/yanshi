@@ -121,6 +121,7 @@ async function fetchRoom() {
   try {
     const data = await roomApi.get(roomId.value)
     room.value = data.room
+    if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
     joined.value = data.joined !== false
     preview.value = null
     members.value = data.members || []
@@ -144,6 +145,7 @@ async function loadPreview() {
       return fetchRoom()
     }
     room.value = data.room
+    if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
     joined.value = false
     preview.value = data
     members.value = []
@@ -233,15 +235,7 @@ async function leaveRoom() {
   } catch (error) { toast(error.message) }
 }
 
-async function beat(statusOverride) {
-  try {
-    const body = buildHeartbeat()
-    if (statusOverride) body.status = statusOverride
-    await roomApi.heartbeat(body, roomId.value)
-  } catch {
-    /* 忽略单次心跳失败 */
-  }
-}
+async function beat() { window.dispatchEvent(new Event('yanshi:presence')) }
 
 async function sendMessage() {
   const content = msgInput.value.trim()
@@ -362,17 +356,7 @@ function onVisibility() {
   if (!joined.value) return
   beat(document.visibilityState === 'visible' ? undefined : 'offline')
 }
-function onLeave() {
-  // 页面关闭尽力上报 offline
-  try {
-    const url = roomId.value ? `/api/v1/rooms/${roomId.value}/heartbeat` : '/api/v1/room/heartbeat'
-    const payload = JSON.stringify({ status: 'offline', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null })
-    if (auth.accessToken) fetch(url, { method: 'POST', body: payload, keepalive: true,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.accessToken}` } }).catch(() => {})
-  } catch {
-    /* 关闭页面无法保证 */
-  }
-}
+function onLeave() { /* App级pagehide按设备上报 */ }
 onBeforeUnmount(() => {
   clearInterval(pollTimer)
   clearInterval(beatTimer)

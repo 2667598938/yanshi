@@ -1,3 +1,5 @@
+import json
+from types import SimpleNamespace
 """资料区：VIP 发布、后端脱敏、点赞、收藏、编辑删除。"""
 from urllib.parse import urlparse
 
@@ -34,9 +36,18 @@ def is_vip(user):
 
 
 def _resource_dict(row, owner, user, like_count, liked, favorited, full_link=None):
-    vip = is_vip(user) if full_link is None else full_link
+    own = row.user_id == user.id
+    source = row
+    if not own:
+        if not row.approved_snapshot: raise ApiError(404,40401,'资料尚未公开')
+        row = SimpleNamespace(**{**{c.name:getattr(row,c.name) for c in row.__table__.columns},**json.loads(row.approved_snapshot)})
+    vip = own or (is_vip(user) if full_link is None else full_link)
     return {
         'id': row.id,
+        'review_status': source.review_status if own else 'approved',
+        'review_note': source.review_note if own else '',
+        'revision': source.revision,
+        **({'personal_note':source.personal_note} if own else {}),
         'title': row.title,
         'url': row.url if vip else mask_url(row.url),
         'code': row.code if vip else '',
@@ -47,13 +58,15 @@ def _resource_dict(row, owner, user, like_count, liked, favorited, full_link=Non
         'like_count': like_count,
         'liked': liked,
         'favorited': favorited,
-        'can_edit': bool(owner and (owner.id == user.id or user.role == 'admin')),
+        'can_edit': bool(owner and owner.id == user.id),
+        'can_delete':bool(owner and (owner.id==user.id or user.role=='admin')),
         'created_at': iso(row.created_at),
         'updated_at': iso(row.updated_at),
     }
 
 
 def _lists(db, user, rows):
+    rows = [r for r in rows if r.user_id==user.id or r.approved_snapshot]
     ids = [r.id for r in rows]
     if not ids:
         return [], {}, set(), set()
@@ -80,14 +93,11 @@ def _lists(db, user, rows):
 @router.get('')
 def list_resources(q: str = '', category: str = '', user=Depends(get_current_user),
                    db=Depends(get_db)):
-    query = select(Resource).where(Resource.deleted_at.is_(None))
-    if q.strip():
-        like = f'%{q.strip()}%'
-        query = query.where((Resource.title.like(like)) | (Resource.intro.like(like)))
-    if category.strip():
-        query = query.where(Resource.category == category.strip())
+    query = select(Resource).where(Resource.deleted_at.is_(None),Resource.approved_snapshot.is_not(None))
     rows = db.scalars(query.order_by(Resource.id.desc()).limit(100)).all()
     payload, _, _, _ = _lists(db, user, rows)
+    if q.strip(): payload=[p for p in payload if q.strip().lower() in (p['title']+' '+p['intro']).lower()]
+    if category.strip():payload=[p for p in payload if p['category']==category.strip()]
     return ok(payload)
 
 
@@ -134,6 +144,7 @@ def get_resource(rid: int, user=Depends(get_current_user), db=Depends(get_db)):
     row = db.get(Resource, rid)
     if not row or row.deleted_at:
         raise ApiError(404, 40401, '资料不存在')
+    if row.user_id!=user.id and not row.approved_snapshot:raise ApiError(404,40401,'资料不存在')
     owner = db.get(User, row.user_id)
     payload, _, _, _ = _lists(db, user, [row])
     return ok(payload[0])
@@ -147,7 +158,7 @@ def create_resource(body: ResourceInput, request: Request,
     now = utcnow()
     row = Resource(user_id=user.id, title=body.title.strip(), url=body.url.strip(),
                    code=body.code.strip(), category=body.category.strip(),
-                   intro=body.intro.strip(), created_at=now, updated_at=now)
+                   intro=body.intro.strip(), personal_note=body.personal_note,review_status='pending',revision=1,created_at=now, updated_at=now)
     db.add(row)
     audit(db, request, 'resource.create', user_id=user.id, detail=row.title)
     db.commit()
@@ -162,15 +173,18 @@ def update_resource(rid: int, body: ResourceUpdate, request: Request,
     row = db.get(Resource, rid)
     if not row or row.deleted_at:
         raise ApiError(404, 40401, '资料不存在')
-    if row.user_id != user.id and user.role != 'admin':
+    if row.user_id != user.id:
         raise ApiError(403, 40301, '只能编辑自己发布的资料')
-    for key in ('title', 'url', 'code', 'category', 'intro'):
-        value = getattr(body, key)
-        if value is not None:
-            setattr(row, key, value.strip())
-    row.updated_at = utcnow()
-    audit(db, request, 'resource.update', user_id=user.id, detail=str(rid))
-    db.commit()
+    if body.personal_note is not None and row.user_id!=user.id:raise ApiError(403,40301,'个人备注仅本人可修改')
+    expected=body.expected_revision if body.expected_revision is not None else row.revision
+    if expected!=row.revision:raise ApiError(409,40902,'资料已变化，请刷新后再编辑')
+    values={key:getattr(body,key).strip() for key in ('title','url','code','category','intro','personal_note') if getattr(body,key) is not None}
+    public_edit=any(k in values for k in ('title','url','code','category','intro'))
+    values.update(revision=expected+1,updated_at=utcnow())
+    if public_edit:values.update(review_status='pending',review_note='',reviewed_by=None,reviewed_at=None)
+    changed=db.execute(update(Resource).where(Resource.id==rid,Resource.revision==expected,Resource.deleted_at.is_(None)).values(**values)).rowcount
+    if not changed:db.rollback();raise ApiError(409,40902,'资料已被其他请求修改')
+    audit(db,request,'resource.update',user_id=row.user_id,detail=str(rid));db.commit();db.refresh(row)
     owner = db.get(User, row.user_id)
     return ok(_resource_dict(row, owner, user, 0, False, False,
                              feature_service.has_feature(db, user, 'materials')))
@@ -207,6 +221,7 @@ def toggle_like(rid: int, request: Request, user=Depends(get_current_user),
     row = db.get(Resource, rid)
     if not row or row.deleted_at:
         raise ApiError(404, 40401, '资料不存在')
+    if row.user_id!=user.id and not row.approved_snapshot:raise ApiError(404,40401,'资料不存在')
     existing = db.scalar(select(ResourceLike).where(
         ResourceLike.resource_id == rid, ResourceLike.user_id == user.id))
     if existing:
@@ -228,6 +243,7 @@ def toggle_like(rid: int, request: Request, user=Depends(get_current_user),
 def _set_favorite(rid, favorited, expected, user, db):
     row = db.get(Resource, rid)
     if not row or row.deleted_at: raise ApiError(404, 40401, '资料不存在')
+    if row.user_id!=user.id and not row.approved_snapshot:raise ApiError(404,40401,'资料不存在')
     existing = db.scalar(select(ResourceFavorite).where(
         ResourceFavorite.resource_id == rid, ResourceFavorite.user_id == user.id))
     revision = existing.revision if existing else 0

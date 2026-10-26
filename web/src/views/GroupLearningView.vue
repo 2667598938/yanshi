@@ -39,7 +39,7 @@ onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(int
 <template>
  <div class="page"><button class="btn btn-outline" @click="router.back()">返回</button><h2>受邀小组 · 学习互助</h2>
  <p>小组默认共享学习记录；隐私模式一键停止共享。这里只读查看，不会导入或修改对方的数据。</p>
- <button v-for="member in members" :key="member.id" class="btn btn-outline" @click="select(member)">{{member.nickname}} · {{member.is_private_mode?'隐私中':'已共享'}}</button>
+ <button v-for="member in members" :key="member.id" class="btn btn-outline" @click="select(member)">{{member.nickname}} · {{member.statusText || '状态更新中'}}<small style="display:block">{{member.status==='private'?'位置已隐藏':member.roomName ? '房间：'+member.roomName : member.isOnline?'未在自习室':'未在线'}} </small></button>
  <p v-if="error">{{error}}</p>
  <template v-if="chosen">
  <h3>{{chosen.nickname}}</h3><p v-if="chosen.is_private_mode&&chosen.id!==auth.user.id">隐私中，学习数据不可见。</p>

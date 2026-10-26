@@ -46,6 +46,7 @@ def get_current_user(request: Request, db=Depends(get_db)):
     user = db.get(User, int(data['sub']))
     if not user or user.token_version != data.get('ver') or user.status in ('banned', 'deleted'):
         raise ApiError(401, 40101, '请重新登录')
+    request.state.actor_id=user.id
     return user
 
 
@@ -64,6 +65,7 @@ def require_enabled_feature(feature):
 
 def audit(db, request: Request, action: str, user_id=None, detail=''):
     db.add(Audit(
+        actor_id=getattr(request.state,'actor_id',None),
         user_id=user_id,
         action=action,
         ip=request.client.host if request.client else '',

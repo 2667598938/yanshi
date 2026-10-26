@@ -180,5 +180,6 @@ class AnnouncementInput(Strict):
 
 
 class AnnouncementUpdate(Strict):
+    expected_revision: Optional[int] = Field(default=None,ge=1)
     content: Optional[str] = Field(default=None, min_length=1, max_length=1000)
     is_active: Optional[bool] = None

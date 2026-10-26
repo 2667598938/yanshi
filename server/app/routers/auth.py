@@ -274,7 +274,9 @@ def logout(request: Request, response: Response, body: Optional[TokenInput] = No
             db.execute(update(RefreshToken).where(RefreshToken.id == digest(data['jti']))
                        .values(revoked_at=clock(request)))
             from ..models import RoomPresence
-            db.execute(update(RoomPresence).where(RoomPresence.user_id == int(data['sub'])).values(status='offline', focus_started_at=None))
+            from ..models import DevicePresence
+            if not db.scalar(select(DevicePresence.user_id).where(DevicePresence.user_id==int(data['sub'])).limit(1)):
+                db.execute(update(RoomPresence).where(RoomPresence.user_id==int(data['sub'])).values(status='offline',focus_started_at=None))
             db.commit()
     except ApiError:
         pass

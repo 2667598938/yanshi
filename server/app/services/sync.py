@@ -33,7 +33,7 @@ MAX_OPERATIONS = 200000              # 每账号操作日志上限
 SESSION_MAX_SEC = 180 * 60           # 番茄时长上限 180 分钟
 SESSION_MAX_PAUSE_MS = 30 * 60 * 1000  # 单次暂停上限；累计暂停仅用于扣减时长
 
-sync_write_lock = threading.Lock()
+sync_write_lock = threading.RLock()
 
 
 def _normalize_session(record: dict) -> dict:
@@ -126,6 +126,10 @@ def _validate_record(record_id: str, record):
         raise ApiError(400, 40004, '不支持的记录类型')
     if any(k in record for k in PROTECTED_KEYS):
         raise ApiError(400, 40004, '记录包含受保护字段')
+    if record.get('type')=='task':
+        from ..schemas.task import TaskValue
+        try:TaskValue.model_validate(record)
+        except ValidationError:raise ApiError(400,40004,'任务字段无效，请检查标题、日期和预估分钟') from None
     if record.get('type') == 'timeNode':
         from ..schemas.time_node import TimeNodeValue
         try: record['value'] = TimeNodeValue.model_validate(record.get('value')).model_dump()
@@ -154,7 +158,7 @@ def _used_bytes(db, user_id: int) -> int:
     ) or 0)
 
 
-def execute_commands(db, user_id: int, command_dict: dict) -> dict:
+def execute_commands(db, user_id: int, command_dict: dict, before_commit=None) -> dict:
     changes = command_dict['changes']
     if len({c['id'] for c in changes}) != len(changes):
         raise ApiError(400, 40004, '一次命令中记录 ID 不可重复')
@@ -264,6 +268,7 @@ def execute_commands(db, user_id: int, command_dict: dict) -> dict:
                 signature=signature, result=json.dumps(result, ensure_ascii=False),
                 created_at=utcnow(),
             ))
+            if before_commit: before_commit(result)
             db.commit()
             return result
         except Exception:

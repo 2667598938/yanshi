@@ -26,6 +26,7 @@ class Config(Base):
 
 class Announcement(Base):
     __tablename__ = 'announcements'
+    revision = Column(Integer,nullable=False,default=1,server_default='1')
 
     id = Column(Integer, primary_key=True)
     content = Column(String(1000), nullable=False)
@@ -46,6 +47,7 @@ class OfficialEvent(Base):
 
 class Audit(Base):
     __tablename__ = 'audit_logs'
+    actor_id = Column(ForeignKey('users.id'), nullable=True)
 
     id = Column(Integer, primary_key=True)
     user_id = Column(ForeignKey('users.id'), nullable=True)

@@ -69,7 +69,7 @@ def get_school(key: str, db=Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.post('/schools')
-@router.post('/admin/schools')
+@router.post('/admin/schools',dependencies=[Depends(get_admin)],deprecated=True)
 def create_school(body: SchoolInput, db=Depends(get_db), admin=Depends(get_current_user)):
     initialize_schools(db,admin)
     validate_school_images(db, [body.logo_key, *body.album_keys], admin)
@@ -87,7 +87,7 @@ def create_school(body: SchoolInput, db=Depends(get_db), admin=Depends(get_curre
 
 
 @router.put('/schools/{key}')
-@router.put('/admin/schools/{key}')
+@router.put('/admin/schools/{key}',dependencies=[Depends(get_admin)],deprecated=True)
 def update_school(key: str, body: SchoolUpdate, db=Depends(get_db),
                   admin=Depends(get_current_user)):
     row = owned_school(db,admin,key)

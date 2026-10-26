@@ -43,12 +43,10 @@ def test_member_lifecycle(client):
                        json={'email': 'adm1@test.com', 'password': 'Friend2028'}).status_code in (403, 401)
     assert login(client, 'adm1@test.com', 'NewPass2028')['access_token']
 
-    # 删除
-    assert client.delete(f'/api/v1/admin/members/{mid}', headers=ah).status_code == 200
-    members = client.get('/api/v1/admin/members', headers=ah).json()['data']
-    assert all(x['id'] != mid for x in members)
-    assert client.post('/api/v1/auth/login',
-                       json={'email': 'adm1@test.com', 'password': 'NewPass2028'}).status_code in (401, 403, 404)
+    # 账号只可封禁，不能清理学习数据。
+    assert client.delete(f'/api/v1/admin/members/{mid}',headers=ah).status_code==403
+    assert any(x['id']==mid for x in client.get('/api/v1/admin/members',headers=ah).json()['data'])
+    assert login(client,'adm1@test.com','NewPass2028')['access_token']
 
 
 def test_announcement_crud_and_public(client):

@@ -261,15 +261,6 @@ async function submitReset() {
   }
 }
 
-async function removeMember(m) {
-  if (!confirm(`确认删除成员 ${m.nickname}？此操作不可恢复`)) return
-  try {
-    await adminApi.deleteMember(m.id)
-    members.value = members.value.filter((x) => x.id !== m.id)
-  } catch (e) {
-    toast(e.message)
-  }
-}
 
 async function createAnnouncement() {
   if (!announcementForm.value.trim()) return
@@ -299,12 +290,19 @@ onMounted(() => {
   }
   loadAll()
 })
+async function editAnnouncement(row){
+ const content=prompt('编辑公告',row.content);if(content===null||!content.trim())return
+ try{const data=await adminApi.updateAnnouncement(row.id,{content:content.trim(),expected_revision:row.revision});Object.assign(row,data);toast('公告已更新')}catch(e){toast(e.message);if(e.status===409)await loadAll()}
+}
+async function toggleAnnouncement(row){
+ try{const data=await adminApi.updateAnnouncement(row.id,{is_active:!row.is_active,expected_revision:row.revision});Object.assign(row,data)}catch(e){toast(e.message);if(e.status===409)await loadAll()}
+}
 </script>
 
 <template>
   <div class="admin-page">
     <CopyFallback v-model="manualCopy" />
-    <div class="page"><button class="btn btn-ghost btn-sm" @click="router.push('/admin/email-jobs')">通知邮件任务与重试</button><button class="btn btn-ghost btn-sm" @click="router.push('/admin/schools')">院校与校园图片</button></div>
+    <div class="page"><button class="btn btn-ghost btn-sm" @click="router.push('/admin/email-jobs')">通知邮件任务与重试</button><button class="btn btn-ghost btn-sm" @click="router.push('/admin/resources')">资料审核</button><button class="btn btn-ghost btn-sm" @click="router.push('/admin/operations')">设置、日志与运行状态</button></div>
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>
@@ -313,10 +311,10 @@ onMounted(() => {
     <div class="page">
       <!-- 概览 -->
       <div v-if="overview" class="ov-grid">
-        <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}/{{ overview.room_capacity }}</div><div class="ov-l">成员</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.vip_count || 0 }}</div><div class="ov-l">VIP</div></div>
 
-        <div class="ov"><div class="ov-n tnum">{{ fmtSec(overview.total_focus_sec) }}</div><div class="ov-l">累计专注</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.room_member_count }}</div><div class="ov-l">房间席位占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtBytes(overview.attachment_bytes) }}</div><div class="ov-l">图片占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.record_count }}</div><div class="ov-l">同步记录</div></div>
       </div>
@@ -370,7 +368,7 @@ onMounted(() => {
             <button class="mini" title="会员调整" @click="openVip(m)"><Crown :size="15" /></button>
             <button class="mini" title="重置密码" @click="sheet = 'reset'; resetTarget = m; newPwd = ''"><KeyRound :size="15" /></button>
             <button v-if="m.role !== 'admin'" class="mini" title="封禁/恢复" @click="toggleBan(m)"><Ban :size="15" /></button>
-            <button v-if="m.role !== 'admin'" class="mini danger" title="删除" @click="removeMember(m)"><Trash2 :size="15" /></button>
+
           </div>
         </div>
       </div>
@@ -443,6 +441,7 @@ onMounted(() => {
           <div class="ann-foot">
             <span>{{ fmtDateTime(a.created_at) }}</span>
             <span v-if="!a.is_active" class="tag tag-used">已停用</span>
+            <button class="mini" @click="editAnnouncement(a)">编辑</button><button class="mini" @click="toggleAnnouncement(a)">{{a.is_active?'停用':'启用'}}</button>
             <button class="mini danger" @click="removeAnnouncement(a.id)"><Trash2 :size="14" /></button>
           </div>
         </div>

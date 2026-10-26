@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowLeft, KeyRound, RefreshCw, Save, Trash2, Crown, ChevronRight,
@@ -24,7 +24,7 @@ const PROVIDERS = [
 const provider = ref('deepseek')
 const baseUrl = ref('https://api.deepseek.com/v1')
 const apiKey = ref('')
-const model = ref('deepseek-chat')
+const model = ref('')
 const supportsImages = ref(false)
 const supportsTools = ref(false)
 const status = ref(null)
@@ -35,6 +35,8 @@ const deleting = ref(false)
 const loading = ref(true)
 const usage = ref(null)
 const contextTurns = ref(10)
+let catalogGeneration=0
+watch([provider,baseUrl,apiKey],()=>{if(loading.value||saving.value)return;catalogGeneration++;models.value=[];model.value='';fetching.value=false},{flush:'sync'})
 
 async function saveContext() {
   try {
@@ -83,18 +85,19 @@ async function load() {
 async function fetchModels() {
   if (!apiKey.value.trim() && !configured.value) return toast('请先填写 API Key')
   fetching.value = true
+  const generation=catalogGeneration
   const requestedProvider=provider.value, requestedBase=baseUrl.value, requestedKey=apiKey.value
   try {
     const data = await aiApi.models({
       provider: provider.value,
       base_url: baseUrl.value.trim(),
-      api_key: apiKey.value.trim(),
+      api_key: apiKey.value.trim(),force_refresh:true,
     })
-    if(provider.value!==requestedProvider || baseUrl.value!==requestedBase || apiKey.value!==requestedKey)return
+    if(generation!==catalogGeneration || provider.value!==requestedProvider || baseUrl.value!==requestedBase || apiKey.value!==requestedKey)return
     const details = new Map((data.details || []).map(item => [item.id, item]))
     models.value = (data.models || []).map((id) => ({ id, ...details.get(id) }))
     if (data.fallback) {
-      toast('未拉取到模型列表，可手动填写模型名')
+      toast(data.error?.message || '未拉取到模型列表，可手动填写模型名')
     } else {
       toast(`${data.cached ? '使用24小时缓存' : '已拉取'} ${models.value.length} 个模型`)
     }
@@ -102,7 +105,7 @@ async function fetchModels() {
   } catch (e) {
     toast(e.message)
   } finally {
-    fetching.value = false
+    if(generation===catalogGeneration)fetching.value = false
   }
 }
 

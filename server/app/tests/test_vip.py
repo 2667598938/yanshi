@@ -77,6 +77,7 @@ def test_approved_feature_grants_and_revoke(client):
         'code': '8899', 'category': '其他', 'intro': '验证审批授权'})
     assert res.status_code == 200, res.text
     rid_res = res.json()['data']['id']
+    assert client.post(f'/api/v1/admin/resources/{rid_res}/review',headers=ah,json={'action':'approve','expected_revision':1}).status_code==200
     before = client.get(f'/api/v1/resources/{rid_res}', headers=mh).json()['data']
     assert before['masked'] is True and before['code'] == ''
 

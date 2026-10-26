@@ -102,7 +102,8 @@ export const schoolApi = {
 
 // ------------------------------------------------------------ AI
 export const aiApi = {
-  importTasks: (id) => http.post(`/ai/messages/${id}/import-tasks`, { confirmed: true }),
+  importTasks: (id, selected) => http.post(`/ai/messages/${id}/import-tasks`, { confirmed: true, ...(selected ? {selected} : {}) }),
+  undoTasks: (id) => http.post(`/ai/messages/${id}/undo-tasks`, {confirmed:true}),
   usage: () => http.get('/ai/usage'),
   preferences: (body) => http.put('/ai/preferences', body),
   enabled: () => http.get('/ai/enabled'),
@@ -184,6 +185,11 @@ export const inspirationApi = {
 
 // ------------------------------------------------------------ 后台
 export const adminApi = {
+  resourceQueue: (status='pending',after_id=0) => http.get('/admin/resources',{query:{status,after_id}}),
+  reviewResource: (id,body) => http.post(`/admin/resources/${id}/review`,body),
+  config: () => http.get('/admin/config'),
+  diagnostics: () => http.get('/admin/diagnostics'),
+  batchInvites: (body) => http.post('/admin/invites/batch',body),
   emailJobs: (status = 'all') => http.get('/admin/email-jobs', { query: { status } }),
   retryEmail: (id) => http.post(`/admin/email-jobs/${id}/retry`, {}),
   overview: () => http.get('/admin/overview'),
@@ -203,7 +209,7 @@ export const adminApi = {
   createAnnouncement: (content) => http.post('/admin/announcements', { content }),
   updateAnnouncement: (id, body) => http.put(`/admin/announcements/${id}`, body),
   deleteAnnouncement: (id) => http.del(`/admin/announcements/${id}`),
-  auditLogs: (limit = 100) => http.get('/admin/audit-logs', { query: { limit } }),
+  auditLogs: (limit = 100, filters = {}) => http.get('/admin/audit-logs', { query: { limit, ...filters } }),
   updateConfig: (body) => http.put('/admin/config', body),
   exportData: () => http.get('/admin/export'),
 }

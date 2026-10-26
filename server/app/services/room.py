@@ -440,6 +440,9 @@ def _streak(dates: set, today_str: str) -> int:
 def heartbeat(db, user, payload, room=None):
     room = room or get_default_room(db)
     require_member(db, user, room)
+    from ..models import DevicePresence
+    if db.scalar(select(DevicePresence.user_id).where(DevicePresence.user_id==user.id).limit(1)):
+        return {'status':payload.status,'server_time':int(time.time()*1000)}
     presence = db.scalar(select(RoomPresence).where(
         RoomPresence.room_id == room.id, RoomPresence.user_id == user.id))
     now = utcnow()

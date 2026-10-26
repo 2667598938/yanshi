@@ -53,3 +53,4 @@ class AIModelsInput(BaseModel):
     provider: Provider = 'deepseek'
     base_url: str = Field(default='', max_length=200)
     api_key: str = Field(default='', max_length=400)   # 留空则用已保存的 Key
+    force_refresh: bool = False

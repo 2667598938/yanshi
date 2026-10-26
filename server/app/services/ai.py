@@ -212,16 +212,18 @@ class ModelCatalog(list):
 async def fetch_models(base_url: str, api_key: str) -> list:
     """用用户 Key 实时拉取模型列表；失败由调用方降级为手填。"""
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=8),
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=5),
                                      trust_env=False) as client:
             resp = await client.get(base_url + '/models',
                                     headers={'Authorization': 'Bearer ' + api_key})
         if resp.status_code != 200:
-            return []
+            status=resp.status_code
+            code={401:'AI_KEY_INVALID',403:'AI_KEY_INVALID',402:'AI_NO_QUOTA',404:'AI_NO_MODELS_API',405:'AI_NO_MODELS_API',429:'AI_RATE_LIMITED'}.get(status,'AI_UPSTREAM_ERROR')
+            return failed_catalog(code,resp.headers.get('Retry-After'))
         data = resp.json()
         rows = data.get('data') if isinstance(data, dict) else None
         if not isinstance(rows, list):
-            return []
+            return failed_catalog('AI_MODELS_EMPTY')
         models = ModelCatalog()
         for row in rows[:1000]:
             mid = row.get('id') if isinstance(row, dict) else None
@@ -234,6 +236,24 @@ async def fetch_models(base_url: str, api_key: str) -> list:
                     'context_length': context if isinstance(context, int) and not isinstance(context, bool) and 0 < context <= 10000000 else None,
                     'supports_images': vision if isinstance(vision, bool) else None})
                 if len(models) >= 200: break
-        return models
+        return models if models else failed_catalog('AI_MODELS_EMPTY')
+    except httpx.TimeoutException:
+        return failed_catalog('AI_UPSTREAM_TIMEOUT')
     except (httpx.HTTPError, ValueError):
-        return []
+        return failed_catalog('AI_UPSTREAM_ERROR')
+
+
+CATALOG_ERRORS={
+ 'AI_KEY_INVALID':'API密钥无效，或该账号无权读取模型列表，可手动填写模型ID',
+ 'AI_NO_QUOTA':'供应商报告额度不足，请检查账单，也可手动填写模型ID',
+ 'AI_NO_MODELS_API':'该服务商不支持模型目录接口，请手动填写模型ID',
+ 'AI_MODELS_EMPTY':'供应商返回空目录，请手动填写模型ID',
+ 'AI_UPSTREAM_TIMEOUT':'供应商响应超时，可重试或手动填写模型ID',
+ 'AI_RATE_LIMITED':'供应商请求限流，请稍后重试或手动填写模型ID',
+ 'AI_UPSTREAM_ERROR':'供应商暂不可用，可重试或手动填写模型ID'}
+
+def failed_catalog(code,retry=None):
+    result=ModelCatalog()
+    result.error={'code':code,'message':CATALOG_ERRORS[code]}
+    if retry and str(retry).isdigit():result.error['retry_after']=min(int(retry),3600)
+    return result

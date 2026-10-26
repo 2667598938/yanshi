@@ -5,6 +5,8 @@ from ..deps import get_current_user, get_db, get_admin, audit
 from ..models import User, StudyGroupMember, Room, RoomMember, RoomPresence
 from ..schemas.room import HeartbeatInput
 from ..time import utcnow
+from ..services.presence import member_state, update_presence
+from pydantic import Field
 from ..errors import ok, ApiError
 from ..services.group import same_group, shared_records, enroll
 
@@ -15,7 +17,7 @@ router = APIRouter(prefix='/api/v1', tags=['study-group'])
 def members(user=Depends(get_current_user), db=Depends(get_db)):
     rows = db.scalars(select(User).where(User.status == 'active').order_by(User.id)).all()
     return ok([{'id': row.id, 'nickname': row.nickname, 'avatar_key': row.avatar_key or '',
-        'is_private_mode': bool(row.is_private_mode), 'status': 'private' if row.is_private_mode else 'shared'}
+        'is_private_mode': bool(row.is_private_mode), **member_state(db,user,row)}
         for row in rows if same_group(db, user.id, row.id)])
 
 
@@ -39,16 +41,10 @@ def remove_member(uid: int, request: Request, user=Depends(get_admin), db=Depend
     db.commit(); return ok()
 
 
+class SiteHeartbeat(HeartbeatInput):
+    device_id: str = Field(default='legacy',min_length=1,max_length=80,pattern=r'^[A-Za-z0-9_-]+$')
+    room_id: int | None = Field(default=None,gt=0)
+
 @router.post('/group/presence')
-def presence(body: HeartbeatInput, user=Depends(get_current_user), db=Depends(get_db)):
-    ids=db.scalars(select(RoomMember.room_id).join(Room,Room.id==RoomMember.room_id).where(
-        RoomMember.user_id==user.id,Room.dissolved_at.is_(None))).all()
-    for rid in ids:
-        row=db.scalar(select(RoomPresence).where(RoomPresence.room_id==rid,RoomPresence.user_id==user.id))
-        if row is None:
-            row=RoomPresence(room_id=rid,user_id=user.id);db.add(row)
-        for key,value in body.model_dump().items(): setattr(row,key,value)
-        if body.status!='focusing': row.focus_started_at=None
-        row.last_heartbeat_at=utcnow()
-    db.commit()
-    return ok({'status':body.status})
+def presence(body: SiteHeartbeat,user=Depends(get_current_user),db=Depends(get_db)):
+    return ok(update_presence(db,user,body))

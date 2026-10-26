@@ -40,6 +40,7 @@ const attachments = ref([])
 const features = ref({ v1_readonly: true, vision: false, tools: false, search: false, model_vision: false, model_tools: false })
 const taskPreview = ref(null)
 const importing = ref(false)
+const taskSelection = ref([])
 const useTools = ref(false)
 const useSearch = ref(false)
 let controller
@@ -177,7 +178,7 @@ async function openConversation(id) {
     conversationTitle.value = data.title
     scene.value = data.scene || 'general'
     messages.value = (data.messages || []).map((m) => ({
-      id: m.id, suggested_tasks: m.suggested_tasks || [], role: m.role, content: m.content, image_keys: m.image_keys || [], tools: m.tools || [], sources: m.sources || [],
+      task_import:m.task_import || {state:'not_imported'}, id: m.id, suggested_tasks: m.suggested_tasks || [], role: m.role, content: m.content, image_keys: m.image_keys || [], tools: m.tools || [], sources: m.sources || [],
       prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens,
       latency_ms: m.latency_ms,
     }))
@@ -228,11 +229,24 @@ onMounted(async () => {
     enabled.value = false
   }
 })
+function previewTasks(message){taskSelection.value=message.suggested_tasks.map((_,i)=>i);taskPreview.value=message}
+async function undoTasks(message){
+ if(importing.value||!confirm('撤销本次导入？仅删除未修改、未完成的任务，其他任务保留。'))return
+ importing.value=true
+ try{message.task_import=await aiApi.undoTasks(message.id);await waitForSync();await syncNow();toast(`已撤销${message.task_import.undo.deleted}项，保留${message.task_import.undo.kept.length}项（已修改、完成或删除）`)}
+ catch(e){toast(e.message)}finally{importing.value=false}
+}
+function regenerateTasks(message){
+ if(sending.value)return
+ scene.value='plan';input.value='请把上面的建议转换为可导入的任务清单，直接输出yanshi_tasks JSON代码块，字段title、accept_criteria、estimated_min、subject_id、due_date；未设日期可留空。不要只说等待我确认。参考内容：'+message.content.slice(0,2000)
+ send()
+}
 async function importTasks(){
- if(!taskPreview.value || importing.value)return
+ if(!taskPreview.value || importing.value || !taskSelection.value.length)return
  importing.value=true
  try{
-  await aiApi.importTasks(taskPreview.value.id)
+  const result=await aiApi.importTasks(taskPreview.value.id,taskSelection.value)
+  taskPreview.value.task_import=result
   taskPreview.value=null
   await waitForSync();await syncNow()
   toast('任务已导入，可在任务清单查看；重复确认不会重复新增')
@@ -305,7 +319,10 @@ async function importTasks(){
         <div class="msg-main">
           <div v-if="m.image_keys?.length" class="ai-images"><BlobImage v-for="key in m.image_keys" :key="key" :src="key" alt="题目图片" /></div>
           <div class="bubble">{{ m.content }}<span v-if="m.streaming" class="caret">▍</span></div>
-          <button v-if="m.id && m.suggested_tasks?.length && !m.streaming" class="btn btn-outline" @click="taskPreview=m">一键导入为系统任务</button>
+          <button v-if="m.id && m.suggested_tasks?.length && !m.streaming && (!m.task_import || m.task_import.state==='not_imported')" class="btn btn-outline" @click="previewTasks(m)">一键导入为系统任务</button>
+          <div v-if="m.id && m.task_import?.state === 'imported'" class="msg-usage">已导入 {{m.task_import.imported_count}} 项任务 <button class="btn btn-outline" :disabled="importing" @click="undoTasks(m)">撤销本次导入</button></div>
+          <div v-if="m.task_import?.state === 'undone'" class="msg-usage">已撤销 {{m.task_import.undo?.deleted}} 项；保留 {{m.task_import.undo?.kept?.length}} 项（已修改、完成或删除）</div>
+          <div v-if="m.id && m.role==='assistant' && !m.streaming && !m.suggested_tasks?.length" class="msg-usage">此回复未包含有效的可导入任务。<button class="btn btn-outline" :disabled="sending" @click="regenerateTasks(m)">生成可导入任务</button></div>
           <div v-if="m.tools?.length" class="msg-usage">已调用：{{ m.tools.map(t => `${t.name}${t.status === 'failed' ? '（失败）' : ''}`).join('、') }}</div>
           <div v-if="m.sources?.length" class="ai-sources"><a v-for="source in m.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.title || '查看来源' }}</a></div>
           <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
@@ -324,7 +341,7 @@ async function importTasks(){
       <button class="btn btn-outline btn-sm" :disabled="sending || !features.vision" @click="fileInput?.click()">添加题图（最多4张）</button>
       <label v-if="!features.v1_readonly"><input v-model="useTools" type="checkbox" :disabled="sending || !features.tools || !features.model_tools" />只读学习工具</label>
       <label v-if="!features.v1_readonly"><input v-model="useSearch" type="checkbox" :disabled="sending || !features.search || !features.model_tools" />联网搜索</label>
-      <div class="msg-usage">对话自动携带本人已同步任务、自习状态与近31天学习摘要；不会读取组员数据或操控页面。回复与密钥仅本人可见。</div>
+      <div class="msg-usage">对话自动携带本人已同步任务、自习状态与近30天学习摘要；不会读取组员数据或操控页面。回复与密钥仅本人可见。</div>
       <div v-if="!features.model_vision" class="msg-usage">图片需在AI设置中确认模型支持；也可移除图片仅发送文字。</div>
       <div v-if="useTools || useSearch" class="msg-usage">工具模式等待完整结果；仅读取本人已同步数据，最多3次模型请求，不修改学习记录。联网时关键词会发送给搜索服务。</div>
       <div class="ai-images"><div v-for="row in attachments" :key="row.id">
@@ -351,10 +368,10 @@ async function importTasks(){
         <div class="sheet-title">导入任务前请确认</div>
         <p>下列任务将写入你的任务清单，并遵循小组共享与隐私模式规则。</p>
         <div v-for="(task,i) in taskPreview.suggested_tasks" :key="i" class="card">
-          <strong>{{task.title}}</strong><p>{{task.due_date || '未设日期'}} · 预计 {{task.estimated_min}} 分钟</p><p>{{task.accept_criteria}}</p>
+          <label><input v-model="taskSelection" type="checkbox" :value="i" :disabled="importing" /> {{task.title}}</label><p>{{task.due_date || '未设日期'}} · 预计 {{task.estimated_min}} 分钟</p><p>{{task.accept_criteria}}</p>
         </div>
-        <button class="btn btn-outline" :disabled="importing" @click="taskPreview=null">取消</button>
-        <button class="btn btn-primary" :disabled="importing" @click="importTasks">{{importing?'导入中…':'确认批量导入'}}</button>
+        <div class="task-actions"><button class="btn btn-outline" :disabled="importing" @click="taskPreview=null">取消</button>
+        <button class="btn btn-primary" :disabled="importing || !taskSelection.length" @click="importTasks">{{importing?'导入中…':'确认批量导入'}}</button></div>
       </div>
     </div>
     <!-- 历史会话 -->
@@ -382,6 +399,8 @@ async function importTasks(){
 </template>
 
 <style scoped>
+.task-actions{position:sticky;bottom:0;background:white;padding:12px 0;display:flex;gap:8px;z-index:2}
+
 .ai-options { padding: 4px 16px; background: white; max-height: 32vh; overflow: auto; }
 .ai-options label { font-size: 12px; margin: 4px 8px; display: inline-flex; align-items: center; gap: 4px; }
 .ai-images { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }

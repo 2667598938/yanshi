@@ -32,8 +32,8 @@ const todayTasks = computed(() =>
   tasks.open.filter((t) => t.dueDate === today))
 const future = computed(() =>
   tasks.open
-    .filter((t) => t.dueDate && t.dueDate > today)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate)))
+    .filter((t) => !t.dueDate || t.dueDate > today)
+    .sort((a, b) => (a.dueDate||'9999').localeCompare(b.dueDate||'9999')))
 const doneList = computed(() =>
   tasks.sorted.filter((t) => t.done).slice(-30).reverse())
 
@@ -47,6 +47,7 @@ function subjOf(id) {
   return subjects.byId[id] || subjects.byId.other
 }
 function dateLabel(key) {
+  if(!key)return '未设截止日期'
   if (key === today) return '今天'
   return mdWeekLabel(key)
 }
@@ -182,7 +183,7 @@ async function remove(id) {
 
     <!-- 未来 -->
     <template v-if="future.length">
-      <div class="section-title">即将到期</div>
+      <div class="section-title">其他待办</div>
       <div class="card">
         <div v-for="t in future" :key="t.id" class="task-row">
           <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>

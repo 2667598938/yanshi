@@ -165,6 +165,7 @@ async function save() {
 </script>
 
 <template>
+  <!-- 上传提示不替代本人和小组隐私鉴权 -->
   <div class="nav">
     <button class="back-btn" @click="router.back()"><ChevronLeft :size="20" /></button>
     <div>
@@ -173,7 +174,7 @@ async function save() {
     </div>
   </div>
 
-  <div class="page">
+  <div class="page"><p class="field-hint">请确认有权上传题目/解析图片。<router-link to="/disclaimer">查看免责声明</router-link>；隐私模式可停止小组查看。</p>
     <div class="card">
       <div class="f-label">所属科目</div>
       <select v-model="fSubject" class="select">

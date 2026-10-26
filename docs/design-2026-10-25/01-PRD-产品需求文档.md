@@ -397,25 +397,25 @@ VIP或有效AI授权可使用本人Key，通过后端受控OpenAI兼容地址调
 | F-24 | 房间排行榜（当日专注时长） | rooms与group接口；房间准入、受邀关系、状态和位置 | 已确认 |
 | F-25 | 30s 心跳 / 90s 离线判定 | rooms与group接口；房间准入、受邀关系、状态和位置 | 已确认 |
 | F-26 | 视频小房间、云端自习室 —— **程序全部写完，开关关闭，暂不开放** | rooms与group接口；房间准入、受邀关系、状态和位置 | 明确排除 |
-| F-27 | VIP发布网盘资料（标题/链接/提取码/分类/简介）；先审后公开，个人备注私有 | resources与favorite-mirror；独立资料/收藏表，审核闭环待补 | 已确认 |
-| F-28 | **非 VIP 查看时链接隐藏（脱敏）**，VIP 可见完整链接与提取码 | resources与favorite-mirror；独立资料/收藏表，审核闭环待补 | 已确认 |
-| F-29 | 收藏（走离线同步） | resources与favorite-mirror；独立资料/收藏表，审核闭环待补 | 已确认 |
-| F-34 | **资料点赞**（每人每份资料一次，可取消） | resources与favorite-mirror；独立资料/收藏表，审核闭环待补 | 已确认 |
+| F-27 | VIP发布网盘资料（标题/链接/提取码/分类/简介）；先审后公开，个人备注私有 | resources与favorite-mirror；待审队列、批准快照及私有备注 | 已确认 |
+| F-28 | **非 VIP 查看时链接隐藏（脱敏）**，VIP 可见完整链接与提取码 | resources与favorite-mirror；待审队列、批准快照及私有备注 | 已确认 |
+| F-29 | 收藏（走离线同步） | resources与favorite-mirror；待审队列、批准快照及私有备注 | 已确认 |
+| F-34 | **资料点赞**（每人每份资料一次，可取消） | resources与favorite-mirror；待审队列、批准快照及私有备注 | 已确认 |
 | F-35 | 帖子发布 —— **支持离线发帖**（写 Dexie + outbox，联网同步） | posts/comments/inspirations及管理操作；公开内容规则 | 已确认 |
 | F-36 | **评论嵌套回复**（支持二级回复，更深层折叠为二级） | posts/comments/inspirations及管理操作；公开内容规则 | 已确认 |
 | F-37 | 管理员删除任意违规内容 + 通知作者 | posts/comments/inspirations及管理操作；公开内容规则 | 已确认 |
 | F-38 | **励志区「大雪深埋」：所有用户可投稿图片 + 文案，管理员审核通过后展示** | posts/comments/inspirations及管理操作；公开内容规则 | 已确认 |
 | F-39 | 个人梦校不限数量、增删改排序、多图封面/详情轮播和基础动效，示例可删 | 本人schools；owner_id、sort_order、album_keys | 已确认 |
-| F-40 | AI 问答（仅 VIP + 自填 Key，**SSE 流式**，**多会话持久化**） | ai会话/Key/models/chat/messages导入；安全撤销待补，目标字段见当前规则 | 已确认 |
-| F-41 | AI 服务商与密钥配置（服务商 / Base URL / Key 加密 / **模型选择**） | ai会话/Key/models/chat/messages导入；安全撤销待补，目标字段见当前规则 | 已确认 |
-| F-42 | **模型列表实时拉取**（后端代理调 `/models`，失败手填兜底，切服务商即失效） | ai会话/Key/models/chat/messages导入；安全撤销待补，目标字段见当前规则 | 已确认 |
-| F-43 | AI 图片输入（多模态，错题拍照即问） | ai会话/Key/models/chat/messages导入；安全撤销待补，目标字段见当前规则 | 已确认 |
+| F-40 | AI 问答（仅 VIP + 自填 Key，**SSE 流式**，**多会话持久化**） | ai会话/Key/models/chat/messages导入；回执、选中项与安全撤销 | 已确认 |
+| F-41 | AI 服务商与密钥配置（服务商 / Base URL / Key 加密 / **模型选择**） | ai会话/Key/models/chat/messages导入；回执、选中项与安全撤销 | 已确认 |
+| F-42 | **模型列表实时拉取**（后端代理调 `/models`，失败手填兜底，切服务商即失效） | ai会话/Key/models/chat/messages导入；回执、选中项与安全撤销 | 已确认 |
+| F-43 | AI 图片输入（多模态，错题拍照即问） | ai会话/Key/models/chat/messages导入；回执、选中项与安全撤销 | 已确认 |
 | F-44 | function calling / 联网搜索 / Agent（与DOM操控一并明确排除） | 不提供接口；后端拒绝通用工具请求 | 明确排除 |
 | F-45 | 同步引擎 Outbox + Revision + 冲突二选一（**范围含：番茄 / 错题 / **任务** / 收藏 / 帖子 / 个人资料**；点赞、留言、心跳为在线动作，不入队） | sync/records、sync/commands及独立帖子/收藏镜像；版本/幂等/墓碑 | 已确认 |
 | F-46 | 移动端优先 + PC 兼容 | 全局响应式界面与实际手机/PC验收 | 已确认 |
 | F-47 | 免责声明页面 | disclaimer页及发布/传图入口 | 已确认 |
-| F-48 | **AI 读取本人数据作为上下文**（任务 / 自习状态 / 番茄统计；只读、仅本人、摘要化） | ai会话/Key/models/chat/messages导入；安全撤销待补，目标字段见当前规则 | 已确认 |
-| F-49 | **AI 任务清单一键导入**（结构化 JSON + 预览确认 + 可撤销） | ai会话/Key/models/chat/messages导入；安全撤销待补，目标字段见当前规则 | 已确认 |
+| F-48 | **AI 读取本人数据作为上下文**（任务 / 自习状态 / 番茄统计；只读、仅本人、摘要化） | ai会话/Key/models/chat/messages导入；回执、选中项与安全撤销 | 已确认 |
+| F-49 | **AI 任务清单一键导入**（结构化 JSON + 预览确认 + 可撤销） | ai会话/Key/models/chat/messages导入；回执、选中项与安全撤销 | 已确认 |
 | F-50 | **AI 操控页面 DOM / 通用 Function-Call** | 不提供接口；后端拒绝通用工具请求 | 明确排除 |
 
 ## 7. 当前范围及补充要求

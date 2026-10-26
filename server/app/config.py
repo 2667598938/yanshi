@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     ai_custom_hosts: str = ''
     ai_allow_private_hosts: bool = False
     ai_vision_enabled: bool = True
+    ai_context_budget: int = 1200
     ai_tools_enabled: bool = False
     ai_server_vision: bool = False
     ai_server_tools: bool = False

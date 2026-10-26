@@ -145,7 +145,7 @@ it('房间展示选定形象和休息状态，心跳也上报休息', async () =
   await flushPromises()
   expect(wrapper.text()).toContain('🌲')
   expect(wrapper.text()).toContain('休息中')
-  expect(roomApi.heartbeat).toHaveBeenCalledWith({ status: 'resting' }, 2)
+  expect(roomApi.heartbeat).not.toHaveBeenCalled() // 站点按设备统一上报，避免房间页面覆盖其他设备
 })
 
 it('目标分数字段提交字符串，空字段不传null', async () => {

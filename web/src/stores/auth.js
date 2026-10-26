@@ -114,6 +114,9 @@ export const useAuthStore = defineStore('auth', {
       await sync.pauseSyncForAccountSwitch()
       try {
         try {
+          const { groupApi } = await import('../api')
+          const { presenceDeviceId } = await import('../utils/presence')
+          await groupApi?.presence?.({device_id:presenceDeviceId(),status:'offline'})?.catch(()=>{})
           await authApi.logout()
         } catch {
           /* 忽略网络错误，本地照常登出 */

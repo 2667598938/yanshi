@@ -15,8 +15,9 @@ const CATEGORIES = ['英语', '数学', '政治', '专业课', '其他']
 const editingId = computed(() => route.params.id ? Number(route.params.id) : null)
 const loading = ref(false)
 const saving = ref(false)
+const revision=ref(null)
 const form = ref({
-  title: '', url: '', code: '', category: '英语', intro: '',
+  title: '', url: '', code: '', category: '英语', intro: '',personal_note:'',
 })
 
 async function load() {
@@ -24,9 +25,10 @@ async function load() {
   loading.value = true
   try {
     const row = await resourceApi.get(editingId.value)
+    revision.value=row.revision
     form.value = {
       title: row.title, url: row.url, code: row.code || '',
-      category: row.category || '其他', intro: row.intro || '',
+      category: row.category || '其他', intro: row.intro || '',personal_note:row.personal_note||'',
     }
   } catch (e) {
     toast(e.message)
@@ -44,15 +46,16 @@ async function save() {
   try {
     const payload = {
       title: f.title.trim(), url: f.url.trim(), code: f.code.trim(),
-      category: f.category, intro: f.intro.trim(),
+      category: f.category, intro: f.intro.trim(),personal_note:f.personal_note.trim(),
+      ...(editingId.value&&revision.value?{expected_revision:revision.value}:{}),
     }
     if (editingId.value) {
       await resourceApi.update(editingId.value, payload)
-      toast('已保存')
+      toast('已保存，公开内容修改需要重新审核')
       router.replace(`/resources/${editingId.value}`)
     } else {
       const row = await resourceApi.create(payload)
-      toast('已发布')
+      toast('已提交审核，通过后公开')
       router.replace(`/resources/${row.id}`)
     }
   } catch (e) {
@@ -63,7 +66,7 @@ async function save() {
 }
 
 onMounted(() => {
-  if (!auth.isVip) {
+  if (!auth.isVip && !editingId.value) {
     toast('仅 VIP 可发布资料')
     router.replace('/vip')
     return
@@ -81,7 +84,7 @@ onMounted(() => {
 
     <div class="page">
       <div v-if="loading" class="empty">读取中…</div>
-      <div v-else class="card">
+      <div v-else class="card"><p>资料需审核通过后公开。修改已有公开资料时，旧版保留到新版通过。</p><label class="field"><span>个人备注（仅本人可见）</span><textarea v-model="form.personal_note" class="input" maxlength="1000"></textarea></label>
         <label class="field">
           <span>标题</span>
           <input v-model="form.title" class="input" maxlength="80" placeholder="如：英语真题精析 2010-2026" />

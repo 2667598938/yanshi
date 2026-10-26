@@ -67,6 +67,7 @@ def test_resource_vip_masking_like_favorite(client):
     created = client.post('/api/v1/resources', headers=h1, json=payload)
     assert created.status_code == 200, created.text
     rid = created.json()['data']['id']
+    assert client.post(f'/api/v1/admin/resources/{rid}/review',headers=ah,json={'action':'approve','expected_revision':1}).status_code==200
 
     # 普通用户看到脱敏链接且没有提取码
     masked = client.get(f'/api/v1/resources/{rid}', headers=h2).json()['data']

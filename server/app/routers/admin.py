@@ -1,3 +1,4 @@
+from sqlalchemy.exc import IntegrityError
 """后台管理接口（仅管理员）：概览、成员、邀请码、配置、公告、审计、数据导出。"""
 import json
 from datetime import timedelta, timezone
@@ -177,6 +178,9 @@ def _get_member(db, uid):
 def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depends(get_db)):
     user = _get_member(db, uid)
     db.refresh(user, with_for_update=True)
+    if body.target_school is not None or body.daily_goal_min is not None:
+        raise ApiError(403,40301,'管理员不能修改成员学习偏好')
+    before={'status':user.status,'nickname':user.nickname,'vip_until':iso(user.vip_until),'vip_permanent':bool(user.vip_permanent)}
     if body.nickname is not None:
         user.nickname = body.nickname
     if body.target_school is not None:
@@ -226,7 +230,7 @@ def update_member(uid: int, body: AdminMemberUpdate, request: Request, db=Depend
                        email=body.vip_action != 'revoke',
                        settings=request.app.state.settings)
     audit(db, request, 'admin.update_member', user_id=uid,
-          detail=body.model_dump_json(exclude_none=True))
+          detail=json.dumps({'before':before,'after':{'status':user.status,'nickname':user.nickname,'vip_until':iso(user.vip_until),'vip_permanent':bool(user.vip_permanent)},'changes':body.model_dump(mode='json',exclude_none=True)},ensure_ascii=False))
     if any(getattr(body, field) is not None for field in ('nickname', 'target_school', 'daily_goal_min')):
         from ..services.profile import snapshot_profile
         snapshot_profile(db, user)
@@ -247,36 +251,8 @@ def reset_member_password(uid: int, body: AdminResetPassword, request: Request, 
 
 @router.delete('/members/{uid}')
 def delete_member(uid: int, request: Request, db=Depends(get_db)):
-    user = _get_member(db, uid)
-    if user.role == 'admin':
-        raise ApiError(400, 40001, '不能删除管理员')
-    user.status = 'deleted'
-    user.token_version += 1
-    user.nickname = f'已注销用户{uid}'
-    # 账号凭据 + 固定房间席位
-    db.execute(sa_delete(RefreshToken).where(RefreshToken.user_id == uid))
-    db.execute(sa_delete(RoomMember).where(RoomMember.user_id == uid))
-    # 自习室痕迹：在线状态、目标墙、留言
-    db.execute(sa_delete(RoomPresence).where(RoomPresence.user_id == uid))
-    db.execute(sa_delete(RoomGoal).where(RoomGoal.user_id == uid))
-    db.execute(sa_delete(RoomMessage).where(RoomMessage.user_id == uid))
-    # 学习数据（同步记录 / 操作幂等表）
-    db.execute(sa_delete(LearningRecord).where(LearningRecord.user_id == uid))
-    db.execute(sa_delete(LearningOperation).where(LearningOperation.user_id == uid))
-    # AI 会话与消息
-    convo_ids = db.scalars(select(AIConversation.id).where(AIConversation.user_id == uid)).all()
-    if convo_ids:
-        db.execute(sa_delete(AIMessage).where(AIMessage.conversation_id.in_(convo_ids)))
-    db.execute(sa_delete(AIConversation).where(AIConversation.user_id == uid))
-    # 上传的附件记录（本地文件孤儿由备份/清理流程处理）
-    db.execute(sa_delete(Attachment).where(Attachment.uploader_id == uid))
-    # 功能申请与审批记录
-    db.execute(sa_delete(FeatureRequest).where(FeatureRequest.user_id == uid))
-    db.execute(sa_update(FeatureRequest).where(
-        FeatureRequest.reviewed_by == uid).values(reviewed_by=None))
-    audit(db, request, 'admin.delete_member', user_id=uid, detail=user.email)
-    db.commit()
-    return ok()
+    _get_member(db,uid)
+    raise ApiError(403,40301,'账号只能封禁，必须保留原有学习数据')
 
 
 # ---------------------------------------------------------------- 邀请码
@@ -298,7 +274,7 @@ def create_invite(body: InviteCreate, request: Request, db=Depends(get_db),
                  vip_days=body.vip_days or 0,
                  created_by=admin.id, expires_at=expires_at)
     db.add(row)
-    audit(db, request, 'admin.create_invite', detail=code)
+    audit(db, request, 'admin.create_invite', detail='生成1个邀请码')
     db.commit()
     db.refresh(row)
     return ok(invite_dict(row))
@@ -430,25 +406,29 @@ def create_announcement(body: AnnouncementInput, request: Request, db=Depends(ge
                         admin=Depends(get_admin)):
     row = Announcement(content=body.content, created_by=admin.id)
     db.add(row)
+    audit(db,request,'admin.create_announcement',user_id=admin.id)
     db.commit()
     db.refresh(row)
-    return ok({'id': row.id, 'content': row.content, 'is_active': row.is_active,
+    return ok({'id': row.id, 'content': row.content, 'is_active': row.is_active, 'revision':row.revision,
                'created_at': iso(row.created_at)})
 
 
 @router.put('/announcements/{ann_id}')
 def update_announcement(ann_id: int, body: AnnouncementUpdate, request: Request,
                         db=Depends(get_db)):
-    row = db.get(Announcement, ann_id)
-    if not row:
-        raise ApiError(404, 40401, '公告不存在')
-    if body.content is not None:
-        row.content = body.content
-    if body.is_active is not None:
-        row.is_active = body.is_active
-    audit(db, request, 'admin.update_announcement', detail=str(ann_id))
-    db.commit()
-    return ok({'id': row.id, 'content': row.content, 'is_active': row.is_active})
+    row=db.get(Announcement,ann_id)
+    if not row:raise ApiError(404,40401,'公告不存在')
+    expected=body.expected_revision or row.revision
+    if row.revision!=expected:raise ApiError(409,40902,'公告已修改，请刷新后重试')
+    before={'content':row.content,'is_active':row.is_active,'revision':row.revision}
+    values=body.model_dump(exclude_none=True,exclude={'expected_revision'})
+    if not values:raise ApiError(400,40001,'没有变更内容')
+    values['revision']=expected+1
+    changed=db.execute(sa_update(Announcement).where(Announcement.id==ann_id,Announcement.revision==expected).values(**values)).rowcount
+    if not changed:db.rollback();raise ApiError(409,40902,'公告已被其他请求修改')
+    audit(db,request,'admin.update_announcement',detail=json.dumps({'id':ann_id,'before':before,'after':values},ensure_ascii=False))
+    db.commit();db.refresh(row)
+    return ok({'id':row.id,'content':row.content,'is_active':row.is_active,'revision':row.revision})
 
 
 @router.delete('/announcements/{ann_id}')
@@ -465,44 +445,70 @@ def delete_announcement(ann_id: int, request: Request, db=Depends(get_db)):
 @router.get('/announcements')
 def list_announcements(db=Depends(get_db)):
     rows = db.scalars(select(Announcement).order_by(Announcement.id.desc()).limit(50)).all()
-    return ok([{'id': r.id, 'content': r.content, 'is_active': r.is_active,
+    return ok([{'id': r.id, 'content': r.content, 'is_active': r.is_active,'revision':r.revision,
                 'created_at': iso(r.created_at)} for r in rows])
 
 
 # ---------------------------------------------------------------- 审计日志
 @router.get('/audit-logs')
-def audit_logs(limit: int = 100, db=Depends(get_db)):
+def audit_logs(limit:int=100,before_id:int=0,action:str='',actor_id:int|None=None,db=Depends(get_db)):
     limit = min(max(limit, 1), 200)
-    rows = db.scalars(select(Audit).order_by(Audit.id.desc()).limit(limit)).all()
-    return ok([{'id': r.id, 'user_id': r.user_id, 'action': r.action, 'ip': r.ip,
+    query=select(Audit)
+    if before_id:query=query.where(Audit.id<before_id)
+    if action:query=query.where(Audit.action.contains(action[:100],autoescape=True))
+    if actor_id is not None:query=query.where(Audit.actor_id==actor_id)
+    rows=db.scalars(query.order_by(Audit.id.desc()).limit(limit)).all()
+    return ok([{'id': r.id, 'user_id': r.user_id, 'actor_id':r.actor_id,'action': r.action, 'ip': r.ip,
                 'detail': r.detail, 'created_at': iso(r.created_at)} for r in rows])
 
 
 # ---------------------------------------------------------------- 站点配置
-CONFIG_WHITELIST = {'site_name', 'exam_date', 'exam_year', 'registration_open'}
+from pydantic import BaseModel,ConfigDict,Field,field_validator
+from datetime import date
+from ..services.sync import sync_write_lock
 
+CONFIG_WHITELIST={'site_name','exam_date','exam_year','registration_open'}
+class ConfigInput(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True,str_strip_whitespace=True)
+    expected_revision:int | None=Field(default=None,ge=0)
+    site_name:str | None=Field(default=None,min_length=1,max_length=60)
+    exam_date:str | None=None
+    exam_year:int | None=Field(default=None,ge=2000,le=2100)
+    registration_open:bool | None=None
+    @field_validator('exam_date')
+    @classmethod
+    def valid_date(cls,value):
+        if value is not None and date.fromisoformat(value).isoformat()!=value:raise ValueError('invalid date')
+        return value
+
+def config_payload(db):
+    return {'revision':config_get(db,'admin_config_revision',0),'values':{k:config_get(db,k,{'site_name':'研时','exam_date':'2027-12-25','exam_year':2028,'registration_open':False}[k]) for k in CONFIG_WHITELIST}}
+
+@router.get('/config')
+def get_config(db=Depends(get_db)):return ok(config_payload(db))
 
 @router.put('/config')
-def update_config(body: dict, request: Request, db=Depends(get_db), admin=Depends(get_admin)):
-    changed = {}
-    for key, value in body.items():
-        if key not in CONFIG_WHITELIST:
-            continue
-        row = db.get(Config, key)
-        if row is None:
-            row = Config(config_key=key, config_value=json.dumps(value, ensure_ascii=False),
-                         updated_by=admin.id)
-            db.add(row)
-        else:
-            row.config_value = json.dumps(value, ensure_ascii=False)
-            row.updated_by = admin.id
-            row.updated_at = utcnow()
-        changed[key] = value
-    if not changed:
-        raise ApiError(400, 40001, '没有可更新的配置项')
-    audit(db, request, 'admin.update_config', detail=json.dumps(changed, ensure_ascii=False))
-    db.commit()
-    return ok(changed)
+def update_config(body:ConfigInput,request:Request,db=Depends(get_db),admin=Depends(get_admin)):
+    with sync_write_lock:
+        db.scalar(select(User).where(User.id==admin.id).with_for_update())
+        current=config_payload(db);revision=current['revision']
+        if body.expected_revision is not None and body.expected_revision!=revision:raise ApiError(409,40902,'配置已修改，请比较当前配置后重试',data={'current':current})
+        changed=body.model_dump(exclude_none=True,exclude={'expected_revision'})
+        if not changed:raise ApiError(400,40001,'没有可更新的配置项')
+        token=db.get(Config,'admin_config_revision')
+        if token:
+            updated=db.execute(sa_update(Config).where(Config.config_key=='admin_config_revision',Config.config_value==token.config_value).values(config_value=json.dumps(revision+1))).rowcount
+            if not updated:db.rollback();raise ApiError(409,40902,'配置已变化，请重试')
+        else:db.add(Config(config_key='admin_config_revision',config_value=json.dumps(revision+1),updated_by=admin.id))
+        for key,value in changed.items():
+            row=db.get(Config,key)
+            if not row:row=Config(config_key=key,config_value='null');db.add(row)
+            row.config_value=json.dumps(value,ensure_ascii=False);row.updated_by=admin.id;row.updated_at=utcnow()
+        audit(db,request,'admin.update_config',detail=json.dumps({'before':current['values'],'changes':changed,'revision':revision+1},ensure_ascii=False))
+        try:db.commit()
+        except IntegrityError:
+            db.rollback();raise ApiError(409,40902,'配置已被其他请求修改，请刷新比较')
+        return ok({**changed,'revision':revision+1})
 
 
 # ---------------------------------------------------------------- 全量数据导出（备份）
@@ -515,3 +521,19 @@ def export_data(db=Depends(get_db)):
     records = []  # 账号运维导出永不导出成员学习明细，管理员也没有隐私绕过。
     payload = {'exported_at': iso(utcnow()), 'users': users, 'records': records}
     return JSONResponse({'code': 0, 'message': 'ok', 'data': payload})
+
+
+class BatchInvites(InviteCreate):
+    count:int=Field(default=5,ge=1,le=100,strict=True)
+
+@router.post('/invites/batch')
+def batch_invites(body:BatchInvites,request:Request,user=Depends(get_admin),db=Depends(get_db)):
+    rows=[]
+    for _ in range(body.count):
+        code=new_invite_code()
+        row=Invite(code_hash=digest(code.upper()),hint=code,remark=body.remark,vip_days=body.vip_days or 0,
+            created_by=user.id,expires_at=utcnow()+timedelta(days=body.expires_days) if body.expires_days else None)
+        db.add(row);rows.append(row)
+    audit(db,request,'admin.batch_invites',detail=str(body.count))
+    db.commit()
+    return ok([invite_dict(row) for row in rows])

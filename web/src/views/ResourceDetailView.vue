@@ -88,9 +88,9 @@ onMounted(load)
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">资料详情</div>
-      <div v-if="row?.can_edit" class="nav-actions">
-        <button class="mini" @click="edit"><Pencil :size="16" /></button>
-        <button class="mini danger" @click="remove"><Trash2 :size="16" /></button>
+      <div v-if="row?.can_edit || row?.can_delete" class="nav-actions">
+        <button v-if="row.can_edit" class="mini" @click="edit"><Pencil :size="16" /></button>
+        <button v-if="row.can_delete" class="mini danger" @click="remove"><Trash2 :size="16" /></button>
       </div>
     </div>
 
@@ -106,6 +106,8 @@ onMounted(load)
             </div>
           </div>
 
+          <p v-if="row.review_status !== 'approved'">{{row.review_status==='pending'?'待审核，当前内容尚未公开':'未通过审核'}} · {{row.review_note}}</p>
+          <p v-if="row.personal_note">我的个人备注：{{row.personal_note}}</p>
           <div v-if="row.intro" class="intro">{{ row.intro }}</div>
 
           <div class="link-box" :class="{ masked: row.masked }">

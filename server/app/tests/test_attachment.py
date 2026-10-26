@@ -94,7 +94,7 @@ def test_school_library_and_admin(client):
     assert fudan['name'] == '复旦大学'
 
     # 普通成员可维护自己的梦校，管理员的同名院校保持独立
-    r = client.post('/api/v1/admin/schools', headers=f,
+    r = client.post('/api/v1/schools', headers=f,
                     json={'key': 'xjtu', 'name': '西安交通大学'})
     assert r.status_code == 200
 
