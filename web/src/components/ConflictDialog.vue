@@ -4,8 +4,9 @@
 // 保证冲突可收敛、不再无限重试。
 import { syncState, resolveConflict } from '../sync/engine'
 
-function choose(id, choice) {
-  resolveConflict(id, choice)
+function choose(entry, choice) {
+  if(entry.invalidSession && !confirm('确认放弃这条本机无效修改？云端有效版本会保留，若云端没有则删除本机记录。'))return
+  resolveConflict(entry.id, choice)
 }
 </script>
 
@@ -18,9 +19,9 @@ function choose(id, choice) {
       role="dialog"
       aria-modal="true"
     >
-      <div class="cf-title">同步冲突 · {{ c.label }}</div>
+      <div class="cf-title">{{c.invalidSession?'计时校验未通过':'同步冲突'}} · {{ c.label }}</div>
       <p class="cf-desc">
-        这条{{ c.label }}在另一台设备上被改动过，与本机待同步内容不一致。请选择保留哪一份。
+        <template v-if="c.invalidSession">{{c.message}}。本机记录已挂起且不计入统计，其他记录仍可同步。</template><template v-else>这条{{ c.label }}在另一台设备上被改动过，与本机待同步内容不一致。请选择保留哪一份。</template>
       </p>
       <div class="cf-hint">
         <span class="chip" :class="{ del: !c.localRecord }">
@@ -31,11 +32,11 @@ function choose(id, choice) {
         </span>
       </div>
       <div class="cf-actions">
-        <button class="cf-btn cloud" @click="choose(c.id, 'cloud')">
-          用云端
-          <small>丢弃本机改动</small>
+        <button class="cf-btn cloud" @click="choose(c, 'cloud')">
+          {{c.invalidSession?'确认后放弃本机无效修改':'用云端'}}
+          <small>{{c.invalidSession?'云端有效版本保留；云端无此项则删除本机记录':'丢弃本机改动'}}</small>
         </button>
-        <button class="cf-btn local" @click="choose(c.id, 'local')">
+        <button v-if="!c.invalidSession" class="cf-btn local" @click="choose(c, 'local')">
           保留本机
           <small>覆盖云端</small>
         </button>

@@ -213,3 +213,23 @@ export const adminApi = {
   updateConfig: (body) => http.put('/admin/config', body),
   exportData: () => http.get('/admin/export'),
 }
+
+export const timerApi = {
+ current:()=>http.get('/timer/current'),
+ start:(body)=>http.post('/timer/start',body),
+ heartbeat:(body)=>http.put('/timer/heartbeat',body),
+ release:(body)=>http.post('/timer/release',body),
+ conflicts:()=>http.get('/timer/conflicts'),
+ resolve:(body)=>http.post('/timer/resolve',body),
+}
+
+export const groupAdmissionApi={
+ mine:()=>http.get('/group-admission/mine'),
+ apply:(body)=>http.post('/group-admission/applications',body),
+ withdraw:(id,revision)=>http.post(`/group-admission/applications/${id}/withdraw`,{expected_revision:revision}),
+ createInvite:(body)=>http.post('/group-admission/invites',body),
+ invites:()=>http.get('/group-admission/invites'),
+ revoke:(id)=>http.post(`/group-admission/invites/${id}/revoke`,{}),
+ queue:()=>http.get('/group-admission/applications'),
+ review:(id,body)=>http.post(`/group-admission/applications/${id}/review`,body),
+}

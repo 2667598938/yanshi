@@ -354,7 +354,7 @@ VIP或有效AI授权可使用本人Key，通过后端受控OpenAI兼容地址调
 | **同步可靠性** | 单次 sync 失败不影响本地；重试指数退避 1/2/4/8s；本地数据**永不自动清除** |
 | **兼容性** | Chrome / Edge / Safari(iOS 15+) 最近两个大版本；移动端 360px 宽度起不横向滚动 |
 | **可用性** | 关键操作（番茄结束、审批）必须落持久层后才给 UI 成功反馈 |
-| **安全** | 全站 HTTPS；密码类无；token 不落 localStorage；上传走 magic bytes 校验；所有写接口鉴权 |
+| **安全** | 全站 HTTPS；密码加盐哈希存储；token 不落 localStorage；上传走 magic bytes 校验；所有写接口鉴权 |
 | **可维护性** | 后端分层清晰（router → service → dao）；前端无跨层直连 API；单一 Table 的 SQL 只允许写在 dao |
 | **容量（当前范围）** | 目标 1000 注册用户 / 日活 100 / 单机 MySQL 足够 |
 | **可观测** | 结构化日志 + `trace_id` 贯穿；错误日志自动带上 user_id 与 path |

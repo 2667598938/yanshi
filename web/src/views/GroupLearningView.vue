@@ -30,14 +30,14 @@ function select(member){records.value=[];selected.value=member.id;load()}
 const chosen=computed(()=>members.value.find(row=>row.id===selected.value))
 const visible=computed(()=>records.value.filter(row=>row.type===tab.value))
 const heat=computed(()=>{
- const result={};for(const row of records.value.filter(row=>row.type==='session'))result[row.date]=(result[row.date]||0)+(row.actualSec||0)
+ const result={};for(const row of records.value.filter(row=>row.type==='session'&&!row.conflict_flag&&!row.validation_issue))result[row.date]=(result[row.date]||0)+(row.actualSec||0)
  return Object.entries(result).sort(([a],[b])=>a.localeCompare(b))
 })
 onMounted(()=>{load();interval=setInterval(load,5000);document.addEventListener('visibilitychange',load)})
 onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(interval);document.removeEventListener('visibilitychange',load)})
 </script>
 <template>
- <div class="page"><button class="btn btn-outline" @click="router.back()">返回</button><h2>受邀小组 · 学习互助</h2>
+ <div class="page"><button class="btn btn-outline" @click="router.back()">返回</button><h2>受邀小组 · 学习互助</h2><router-link to="/group/admission">入组邀请与申请记录</router-link>
  <p>小组默认共享学习记录；隐私模式一键停止共享。这里只读查看，不会导入或修改对方的数据。</p>
  <button v-for="member in members" :key="member.id" class="btn btn-outline" @click="select(member)">{{member.nickname}} · {{member.statusText || '状态更新中'}}<small style="display:block">{{member.status==='private'?'位置已隐藏':member.roomName ? '房间：'+member.roomName : member.isOnline?'未在自习室':'未在线'}} </small></button>
  <p v-if="error">{{error}}</p>
@@ -50,7 +50,7 @@ onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(int
  <strong>{{row.title||row.content||row.learningContent||row.date||'学习记录'}}</strong>
  <p v-if="row.type==='task'">{{row.done?'已完成':'待完成'}} · {{row.dueDate}} · 预计{{row.estimatedMin||0}}分钟 · {{row.acceptCriteria}}</p>
  <template v-if="row.type==='mistake'"><p>{{row.chapter}} · 错因：{{row.reason}} · {{(row.tags||[]).join('、')}}</p><p>思路：{{row.idea}}</p><p>解析：{{row.analysis}}</p><BlobImage v-for="key in [...(row.images||[]),...(row.answerImages||[])]" :key="key" :src="key" class="picture" /></template>
- <p v-if="row.type==='session'">{{Math.round((row.actualSec||0)/60)}}分钟 · {{row.status}}</p>
+ <p v-if="row.type==='session'">{{row.conflict_flag||row.validation_issue?'待本人处理，暂不计入统计':Math.round((row.actualSec||0)/60)+'分钟 · '+row.status}}</p>
  </div><p v-if="!visible.length&&tab!=='stats'">暂无已同步记录</p>
  </template></template></div>
 </template>

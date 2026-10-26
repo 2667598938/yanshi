@@ -2,7 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 import { db } from '../src/db'
 import { syncApi, attachmentApi } from '../src/api'
-import { enqueueRecord, syncNow, resetSyncRuntime } from '../src/sync/engine'
+import { enqueueRecord, syncNow, resetSyncRuntime, syncState, waitForSync } from '../src/sync/engine'
 import { useMistakesStore } from '../src/stores/mistakes'
 
 vi.mock('../src/api', () => ({
@@ -89,4 +89,18 @@ it('实际 outbox 写入失败时错题新增也回滚，重试不会重复收�
   await useMistakesStore().add({ content: '原子写入' })
   expect(await db.mistakes.count()).toBe(1)
   expect(await db.outbox.count()).toBe(1)
+})
+
+it('非法旧计时挂起待人工确认，其他任务继续同步且不计入本机时长',async()=>{
+ const bad={id:'invalid-old-session',status:'done',actualSec:999999}
+ await db.sessions.put(bad);await enqueueRecord('sessions',bad)
+ await db.tasks.put({id:'healthy-task',title:'正常任务'});await enqueueRecord('tasks',{id:'healthy-task',title:'正常任务'})
+ syncApi.commands.mockRejectedValueOnce({code:42201,status:422,message:'计时起止时间不合法',data:{record_id:bad.id}})
+ syncApi.commands.mockImplementation(async(_id,changes)=>({changed:changes.map(c=>({...c,revision:1}))}))
+ expect(await syncNow()).toBe(true);await waitForSync()
+ expect(syncState.pendingConflicts.find(c=>c.id===bad.id).invalidSession).toBe(true)
+ expect((await db.sessions.get(bad.id)).actualSec).toBe(0)
+ expect((await db.sessions.get(bad.id)).validation_issue).toContain('不合法')
+ expect((await db.tasks.get('healthy-task'))._rev).toBe(1)
+ expect(await db.sessions.count()).toBe(1)
 })

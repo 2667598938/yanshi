@@ -506,6 +506,7 @@ onMounted(() => {
       </div>
 
       <div class="group"><div class="card menu">
+        <div class="row" @click="router.push('/group/admission')">小组入组申请与记录<ChevronRight :size="17" /></div>
         <div class="row" @click="router.push('/group')">小组学习数据 · 默认互通<ChevronRight :size="17" /></div>
         <div class="row" @click="router.push('/schools/manage')">我的梦校 · 新增、删除、排序<ChevronRight :size="17" /></div>
         <div class="row" @click="router.push('/settings/time-nodes')">时间节点管理与自定义寄语<ChevronRight :size="17" /></div>

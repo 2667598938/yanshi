@@ -367,7 +367,7 @@ async function importTasks(){
     <div v-if="taskPreview" class="mask" @click.self="!importing && (taskPreview=null)">
       <div class="sheet" style="max-height:75vh;overflow:auto">
         <div class="sheet-title">导入任务前请确认</div>
-        <p>下列任务将写入你的任务清单，并遵循小组共享与隐私模式规则。</p>
+        <p>下列任务将写入你的任务清单，并遵循小组共享与隐私模式规则。同一回复只能确认一组选项；撤销后不能再次导入这批任务。如需补充或重导，请重新向AI生成清单。</p>
         <div v-for="(task,i) in taskPreview.suggested_tasks" :key="i" class="card">
           <label><input v-model="taskSelection" type="checkbox" :value="i" :disabled="importing" /> {{task.title}}</label><p>{{task.due_date || '未设日期'}} · 预计 {{task.estimated_min}} 分钟</p><p>{{task.accept_criteria}}</p>
         </div>

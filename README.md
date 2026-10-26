@@ -106,7 +106,7 @@ npm run dev
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 初始管理员，仅在首次 seed 时生效 |
 | `MAIL_CONSOLE` / `SMTP_*` | 开发打印验证码；生产配置 QQ 邮箱 SMTP |
 | `IMAGE_STORAGE` / `QINIU_*` | `local` 或 `qiniu`（七牛 Kodo） |
-| `VOLC_API_KEY` / `VOLC_MODEL` | 服务端兜底 AI Key（可选） |
+| `VOLC_*`（旧配置） | 已停用，不参与AI调用；每个用户必须配置本人Key |
 | `AI_KEY_ENC_SECRET` | VIP 自填 Key 的 AES-256-GCM 主密钥；留空回退 JWT_SECRET 派生 |
 | `AI_DAILY_LIMIT` / `AI_CUSTOM_HOSTS` | 每日请求预算与生产自定义AI网关精确域名白名单 |
 | `AI_VISION_ENABLED` | 图片站点开关；固定拒绝通用工具和搜索调用 |

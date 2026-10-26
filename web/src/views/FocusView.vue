@@ -79,13 +79,13 @@ const phaseText = computed(
     resting: timer.rest?.kind === 'long' ? '长休息' : '短休息', restReady: '休息结束，等待手动开始' }[phase.value])
 )
 
-function start() {
+async function start() {
   if (!subjects.active.length) {
     toast('请先添加一个科目')
     return
   }
   const subjectId = subjId.value || subjects.active[0].id
-  timer.start({
+  const started = await timer.start({
     subjectId,
     mode: mode.value,
     plannedMin: plan.value,
@@ -93,6 +93,7 @@ function start() {
     learningContent: learningContent.value,
     taskId: route.query.taskId || null,
   })
+  if(!started){if(timer.startError)toast(timer.startError);return}
   toast(mode.value === 'stopwatch' ? '开始正向计时，大雪深埋' : '开始专注，大雪深埋')
 }
 function toggle() {
@@ -333,11 +334,12 @@ watch(
 
         <button
           class="btn btn-block start-btn"
+            :disabled="timer.claiming || !!timer.remoteLease"
           :class="mode === 'stopwatch' ? 'btn-primary' : 'btn-tomato'"
           @click="start"
         >
           <Play :size="20" :stroke-width="2.6" />
-          <span>{{ mode === 'stopwatch' ? '开始正向计时' : `开始 ${plan} 分钟专注` }}</span>
+          <span>{{ timer.claiming ? '正在获取主计时权限…' : timer.remoteLease ? '主计时设备正在运行，本机仅查看' : mode === 'stopwatch' ? '开始正向计时' : `开始 ${plan} 分钟专注` }}</span>
         </button>
       </template>
 

@@ -6,6 +6,9 @@ const BASE = '/api/v1'
 
 // 共享同一个 refresh，避免并发请求各自刷新
 let refreshPromise = null
+function accountGuard(store,owner){
+ if(store.user?.id!==owner){const error=new Error('账号已切换，旧请求已停止');error.code=40990;error.status=409;throw error}
+}
 
 async function perform(url, options) {
   const res = await fetch(url, options)
@@ -33,6 +36,7 @@ function buildOptions(method, body, headers) {
 
 async function request(method, path, { body, query, auth = true, raw = false } = {}) {
   const authStore = useAuthStore()
+  const owner=authStore.user?.id
   const url = BASE + path + (query ? '?' + new URLSearchParams(query).toString() : '')
   const headers = {}
   if (auth && authStore.accessToken) {
@@ -41,18 +45,21 @@ async function request(method, path, { body, query, auth = true, raw = false } =
 
   let options = buildOptions(method, body, headers)
   let { res, data } = await perform(url, options)
+  if(auth)accountGuard(authStore,owner)
 
   // access 过期：用 refresh 换一次，重试原请求（只重试一次）
   if (res.status === 401 && auth && authStore.canRefresh && !path.includes('/auth/refresh')) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null
+    if(auth)accountGuard(authStore,owner)
     if (ok) {
       headers['Authorization'] = 'Bearer ' + authStore.accessToken
       options = buildOptions(method, body, headers)
       const retried = await perform(url, options)
       res = retried.res
       data = retried.data
+      if(auth)accountGuard(authStore,owner)
     }
   }
 
@@ -79,6 +86,7 @@ async function request(method, path, { body, query, auth = true, raw = false } =
 // 流式 POST（SSE）：逐条解析 data: {...} 事件；401 时自动刷新一次后重试
 export async function streamPost(path, body, onEvent, { signal } = {}) {
   const authStore = useAuthStore()
+  const owner=authStore.user?.id
   const url = BASE + path
   const doFetch = (token) =>
     fetch(url, {
@@ -92,11 +100,14 @@ export async function streamPost(path, body, onEvent, { signal } = {}) {
     })
 
   let res = await doFetch(authStore.accessToken)
+  accountGuard(authStore,owner)
   if (res.status === 401 && authStore.canRefresh) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null
+    accountGuard(authStore,owner)
     if (ok) res = await doFetch(authStore.accessToken)
+    accountGuard(authStore,owner)
   }
   if (!res.ok) {
     let data = null
@@ -117,6 +128,7 @@ export async function streamPost(path, body, onEvent, { signal } = {}) {
   let buffer = ''
   let finished = false
   const deliver = (event) => {
+    accountGuard(authStore,owner)
     if (event.type === 'done' || event.type === 'error') finished = true
     onEvent(event)
   }
@@ -168,16 +180,22 @@ export const http = {
 // 带鉴权拉取二进制（图片附件 view 接口需要 Authorization 头，<img> 标签无法带 token）
 export async function fetchBlob(url) {
   const authStore = useAuthStore()
+  const owner=authStore.user?.id
   const doFetch = (token) =>
     fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} })
   let res = await doFetch(authStore.accessToken)
+  accountGuard(authStore,owner)
   // access 过期：复用全局刷新一次后重试，避免令牌过期瞬间图片被误判为加载失败
   if (res.status === 401 && authStore.canRefresh) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null
+    accountGuard(authStore,owner)
     if (ok) res = await doFetch(authStore.accessToken)
+    accountGuard(authStore,owner)
   }
   if (!res.ok) throw new Error('图片加载失败')
-  return res.blob()
+  const blob=await res.blob()
+  accountGuard(authStore,owner)
+  return blob
 }

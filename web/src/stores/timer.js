@@ -1,3 +1,6 @@
+import { timerApi } from '../api'
+import { useAuthStore } from './auth'
+import { presenceDeviceId } from '../utils/presence'
 import { defineStore } from 'pinia'
 import { dayKey, todayKey, calcStreak, lastNDays } from '../utils/date'
 import { db, currentKey, uid } from '../db'
@@ -35,6 +38,7 @@ export const useTimerStore = defineStore('timer', {
     sessions: [],
     loaded: false,
     current: loadCurrent(),
+    remoteLease: null, claiming: false, claimGeneration:0, startError: '', leaseLost: false,
     now: clockNow(),
     lastFinished: null, // { session, at, auto }
     ...loadCycle(),
@@ -67,9 +71,9 @@ export const useTimerStore = defineStore('timer', {
       return this.plannedSec ? Math.min(1, this.elapsedSec / this.plannedSec) : 0
     },
 
-    doneSessions: (s) => s.sessions.filter((x) => x.status === 'done'),
+    doneSessions: (s) => s.sessions.filter((x) => x.status === 'done' && !x.conflict_flag && !x.validation_issue),
     // 有效时长包含 done 与 quit（超时/放弃仍计入学习时长）
-    effectiveSessions: (s) => s.sessions.filter((x) => x.status === 'done' || x.status === 'quit'),
+    effectiveSessions: (s) => s.sessions.filter((x) => (x.status === 'done' || x.status === 'quit') && !x.conflict_flag && !x.validation_issue),
     todaySessions() {
       return this.effectiveSessions.filter((x) => x.date === todayKey())
     },
@@ -205,6 +209,7 @@ export const useTimerStore = defineStore('timer', {
         clearInterval(ticker)
         ticker = null
       }
+      this.claimGeneration++;this.claiming=false;this.persisting=false;this.remoteLease=null;this.leaseLost=false;this.startError=''
       this.sessions = []
       this.loaded = false
       this.lastFinished = null
@@ -215,9 +220,11 @@ export const useTimerStore = defineStore('timer', {
       if (this.rest && !this.rest.finished) { this.ensureTicker(); this.checkLimits() }
     },
 
-    start({ subjectId, mode = 'timer', plannedMin = 25, activityType = '', learningContent = '', taskId = null }) {
-      if (this.current || this.rest || this.persisting) return
-      this.current = {
+    async start({ subjectId, mode = 'timer', plannedMin = 25, activityType = '', learningContent = '', taskId = null }) {
+      if (this.current || this.rest || this.persisting || this.claiming) return false
+      this.startError = ''; this.claiming = true
+      const claim=++this.claimGeneration,owner=useAuthStore().user?.id
+      const candidate = {
         id: uid('s_'),
         subjectId,
         mode,
@@ -225,15 +232,30 @@ export const useTimerStore = defineStore('timer', {
         learningContent: String(learningContent).trim().slice(0, 100),
         taskId,
         plannedMin: mode === 'stopwatch' ? 0 : plannedMin,
-        startedAt: clockNow(),
+        startedAt: Math.trunc(clockNow()),
+        deviceId: presenceDeviceId(),
         pauseAccum: 0,
         maxPauseMs: 0,
         pausedAt: null,
         paused: false,
       }
-      this.now = clockNow()
-      this.saveCurrent()
-      this.ensureTicker()
+      try {
+        if(candidate.startedAt < 1767225600000){this.startError='本机时间异常，请联网校准后开始计时';return false}
+        if (useAuthStore().isLoggedIn && navigator.onLine !== false) {
+          try {
+            const lease=await timerApi.start({session_id:candidate.id,device_id:candidate.deviceId,started_at:candidate.startedAt,label:candidate.learningContent})
+            if(claim!==this.claimGeneration||owner!==useAuthStore().user?.id)return false
+            this.remoteLease=lease
+            candidate.onlineLease = true
+          } catch (e) {
+            if(claim!==this.claimGeneration||owner!==useAuthStore().user?.id)return false
+            if (e.status) { this.startError = e.message; this.remoteLease = e.data?.current || null; return false }
+          }
+        }
+        this.current = candidate; this.leaseLost = false
+        this.now = clockNow();this.saveCurrent();this.ensureTicker()
+        return true
+      } finally { if(claim===this.claimGeneration)this.claiming = false }
     },
     pause() {
       if (this.current && !this.current.paused) {
@@ -259,6 +281,7 @@ export const useTimerStore = defineStore('timer', {
     async finish(auto, note = '', reason = 'completed') {
       const c = this.current
       if (!c || this.persisting) return
+      const owner=useAuthStore().user?.id,claim=this.claimGeneration
       this.persisting = true
       // 到点后 500ms ticker 可能在本函数 await 期间再次触发；先同步摘除当前计时并停表，
       // 保证一次专注只落库一次（避免重复进入导致同 id 再写 sessions 触发 Dexie 主键冲突）
@@ -282,6 +305,7 @@ export const useTimerStore = defineStore('timer', {
         : c.paused ? c.pausedAt : clockNow()
       const session = {
         id: c.id,
+        deviceId: c.deviceId || 'legacy',
         subjectId: c.subjectId,
         mode: c.mode,
         activityType: c.activityType || '',
@@ -316,6 +340,7 @@ export const useTimerStore = defineStore('timer', {
           throw e
         }
       })
+      if(owner!==useAuthStore().user?.id||claim!==this.claimGeneration)return session
       if (!duplicated) {
         this.sessions.push(session)
         if (status === 'done' && actualSec > 0) {
@@ -326,6 +351,11 @@ export const useTimerStore = defineStore('timer', {
           this.saveCycle()
         }
       }
+      if (c.deviceId && useAuthStore().isLoggedIn) {
+        await timerApi.release({session_id:c.id,device_id:c.deviceId,started_at:Math.trunc(c.startedAt)}).catch(()=>{})
+      }
+      if(owner!==useAuthStore().user?.id||claim!==this.claimGeneration)return session
+      this.remoteLease = null; this.leaseLost = false
       this.lastFinished = { session, at: clockNow(), auto: !!auto }
       this.persisting = false
       return session

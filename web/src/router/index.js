@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
+  {path:'/group/admission',component:()=>import('../views/GroupAdmissionView.vue'),meta:{requiresAuth:true,hideTabbar:true}},
+  {path:'/admin/group',component:()=>import('../views/GroupReviewView.vue'),meta:{requiresAuth:true,requiresAdmin:true,hideTabbar:true}},
   { path: '/group', component: () => import('../views/GroupLearningView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
   { path: '/schools/manage', component: () => import('../views/SchoolAdminView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
   { path: '/settings/time-nodes', component: () => import('../views/TimeNodesView.vue'), meta: { requiresAuth: true, hideTabbar: true } },

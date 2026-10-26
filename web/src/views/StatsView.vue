@@ -242,6 +242,7 @@ function exportCsv() {
     </div>
 
     <div class="page">
+      <p v-if="timer.sessions.some(row=>row.conflict_flag||row.validation_issue)" class="card">有 {{timer.sessions.filter(row=>row.conflict_flag||row.validation_issue).length}} 条计时记录待本人处理，暂不计入统计。请联网后通过计时冲突提示处理。</p>
       <div class="card content-summary">
         <div class="card-title">学习内容分布</div>
         <div class="pill-row"><button v-for="[key, label] in [['day','日'],['week','周'],['month','月'],['year','年']]" :key="key" class="pill" :class="{ active: contentPeriod === key }" @click="contentPeriod = key">{{ label }}</button></div>

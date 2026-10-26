@@ -159,6 +159,8 @@ async function holdConflict(conflict, items) {
   const entry = {
     id,
     type: local.type,
+    invalidSession: !!conflict.invalid_session,
+    message: conflict.message || '',
     label: TYPE_LABEL[local.type] || '学习记录',
     localRecord: local.record, // 本地待发内容；null 表示本地删除（墓碑）
     expectedRevision: local.expectedRevision,
@@ -283,6 +285,16 @@ async function pushOutbox() {
       if (conflict) await holdConflict(conflict, batch.items)
       else console.warn('同步冲突缺少明细，稍后重试')
       await db.syncMeta.delete('pendingLearningCommand')
+    } else if (e.code === 42201 && e.data?.record_id) {
+      const id=e.data.record_id
+      const cloud=await syncApi.records()
+      const current=(cloud.records||[]).find(row=>row.id===id)
+      await holdConflict({id,revision:current?.revision||0,record:current?.record||null,invalid_session:true,message:e.message},batch.items)
+      const local=await db.sessions.get(id)
+      if(local)await db.sessions.put({...local,validation_issue:e.message,conflict_duration_sec:local.actualSec,actualSec:0})
+      await db.syncMeta.delete('pendingLearningCommand')
+      queued=true
+      return true
     } else if (e.code === 40903) {
       // 操作 ID 复用：下轮换新 opId 即可（outbox 保留）
       console.warn('操作 ID 复用，下轮换新 opId 重试')

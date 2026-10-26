@@ -309,6 +309,7 @@ async function toggleAnnouncement(row){
     </div>
 
     <div class="page">
+      <router-link class="btn btn-outline" to="/admin/group">小组邀请与入组审批</router-link>
       <!-- 概览 -->
       <div v-if="overview" class="ov-grid">
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>

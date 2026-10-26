@@ -5,7 +5,7 @@ import { ACTIVITY_MAP } from '../data/subjects'
 export function filterSessions(sessions, { start, end, subjectId, activityType } = {}) {
   return sessions.filter(
     (s) =>
-      (s.status === 'done' || s.status === 'quit') &&
+      (s.status === 'done' || s.status === 'quit') && !s.conflict_flag && !s.validation_issue &&
       (!start || s.date >= start) &&
       (!end || s.date <= end) &&
       (!subjectId || s.subjectId === subjectId) &&
@@ -209,7 +209,7 @@ export function buildWeekDays(weekStart, minMap) {
 export function daySubjectDetail(sessions, date) {
   const m = {}
   sessions
-    .filter((s) => (s.status === 'done' || s.status === 'quit') && s.date === date)
+    .filter((s) => (s.status === 'done' || s.status === 'quit') && !s.conflict_flag && !s.validation_issue && s.date === date)
     .forEach((s) => {
       if (!m[s.subjectId]) m[s.subjectId] = 0
       m[s.subjectId] += s.actualSec / 60
@@ -220,11 +220,11 @@ export function daySubjectDetail(sessions, date) {
 // 某一天的总时长（含 quit 保留的实际时长）
 export function dayTotalMin(sessions, date) {
   return sessions
-    .filter((s) => (s.status === 'done' || s.status === 'quit') && s.date === date)
+    .filter((s) => (s.status === 'done' || s.status === 'quit') && !s.conflict_flag && !s.validation_issue && s.date === date)
     .reduce((a, s) => a + s.actualSec / 60, 0)
 }
 
 // 某一天的番茄数
 export function dayCount(sessions, date) {
-  return sessions.filter((s) => s.status === 'done' && s.date === date).length
+  return sessions.filter((s) => s.status === 'done' && !s.conflict_flag && !s.validation_issue && s.date === date).length
 }

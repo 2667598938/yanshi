@@ -4,7 +4,7 @@ import { useTimerStore } from '../src/stores/timer'
 import { useLearningSettingsStore } from '../src/stores/learningSettings'
 import { filterSessions, contentBreakdown, periodBounds } from '../src/utils/stats'
 vi.mock('../src/sync/engine', () => ({ enqueueRecord: vi.fn(), enqueueDelete: vi.fn(), writeRecord: vi.fn() }))
-const base = 1700000000000
+const base = 1767268800000
 let timer
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })

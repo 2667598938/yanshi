@@ -92,15 +92,17 @@ export const useAuthStore = defineStore('auth', {
     // 用 refresh Cookie 换新 access，成功返回 true
     async tryRefresh() {
       if (!this.user) return false
+      const owner=this.user.id
       try {
         const data = await authApi.refresh()
+        if(typeof owner!=='undefined' && this.user?.id!==owner)return false
         this.accessToken = data.access_token
         if (data.user) this.user = data.user
         this.persist()
         return true
       } catch (e) {
         // 网络不可用时保留登录态，等联网后重试；只有明确失效才登出
-        if (e.status && e.status < 500) this.clear()
+        if (this.user?.id===owner && e.status && e.status < 500) this.clear()
         return false
       }
     },

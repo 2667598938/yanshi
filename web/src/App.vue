@@ -10,6 +10,8 @@ import { useTimerStore } from './stores/timer'
 import { useAppStore } from './stores/app'
 import { useSubjectsStore } from './stores/subjects'
 import { useAuthStore } from './stores/auth'
+import { useTimerOwnership } from './composables/useTimerOwnership'
+import SessionIssues from './components/SessionIssues.vue'
 import { useGroupPresence } from './composables/useGroupPresence'
 import { useNotificationsStore } from './stores/notifications'
 
@@ -20,6 +22,7 @@ const route = useRoute()
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
 useGroupPresence()
+useTimerOwnership()
 watch(() => auth.user?.id, (id) => { if (id) notifications.start(); else notifications.stop() }, { immediate: true })
 onBeforeUnmount(() => notifications.stop())
 
@@ -70,6 +73,9 @@ watch(
 <template>
   <div class="app-shell">
     <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
+    <div v-if="timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
+    <div v-if="timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
+    <SessionIssues />
     <OfflineBanner />
     <CommunityIssues />
     <main class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }">
