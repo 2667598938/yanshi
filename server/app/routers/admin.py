@@ -163,6 +163,7 @@ def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db))
         raise ApiError(409, 40901, '该邮箱已被使用')
     from ..services.admission import check_capacity
     check_capacity(db, request.app.state.settings)
+    room_service.get_default_room(db)  # Preserve the existing availability check without an unused binding.
     user = User(email=body.email, nickname=body.nickname,
                 password_hash=hash_password(body.password), role='member',
                 exam_year=config_get(db,'exam_year',2028),
