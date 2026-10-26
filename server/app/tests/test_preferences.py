@@ -42,7 +42,7 @@ def test_learning_preferences_defaults_and_long_break_boundary(client):
 
 def test_email_three_requests_per_five_minutes(client, monkeypatch):
     now = time.time()
-    monkeypatch.setattr('app.services.transient.time.time', lambda: now)
+    monkeypatch.setattr('app.services.persistent_transient.time.time', lambda: now)
     for index in range(3):
         now += 61
         result = client.post('/api/v1/auth/email-code', json={'email': 'window@test.com', 'scene': 'login'})
