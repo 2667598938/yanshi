@@ -50,8 +50,8 @@ async function save() {
       ...(editingId.value&&revision.value?{expected_revision:revision.value}:{}),
     }
     if (editingId.value) {
-      await resourceApi.update(editingId.value, payload)
-      toast('已保存，公开内容修改需要重新审核')
+      const updated = await resourceApi.update(editingId.value, payload)
+      toast(updated.review_status === 'pending' ? '已保存，当前版本待审核' : '已保存')
       router.replace(`/resources/${editingId.value}`)
     } else {
       const row = await resourceApi.create(payload)

@@ -108,7 +108,7 @@ def register(body: RegisterInput, request: Request, response: Response, db=Depen
     from ..services.admission import check_capacity
     check_capacity(db, request.app.state.settings)
     user = User(email=body.email, password_hash=hash_password(body.password),
-                nickname=body.nickname, daily_goal_min=300, exam_year=2028,
+                nickname=body.nickname, daily_goal_min=300, exam_year=config_get(db, 'exam_year', 2028),
                 exam_date=config_get(db, 'exam_date', '2027-12-25'))
     try:
         db.add(user)
@@ -164,7 +164,7 @@ def email_login(body: EmailLoginInput, request: Request, response: Response,
         check_capacity(db, request.app.state.settings)
         user = User(email=body.email, nickname=nickname,
                     password_hash=hash_password(secrets.token_urlsafe(18)),
-                    daily_goal_min=300, exam_year=2028,
+                    daily_goal_min=300, exam_year=config_get(db, 'exam_year', 2028),
                     exam_date=config_get(db, 'exam_date', '2027-12-25'))
         try:
             db.add(user)

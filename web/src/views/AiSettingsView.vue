@@ -133,7 +133,7 @@ async function save() {
 }
 
 async function removeKey() {
-  if (!confirm('删除 AI Key？删除后 AI 功能将停用，历史对话保留。')) return
+  if (!confirm('删除已保存的 AI Key？历史对话仍会保留。')) return
   deleting.value = true
   try {
     status.value = await aiApi.deleteKey()

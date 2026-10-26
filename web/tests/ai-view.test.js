@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ toast: vi.fn(), push: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 2 } }) }))
 vi.mock('../src/composables/useToast', () => ({ useToast: () => ({ toast: mocks.toast }) }))
-vi.mock('../src/api', () => ({ aiApi: { enabled: vi.fn(), key: vi.fn(), scenes: vi.fn(), createConversation: vi.fn(), chatStream: vi.fn(), importTasks: vi.fn(), undoTasks: vi.fn() },
+vi.mock('../src/api', () => ({ aiApi: { enabled: vi.fn(), key: vi.fn(), scenes: vi.fn(), createConversation: vi.fn(), chatStream: vi.fn(), importTasks: vi.fn(), undoTasks: vi.fn(), conversations: vi.fn(), conversation: vi.fn() },
   attachmentApi: { uploadImage: vi.fn() } }))
 let wrapper
 beforeEach(async () => {
@@ -113,4 +113,16 @@ it('可选部分任务导入，撤销必须确认并展示保留成果', async()
  await click('撤销本次导入');expect(aiApi.undoTasks).not.toHaveBeenCalled()
  confirmation.mockReturnValue(true);await click('撤销本次导入');expect(aiApi.undoTasks).toHaveBeenCalledExactlyOnceWith(80)
  expect(wrapper.text()).toContain('保留 1 项');vi.unstubAllGlobals()
+})
+
+it('权限到期或未配Key仍可打开并阅读本人历史，不能发送新请求',async()=>{
+ aiApi.enabled.mockResolvedValue({enabled:false,access:false,v1_readonly:true})
+ aiApi.conversations.mockResolvedValue([{id:91,title:'本人旧会话'}])
+ aiApi.conversation.mockResolvedValue({id:91,title:'本人旧会话',messages:[{id:92,role:'assistant',content:'这是我保存的学习复盘'}]})
+ await render();expect(wrapper.find('.composer').exists()).toBe(false)
+ await wrapper.findAll('.nav-actions .icon-btn')[2].trigger('click');await flushPromises()
+ await wrapper.get('.hist-row').trigger('click');await flushPromises()
+ expect(wrapper.get('.chat-scroll').text()).toContain('这是我保存的学习复盘')
+ expect(wrapper.find('.composer').exists()).toBe(false)
+ expect(aiApi.chatStream).not.toHaveBeenCalled()
 })

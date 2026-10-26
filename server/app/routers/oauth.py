@@ -65,7 +65,7 @@ def _get_or_create_user(db, request, provider, uid, nickname, avatar='', phone=N
     check_capacity(db, request.app.state.settings)
     user = User(email=_oauth_email(provider, uid), phone=phone, nickname=name,
                 password_hash=hash_password(secrets.token_urlsafe(18)),
-                daily_goal_min=300, exam_year=2028,
+                daily_goal_min=300, exam_year=config_get(db, 'exam_year', 2028),
                 exam_date=config_get(db, 'exam_date', '2027-12-25'))
     try:
         db.add(user)

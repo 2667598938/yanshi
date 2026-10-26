@@ -106,7 +106,7 @@ onMounted(load)
             </div>
           </div>
 
-          <p v-if="row.review_status !== 'approved'">{{row.review_status==='pending'?'待审核，当前内容尚未公开':'未通过审核'}} · {{row.review_note}}</p>
+          <p v-if="row.review_status !== 'approved'">{{row.review_status==='pending'?'当前版本待审核':'当前版本未通过审核'}}{{row.has_published_version?'，其他人仍可查看上次批准的版本':'，尚未公开'}}<span v-if="row.review_note"> · {{row.review_note}}</span></p>
           <p v-if="row.personal_note">我的个人备注：{{row.personal_note}}</p>
           <div v-if="row.intro" class="intro">{{ row.intro }}</div>
 

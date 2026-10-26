@@ -154,7 +154,9 @@ def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db))
     check_capacity(db, request.app.state.settings)
     room = room_service.get_default_room(db)
     user = User(email=body.email, nickname=body.nickname,
-                password_hash=hash_password(body.password), role='member')
+                password_hash=hash_password(body.password), role='member',
+                exam_year=config_get(db,'exam_year',2028),
+                exam_date=config_get(db,'exam_date','2027-12-25'))
     db.add(user)
     db.flush()
     room_service.join_room_quietly(db, user)

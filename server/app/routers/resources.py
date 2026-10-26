@@ -47,7 +47,7 @@ def _resource_dict(row, owner, user, like_count, liked, favorited, full_link=Non
         'review_status': source.review_status if own else 'approved',
         'review_note': source.review_note if own else '',
         'revision': source.revision,
-        **({'personal_note':source.personal_note} if own else {}),
+        **({'personal_note':source.personal_note,'has_published_version':bool(source.approved_snapshot)} if own else {}),
         'title': row.title,
         'url': row.url if vip else mask_url(row.url),
         'code': row.code if vip else '',
@@ -179,7 +179,7 @@ def update_resource(rid: int, body: ResourceUpdate, request: Request,
     expected=body.expected_revision if body.expected_revision is not None else row.revision
     if expected!=row.revision:raise ApiError(409,40902,'资料已变化，请刷新后再编辑')
     values={key:getattr(body,key).strip() for key in ('title','url','code','category','intro','personal_note') if getattr(body,key) is not None}
-    public_edit=any(k in values for k in ('title','url','code','category','intro'))
+    public_edit=any(k in values and values[k]!=getattr(row,k) for k in ('title','url','code','category','intro'))
     values.update(revision=expected+1,updated_at=utcnow())
     if public_edit:values.update(review_status='pending',review_note='',reviewed_by=None,reviewed_at=None)
     changed=db.execute(update(Resource).where(Resource.id==rid,Resource.revision==expected,Resource.deleted_at.is_(None)).values(**values)).rowcount

@@ -280,7 +280,7 @@ async function importTasks(){
       </button>
     </div>
 
-    <div v-if="blocked" class="ai-guide">
+    <div v-if="blocked && !messages.length" class="ai-guide">
       <div class="guide-badge"><Crown :size="26" /></div>
       <div class="guide-title">
         {{ blocked === 'vip' ? 'AI 需要 VIP 或审批授权' : '还差一步：配置你的 API Key' }}
@@ -308,8 +308,9 @@ async function importTasks(){
       </button>
     </div>
 
-    <div v-else ref="scrollEl" class="chat-scroll">
-      <div v-if="!messages.length" class="chat-empty">
+    <p v-if="blocked && messages.length" class="msg-usage" style="padding:8px 16px">历史记录可继续查看；恢复权限并配置可用Key后才能发送新消息。</p>
+    <div v-if="!blocked || messages.length" ref="scrollEl" class="chat-scroll">
+      <div v-if="!messages.length && !blocked" class="chat-empty">
         <div class="empty-badge"><Sparkles :size="26" /></div>
         <div class="empty-title">{{ scenes.find((x) => x.key === scene)?.label }}</div>
         <div class="empty-desc">{{ welcome }}</div>
@@ -319,10 +320,10 @@ async function importTasks(){
         <div class="msg-main">
           <div v-if="m.image_keys?.length" class="ai-images"><BlobImage v-for="key in m.image_keys" :key="key" :src="key" alt="题目图片" /></div>
           <div class="bubble">{{ m.content }}<span v-if="m.streaming" class="caret">▍</span></div>
-          <button v-if="m.id && m.suggested_tasks?.length && !m.streaming && (!m.task_import || m.task_import.state==='not_imported')" class="btn btn-outline" @click="previewTasks(m)">一键导入为系统任务</button>
+          <button v-if="access && m.id && m.suggested_tasks?.length && !m.streaming && (!m.task_import || m.task_import.state==='not_imported')" class="btn btn-outline" @click="previewTasks(m)">一键导入为系统任务</button>
           <div v-if="m.id && m.task_import?.state === 'imported'" class="msg-usage">已导入 {{m.task_import.imported_count}} 项任务 <button class="btn btn-outline" :disabled="importing" @click="undoTasks(m)">撤销本次导入</button></div>
           <div v-if="m.task_import?.state === 'undone'" class="msg-usage">已撤销 {{m.task_import.undo?.deleted}} 项；保留 {{m.task_import.undo?.kept?.length}} 项（已修改、完成或删除）</div>
-          <div v-if="m.id && m.role==='assistant' && !m.streaming && !m.suggested_tasks?.length" class="msg-usage">此回复未包含有效的可导入任务。<button class="btn btn-outline" :disabled="sending" @click="regenerateTasks(m)">生成可导入任务</button></div>
+          <div v-if="!blocked && m.id && m.role==='assistant' && !m.streaming && !m.suggested_tasks?.length" class="msg-usage">此回复未包含有效的可导入任务。<button class="btn btn-outline" :disabled="sending" @click="regenerateTasks(m)">生成可导入任务</button></div>
           <div v-if="m.tools?.length" class="msg-usage">已调用：{{ m.tools.map(t => `${t.name}${t.status === 'failed' ? '（失败）' : ''}`).join('、') }}</div>
           <div v-if="m.sources?.length" class="ai-sources"><a v-for="source in m.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.title || '查看来源' }}</a></div>
           <div v-if="m.role === 'assistant' && (m.completion_tokens || m.latency_ms)" class="msg-usage">
@@ -427,7 +428,7 @@ async function importTasks(){
 .scene-chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
 .scene-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 
-.chat-scroll { flex: 1; overflow-y: auto; padding: 6px 16px 12px; }
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 16px 12px; }
 .chat-empty { text-align: center; padding: 48px 20px; }
 .empty-badge { width: 60px; height: 60px; margin: 0 auto 16px; border-radius: 18px; background: linear-gradient(135deg, #7c3aed, #5b21b6); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 24px rgba(124,58,237,.4); }
 .empty-title { font-size: 18px; font-weight: 800; }
