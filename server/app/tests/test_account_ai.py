@@ -85,8 +85,9 @@ def test_ai_key_vip_only_and_encrypted(client):
     member = login(client, 'byok@test.com', 'Friend2028')
     mh = h(member['access_token'])
 
-    # 非 VIP 无法读写
-    assert client.get('/api/v1/ai/key', headers=mh).status_code == 403
+    # Owner metadata/deletion remain available; saving/calling still requires access.
+    assert client.get('/api/v1/ai/key', headers=mh).json()['data']['configured'] is False
+    assert client.get('/api/v1/ai/key').status_code == 401
     assert client.put('/api/v1/ai/key', headers=mh, json={
         'provider': 'deepseek', 'api_key': 'sk-test-1234567890'}).status_code == 403
 

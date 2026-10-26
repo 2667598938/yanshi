@@ -64,8 +64,8 @@ async function load() {
   try {
     const cfg = await aiApi.enabled().catch(() => null)
     canUse.value = cfg ? !!cfg.access : isVip.value
-    if (!canUse.value) return
     status.value = await aiApi.key()
+    if (!canUse.value) return
     usage.value = await aiApi.usage()
     contextTurns.value = usage.value.context_turns
     if (status.value.configured) {
@@ -167,7 +167,9 @@ onMounted(load)
         </button>
       </div>
 
-      <template v-else>
+      <div v-if="!loading && !canUse && configured" class="card mt16"><p>已保存的Key：{{status.key_mask}} · {{status.model}}</p><p class="field-hint">调用权限到期不影响你删除自己的Key，历史会话仍保留。</p><button class="btn btn-outline" :disabled="deleting" @click="removeKey">删除我的Key</button></div>
+
+      <template v-if="!loading && canUse">
         <div v-if="usage" class="card">
           <div>今日 AI 请求 {{ usage.requests }} / {{ usage.daily_limit }} · 剩余 {{ usage.remaining }}</div>
           <div class="field-hint">北京时间零点重置，失败尝试计入请求预算。成功 {{ usage.succeeded }} 次，失败 {{ usage.failed }} 次。</div>

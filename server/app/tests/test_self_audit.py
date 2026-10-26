@@ -74,3 +74,22 @@ def test_public_disclosure_matches_default_sharing_and_ai_summary(client):
     assert 'API Key及资料个人备注不参与共享' in data['privacy']
     assert '默认仅本人可见' not in data['terms']
     assert '看不到你的错题' not in data['privacy']
+
+
+def test_expired_ai_access_does_not_block_masked_key_read_or_owner_deletion(client, friend):
+    ah = admin(client)
+    uid = me(client, friend)
+    assert client.put('/api/v1/ai/key', headers=friend, json={
+        'provider': 'deepseek', 'model': 'deepseek-chat', 'api_key': 'private-owner-key-1234'}).status_code == 200
+    revoked = client.put(f'/api/v1/admin/members/{uid}', headers=ah,
+                         json={'vip_action': 'revoke', 'note': '测试到期后的数据管理'})
+    assert revoked.status_code == 200, revoked.text
+    assert not client.get('/api/v1/ai/enabled', headers=friend).json()['data']['access']
+    metadata = client.get('/api/v1/ai/key', headers=friend)
+    assert metadata.status_code == 200 and metadata.json()['data']['configured']
+    assert 'private-owner-key-1234' not in metadata.text
+    assert client.get('/api/v1/ai/key', headers=ah).json()['data']['configured'] is False
+    assert client.post('/api/v1/ai/models', headers=friend, json={'api_key': 'private-owner-key-1234'}).status_code == 403
+    assert client.post('/api/v1/ai/chat', headers=friend, json={'content': '禁止调用'}).status_code == 403
+    assert client.delete('/api/v1/ai/key', headers=friend).status_code == 200
+    assert not client.get('/api/v1/ai/key', headers=friend).json()['data']['configured']

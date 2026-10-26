@@ -110,7 +110,7 @@ def enabled(request: Request, user=Depends(get_current_user), db=Depends(get_db)
 # ---------------------------------------------------------------- AI Key（VIP）
 @router.get('/key')
 def get_key(request: Request, user=Depends(get_current_user), db=Depends(get_db)):
-    require_ai(db, user)
+    # The owner can inspect masked configuration and remove credentials after access expires.
     return ok(key_dict(db.get(UserAIKey, user.id)))
 
 
