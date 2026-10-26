@@ -32,6 +32,7 @@ export const db = new Proxy({}, {
 // 每个账号独立 IndexedDB，避免换号后把上一个账号的未同步记录重新入队
 let currentDb = createDb('yanshi_db')
 let accountId = null
+let switchesInFlight = 0
 
 function createDb(name) {
   const instance = new Dexie(name)
@@ -100,33 +101,43 @@ export async function activateAccount(userId, { migrateGuest = false } = {}) {
     if (!currentDb.isOpen()) await currentDb.open()
     return
   }
-  let next
-  let claimedGuest = false
-  if (nextId && migrateGuest && accountId === null) {
-    const target = createDb(`yanshi_db_u${nextId}`)
-    await target.open()
-    try {
-      claimedGuest = await migrateGuestData(currentDb, target)
-    } catch (e) {
-      target.close()
-      throw e
+  switchesInFlight += 1
+  try {
+    let next
+    let claimedGuest = false
+    if (nextId && migrateGuest && accountId === null) {
+      const target = createDb(`yanshi_db_u${nextId}`)
+      await target.open()
+      try {
+        claimedGuest = await migrateGuestData(currentDb, target)
+      } catch (e) {
+        target.close()
+        throw e
+      }
+      await currentDb.close()
+      next = target
+    } else {
+      await currentDb.close()
+      next = createDb(nextId ? `yanshi_db_u${nextId}` : 'yanshi_db')
+      await next.open()
     }
-    await currentDb.close()
-    next = target
-  } else {
-    await currentDb.close()
-    next = createDb(nextId ? `yanshi_db_u${nextId}` : 'yanshi_db')
-    await next.open()
-  }
-  currentDb = next
-  accountId = nextId
+    currentDb = next
+    accountId = nextId
 
-  if (claimedGuest) {
-    const guestCurrent = localStorage.getItem(CUR_KEY)
-    const accountCurrent = localStorage.getItem(currentKey())
-    if (guestCurrent && !accountCurrent) localStorage.setItem(currentKey(), guestCurrent)
-    if (guestCurrent) localStorage.removeItem(CUR_KEY)
-  }
+    if (claimedGuest) {
+      const guestCurrent = localStorage.getItem(CUR_KEY)
+      const accountCurrent = localStorage.getItem(currentKey())
+      if (guestCurrent && !accountCurrent) localStorage.setItem(currentKey(), guestCurrent)
+      if (guestCurrent) localStorage.removeItem(CUR_KEY)
+    }
+  } finally { switchesInFlight -= 1 }
+}
+
+// Capture the actual account database, not just a numeric user ID (A→B→A is stale too).
+export function localAccountScope() {
+  const source = currentDb
+  return { db: source, isCurrent: () => source === currentDb && switchesInFlight === 0,
+    assertCurrent() { if (source !== currentDb || switchesInFlight > 0) throw new Error('账号已切换，请在当前账号重新操作') } }
 }
 
 export function activeAccountId() {

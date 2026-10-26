@@ -126,3 +126,42 @@ it('权限到期或未配Key仍可打开并阅读本人历史，不能发送新�
  expect(wrapper.find('.composer').exists()).toBe(false)
  expect(aiApi.chatStream).not.toHaveBeenCalled()
 })
+
+
+it('新建对话后，旧历史请求不能覆盖新会话', async () => {
+  aiApi.conversations.mockResolvedValue([{ id: 11, title: '旧会话' }])
+  let resolve
+  aiApi.conversation.mockImplementation(() => new Promise(r => { resolve = r }))
+  await render()
+  await wrapper.findAll('.nav-actions button')[2].trigger('click'); await flushPromises()
+  await wrapper.get('.hist-row').trigger('click')
+  await wrapper.findAll('.nav-actions button')[1].trigger('click')
+  resolve({ id: 11, title: '过期历史标题', messages: [{ role: 'assistant', content: '过期历史正文' }] })
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('过期历史标题')
+  expect(wrapper.text()).not.toContain('过期历史正文')
+})
+
+it('先选A再选B，迟到的A历史响应不能覆盖B', async () => {
+  aiApi.conversations.mockResolvedValue([{ id: 11, title: '会话A' }, { id: 12, title: '会话B' }])
+  let resolve
+  aiApi.conversation.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    .mockResolvedValueOnce({ id: 12, title: '当前B', messages: [] })
+  await render()
+  await wrapper.findAll('.nav-actions button')[2].trigger('click'); await flushPromises()
+  await wrapper.findAll('.hist-row')[0].trigger('click')
+  await wrapper.findAll('.hist-row')[1].trigger('click'); await flushPromises()
+  resolve({ id: 11, title: '旧A', messages: [] }); await flushPromises()
+  expect(wrapper.text()).toContain('当前B'); expect(wrapper.text()).not.toContain('旧A')
+})
+
+it('确认任务导入后切到新对话，导入成功仍正常同步和提示',async()=>{
+ aiApi.chatStream.mockImplementationOnce(async(_body,cb)=>cb({type:'done',message_id:101,suggested_tasks:[{title:'复习数学',estimated_min:30}]}))
+ let resolve;aiApi.importTasks.mockImplementationOnce(()=>new Promise(r=>{resolve=r}))
+ await render();await wrapper.get('.composer input').setValue('安排任务');await wrapper.get('.send-btn').trigger('click');await flushPromises()
+ await wrapper.findAll('button').find(b=>b.text()==='一键导入为系统任务').trigger('click')
+ await wrapper.findAll('button').find(b=>b.text()==='确认批量导入').trigger('click');await flushPromises()
+ await wrapper.findAll('.nav-actions button')[1].trigger('click')
+ resolve({state:'imported',imported_count:1});await flushPromises()
+ expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('任务已导入'))
+})

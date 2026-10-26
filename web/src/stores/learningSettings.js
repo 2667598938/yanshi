@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { db } from '../db'
+import { localAccountScope } from '../db'
 import { writeRecord } from '../sync/engine'
 
 export const DEFAULT_LEARNING_SETTINGS = Object.freeze({
@@ -20,16 +20,21 @@ export const useLearningSettingsStore = defineStore('learningSettings', {
   state: () => ({ value: { ...DEFAULT_LEARNING_SETTINGS }, loaded: false }),
   actions: {
     async load(force = false) {
+      const scope = localAccountScope()
       if (this.loaded && !force) return
-      const row = await db.kv.get('learning-settings')
+      const row = await scope.db.kv.get('learning-settings')
+      if (!scope.isCurrent()) return
       this.value = row ? validateLearningSettings({ ...DEFAULT_LEARNING_SETTINGS, ...row.value }) : { ...DEFAULT_LEARNING_SETTINGS }
       this.loaded = true
     },
     async save(value) {
+      const scope = localAccountScope()
       const clean = validateLearningSettings(value)
-      const old = await db.kv.get('learning-settings')
+      const old = await scope.db.kv.get('learning-settings')
+      scope.assertCurrent()
       await writeRecord('kv', { key: 'learning-settings', id: 'learning-settings',
         syncType: 'preferences', value: clean, _rev: old?._rev || 0, updatedAt: Date.now() })
+      scope.assertCurrent()
       this.value = clean
     },
   },

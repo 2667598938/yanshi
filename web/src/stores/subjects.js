@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { db, uid } from '../db'
+import { localAccountScope, uid } from '../db'
 import { writeRecord, patchRecord } from '../sync/engine'
 
 // 科目：统一软删除（归档），不物理删除，保证历史番茄记录的统计仍能找到科目
@@ -14,11 +14,15 @@ export const useSubjectsStore = defineStore('subjects', {
   },
   actions: {
     async load() {
+      const scope = localAccountScope()
       if (this.loaded) return
-      this.list = await db.subjects.toArray()
+      const rows = await scope.db.subjects.toArray()
+      if (!scope.isCurrent()) return
+      this.list = rows
       this.loaded = true
     },
     async add({ name, color, icon }) {
+      const scope = localAccountScope()
       const orders = this.list.map((x) => x.order)
       const order = orders.length ? Math.max(...orders) + 1 : 0
       const item = {
@@ -33,11 +37,14 @@ export const useSubjectsStore = defineStore('subjects', {
         createdAt: Date.now(),
       }
       await writeRecord('subjects', item, { create: true })
+      scope.assertCurrent()
       this.list.push(item)
       return item
     },
     async update(id, patch) {
+      const scope = localAccountScope()
       const row = await patchRecord('subjects', id, patch)
+      scope.assertCurrent()
       const i = this.list.findIndex((x) => x.id === id)
       if (i >= 0) {
         if (row) this.list[i] = row

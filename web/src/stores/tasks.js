@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { db, uid } from '../db'
+import { localAccountScope, uid } from '../db'
 import { todayKey, dayKey } from '../utils/date'
 import { writeRecord, patchRecord, enqueueDelete } from '../sync/engine'
 
@@ -33,11 +33,15 @@ export const useTasksStore = defineStore('tasks', {
   },
   actions: {
     async load() {
+      const scope = localAccountScope()
       if (this.loaded) return
-      this.list = await db.tasks.toArray()
+      const rows = await scope.db.tasks.toArray()
+      if (!scope.isCurrent()) return
+      this.list = rows
       this.loaded = true
     },
     async add(payload) {
+      const scope = localAccountScope()
       const title = (payload.title || '').trim()
       if (!title) return null
       const item = {
@@ -46,18 +50,21 @@ export const useTasksStore = defineStore('tasks', {
         subjectId: payload.subjectId || 'other',
         phase: payload.phase || 'custom',
         acceptCriteria: payload.acceptCriteria || '',
-        dueDate: payload.dueDate || todayKey(),
+        dueDate: payload.dueDate ?? todayKey(),
         estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(payload.estimatedMin)||0))),
         done: 0,
         doneAt: null,
         createdAt: Date.now(),
       }
       await writeRecord('tasks', item, { create: true })
+      scope.assertCurrent()
       this.list.push(item)
       return item
     },
     async update(id, patch) {
+      const scope = localAccountScope()
       const row = await patchRecord('tasks', id, patch)
+      scope.assertCurrent()
       const i = this.list.findIndex((x) => x.id === id)
       if (i >= 0) {
         if (row) this.list[i] = row
@@ -71,7 +78,9 @@ export const useTasksStore = defineStore('tasks', {
       await this.update(id, { done, doneAt })
     },
     async remove(id) {
+      const scope = localAccountScope()
       await enqueueDelete('tasks', id)
+      scope.assertCurrent()
       this.list = this.list.filter((x) => x.id !== id)
     },
     // 某日期区间内（按到期日）任务完成率

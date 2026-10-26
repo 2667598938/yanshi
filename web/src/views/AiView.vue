@@ -45,7 +45,9 @@ const useTools = ref(false)
 const useSearch = ref(false)
 let controller
 let alive = true
-onBeforeUnmount(() => { alive = false; controller?.abort() })
+let conversationGeneration = 0
+const loadingConversation = ref(false)
+onBeforeUnmount(() => { alive = false; conversationGeneration++; controller?.abort() })
 
 async function uploadRow(row) {
   if (row.key || row.uploading) return
@@ -94,7 +96,7 @@ const blocked = computed(() => {
 
 async function send() {
   const content = input.value.trim() || (attachments.value.length ? '请分析这些题目图片，并讲解思路与易错点。' : '')
-  if (!content || sending.value || blocked.value) return
+  if (!content || sending.value || loadingConversation.value || blocked.value) return
   if (!enabled.value) return toast('AI未启用，请先配置Key')
   if (attachments.value.some((row) => !row.key)) return toast('有图片尚未上传成功，请重试或移除该图片')
   const selected = [...attachments.value]
@@ -154,6 +156,8 @@ async function send() {
 
 function newChat(s) {
   if (sending.value) return
+  conversationGeneration++; loadingConversation.value = false
+  taskPreview.value = null
   if (s) scene.value = s
   conversationId.value = null
   conversationTitle.value = ''
@@ -162,8 +166,11 @@ function newChat(s) {
 }
 
 async function loadHistory() {
+  const generation = conversationGeneration
   try {
-    historyList.value = await aiApi.conversations()
+    const rows = await aiApi.conversations()
+    if (!alive || generation !== conversationGeneration) return
+    historyList.value = rows
     showHistory.value = true
   } catch (e) {
     toast(e.message)
@@ -172,8 +179,12 @@ async function loadHistory() {
 
 async function openConversation(id) {
   if (sending.value) return
+  const generation = ++conversationGeneration
+  loadingConversation.value = true
+  taskPreview.value = null
   try {
     const data = await aiApi.conversation(id)
+    if (!alive || generation !== conversationGeneration) return
     conversationId.value = data.id
     conversationTitle.value = data.title
     scene.value = data.scene || 'general'
@@ -185,8 +196,8 @@ async function openConversation(id) {
     showHistory.value = false
     scrollBottom()
   } catch (e) {
-    toast(e.message)
-  }
+    if (alive && generation === conversationGeneration) toast(e.message)
+  } finally { if (generation === conversationGeneration) loadingConversation.value = false }
 }
 
 async function removeConversation(id) {
@@ -243,11 +254,13 @@ function regenerateTasks(message){
 }
 async function importTasks(){
  if(!taskPreview.value || importing.value || !taskSelection.value.length)return
+ const message=taskPreview.value
+ const selected=[...taskSelection.value]
  importing.value=true
  try{
-  const result=await aiApi.importTasks(taskPreview.value.id,taskSelection.value)
-  taskPreview.value.task_import=result
-  taskPreview.value=null
+  const result=await aiApi.importTasks(message.id,selected)
+  message.task_import=result
+  if(taskPreview.value===message)taskPreview.value=null
   await waitForSync();await syncNow()
   toast('任务已导入，可在任务清单查看；重复确认不会重复新增')
  }catch(e){toast(e.message)}finally{importing.value=false}
@@ -308,6 +321,7 @@ async function importTasks(){
       </button>
     </div>
 
+    <p v-if="loadingConversation" class="msg-usage" role="status">正在读取所选对话，请稍候…</p>
     <p v-if="blocked && messages.length" class="msg-usage" style="padding:8px 16px">历史记录可继续查看；恢复权限并配置可用Key后才能发送新消息。</p>
     <div v-if="!blocked || messages.length" ref="scrollEl" class="chat-scroll">
       <div v-if="!messages.length && !blocked" class="chat-empty">
@@ -359,7 +373,7 @@ async function importTasks(){
         maxlength="4000"
         @keyup.enter="send"
       />
-      <button class="send-btn" :disabled="sending || (!input.trim() && !attachments.length)" @click="send">
+      <button class="send-btn" :aria-busy="loadingConversation" :disabled="sending || (!input.trim() && !attachments.length)" @click="send">
         <Send :size="18" />
       </button>
     </div>

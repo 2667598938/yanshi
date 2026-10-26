@@ -16,6 +16,7 @@ const tasks = useTasksStore()
 const subjects = useSubjectsStore()
 const { toast } = useToast()
 
+const saving = ref(false)
 const sheet = ref(false)
 const editingId = ref(null)
 const fTitle = ref('')
@@ -35,7 +36,7 @@ const future = computed(() =>
     .filter((t) => !t.dueDate || t.dueDate > today)
     .sort((a, b) => (a.dueDate||'9999').localeCompare(b.dueDate||'9999')))
 const doneList = computed(() =>
-  tasks.sorted.filter((t) => t.done).slice(-30).reverse())
+  tasks.list.filter((t) => t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).slice(0,30))
 
 const todayRate = computed(() => {
   const all = tasks.todayAll
@@ -68,7 +69,7 @@ function openEdit(t) {
   fSubject.value = t.subjectId
   fPhase.value = t.phase
   fCriteria.value = t.acceptCriteria || ''
-  fDue.value = t.dueDate || today
+  fDue.value = t.dueDate ?? ''
   fEstimated.value = t.estimatedMin || 0
   sheet.value = true
 }
@@ -77,6 +78,7 @@ function focusTask(task) {
     content: task.title.slice(0, 100) } })
 }
 async function save() {
+  if (saving.value) return
   if (!fTitle.value.trim()) {
     toast('请填写任务标题')
     return
@@ -89,14 +91,18 @@ async function save() {
     dueDate: fDue.value,
     estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(fEstimated.value)||0))),
   }
-  if (editingId.value) {
-    await tasks.update(editingId.value, payload)
-    toast('已更新任务')
-  } else {
-    await tasks.add(payload)
-    toast('已添加任务')
-  }
-  sheet.value = false
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await tasks.update(editingId.value, payload)
+      toast('已更新任务')
+    } else {
+      await tasks.add(payload)
+      toast('已添加任务')
+    }
+    sheet.value = false
+  } catch (e) { toast(e.message || '任务保存失败，请重试') }
+  finally { saving.value = false }
 }
 async function remove(id) {
   await tasks.remove(id)
@@ -121,7 +127,7 @@ async function remove(id) {
         <div class="rate-cap">今日任务完成</div>
       </div>
       <div class="rate-r">
-        <div>今天 {{ todayTasks.filter((t) => t.done).length }}/{{ todayTasks.length }} 项</div>
+        <div>今天 {{ tasks.todayAll.filter((t) => t.done).length }}/{{ tasks.todayAll.length }} 项</div>
         <div v-if="overdue.length" class="overdue">
           <AlertTriangle :size="13" /> {{ overdue.length }} 项已逾期
         </div>
@@ -259,7 +265,7 @@ async function remove(id) {
       <label>预计用时（分钟，0为未设）</label><input v-model.number="fEstimated" class="input" type="number" min="0" max="1440" />
       <input v-model="fDue" type="date" class="input" />
 
-      <button class="btn btn-primary btn-block mt16" @click="save">
+      <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
         <Check :size="18" />保存
       </button>
       <button class="btn btn-ghost btn-block mt8" @click="sheet = false">取消</button>

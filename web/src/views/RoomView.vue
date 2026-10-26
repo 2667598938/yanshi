@@ -22,6 +22,7 @@ const route = useRoute()
 const router = useRouter()
 const roomId = computed(() => (route.params.id ? Number(route.params.id) : null))
 
+let alive = true
 const room = ref(null)
 const joined = ref(true)
 const members = ref([])
@@ -116,10 +117,12 @@ function buildHeartbeat() {
 }
 
 async function fetchRoom() {
+  if (!alive) return
   // 私密房间未加入：轮询预览，房主通过后自动切换到正式房间状态
   if (!joined.value && preview.value) return loadPreview()
   try {
     const data = await roomApi.get(roomId.value)
+    if (!alive) return
     room.value = data.room
     if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
     joined.value = data.joined !== false
@@ -128,6 +131,7 @@ async function fetchRoom() {
     ranking.value = data.ranking || { today: [], week: [], all: [] }
     messages.value = data.messages || []
   } catch (e) {
+    if (!alive) return
     if (e.status === 403) return loadPreview()
     if (e.status === 404) {
       toast(e.message)
@@ -139,6 +143,7 @@ async function fetchRoom() {
 async function loadPreview() {
   try {
     const data = await roomApi.preview(roomId.value)
+    if (!alive) return
     if (data.joined) {
       preview.value = null
       joined.value = true
@@ -152,6 +157,7 @@ async function loadPreview() {
     ranking.value = { today: [], week: [], all: [] }
     messages.value = []
   } catch (e) {
+    if (!alive) return
     toast(e.message)
     router.replace('/rooms')
   }
@@ -159,6 +165,7 @@ async function loadPreview() {
 
 let beatTimer = null
 function startBeating() {
+  if (!alive) return
   if (beatTimer) return
   beat()
   beatTimer = setInterval(() => beat(), 30000)
@@ -345,6 +352,7 @@ let pollTimer = null
 onMounted(async () => {
   loading.value = true
   await fetchRoom()
+  if (!alive) return
   loading.value = false
   if (joined.value) startBeating()
   pollTimer = setInterval(fetchRoom, 15000)
@@ -358,6 +366,7 @@ function onVisibility() {
 }
 function onLeave() { /* App级pagehide按设备上报 */ }
 onBeforeUnmount(() => {
+  alive = false
   clearInterval(pollTimer)
   clearInterval(beatTimer)
   document.removeEventListener('visibilitychange', onVisibility)

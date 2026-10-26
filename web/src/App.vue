@@ -79,7 +79,7 @@ watch(
     <OfflineBanner />
     <CommunityIssues />
     <main class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }">
-      <router-view />
+      <router-view :key="route.path" />
     </main>
     <TabBar v-if="!route.meta.hideTabbar" />
     <ToastLayer />
