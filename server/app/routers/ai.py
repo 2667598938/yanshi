@@ -217,7 +217,6 @@ def prepare_chat(body, request, user, db):
     key_row = db.get(UserAIKey, user.id)
     validate_ai_base(settings, key_row.base_url if key_row else settings.volc_base_url)
     vision = key_row.supports_images if key_row else settings.ai_server_vision
-    tools = key_row.supports_tools if key_row else settings.ai_server_tools
     if body.use_tools or body.use_search:
         raise ApiError(403,40310,'仅支持本人数据摘要，不开放通用工具调用')
     if body.image_keys and (not settings.ai_vision_enabled or not vision):

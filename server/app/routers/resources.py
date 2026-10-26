@@ -145,7 +145,6 @@ def get_resource(rid: int, user=Depends(get_current_user), db=Depends(get_db)):
     if not row or row.deleted_at:
         raise ApiError(404, 40401, '资料不存在')
     if row.user_id!=user.id and not row.approved_snapshot:raise ApiError(404,40401,'资料不存在')
-    owner = db.get(User, row.user_id)
     payload, _, _, _ = _lists(db, user, [row])
     return ok(payload[0])
 

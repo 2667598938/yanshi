@@ -2,9 +2,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, delete
 from ..deps import get_current_user, get_db, get_admin, audit
-from ..models import User, StudyGroupMember, Room, RoomMember, RoomPresence
+from ..models import User, StudyGroupMember
 from ..schemas.room import HeartbeatInput
-from ..time import utcnow
 from ..services.presence import member_state, update_presence
 from pydantic import Field
 from ..errors import ok, ApiError

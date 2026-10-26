@@ -1,4 +1,4 @@
-"""四人自习室域（固定一个房间、无摄像头、只同步状态）：见 ARCHITECTURE.md 第 8 章。"""
+"""多房间自习室域：按房间管理成员与心跳，无摄像头或媒体推流。"""
 from sqlalchemy import (
     BigInteger, Column, DateTime, ForeignKey, Index, Integer, String, Text,
     UniqueConstraint,
@@ -15,7 +15,7 @@ class Room(Base):
     __tablename__ = 'rooms'
 
     id = Column(Integer, primary_key=True)
-    code = Column(String(32), unique=True, nullable=False)   # 固定房间码
+    code = Column(String(32), unique=True, nullable=False)   # 每房间唯一的房间码
     name = Column(String(80), nullable=False)
     intro = Column(String(500), default='', server_default='')
     owner_id = Column(ForeignKey('users.id'), nullable=True)
@@ -48,7 +48,7 @@ class RoomPresence(Base):
     room_id = Column(ForeignKey('rooms.id'), nullable=False, index=True)
     user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
     status = Column(String(12), default='offline', server_default='offline', nullable=False)
-    # offline | online | focusing
+    # offline | idle | focusing | resting
     subject_client_id = Column(String(500), default='', server_default='')
     subject_name = Column(String(100), default='', server_default='')
     activity_type = Column(String(20), default='', server_default='')

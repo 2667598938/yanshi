@@ -1,7 +1,7 @@
 import json
 from datetime import timedelta
 from sqlalchemy import select, delete
-from ..models import DevicePresence, RoomPresence, RoomMember, Room, User
+from ..models import DevicePresence, RoomPresence, RoomMember, Room
 from ..time import utcnow
 from ..errors import ApiError
 

@@ -1,17 +1,17 @@
-from sqlalchemy.exc import IntegrityError
 """后台管理接口（仅管理员）：概览、成员、邀请码、配置、公告、审计、数据导出。"""
+from sqlalchemy.exc import IntegrityError
 import json
 from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete as sa_delete, func, select, update as sa_update
+from sqlalchemy import and_, func, or_, select, update as sa_update
 
 from ..deps import audit, get_admin, get_db
 from ..errors import ApiError, ok
 from ..models import (
-    AIConversation, AIMessage, Announcement, Attachment, Audit, Config, FeatureRequest,
-    Invite, LearningOperation, LearningRecord, RefreshToken, Room, RoomGoal, RoomMember,
+    AIConversation, Announcement, Attachment, Audit, Config, FeatureRequest,
+    Invite, LearningOperation, LearningRecord, Room, RoomMember,
     RoomMessage, RoomPresence, User, EmailJob,
 )
 from ..schemas.account import (
@@ -21,6 +21,8 @@ from ..schemas.account import (
 from ..serializers import iso
 from ..services import features as feature_service
 from ..services import room as room_service
+from ..services.group import shared_user_ids
+from ..services.presence import WINDOW
 from ..services.messages import create_message
 from ..services.security import hash_password, new_invite_code
 from ..services.transient import digest
@@ -97,19 +99,28 @@ def admin_request_dict(row, user):
 
 # ---------------------------------------------------------------- 概览大盘
 @router.get('/overview')
-def overview(request: Request, db=Depends(get_db)):
+def overview(request: Request, db=Depends(get_db), admin=Depends(get_admin)):
     users = db.scalars(select(User).where(User.status != 'deleted')).all()
-    member_ids = [u.id for u in users]
-    room = db.scalar(select(Room).order_by(Room.id).limit(1))
-    room_member_count = db.scalar(select(func.count()).select_from(RoomMember)) if room else 0
-
-    # 在线（45 秒心跳）
-    online_count = 0
-    now = utcnow()
-    if room:
-        for p in db.scalars(select(RoomPresence).where(RoomPresence.room_id == room.id)).all():
-            if p.status != 'offline' and (now - p.last_heartbeat_at).total_seconds() <= 45:
-                online_count += 1
+    # Memberships are occupied seats, so one person in two rooms counts twice.
+    room_member_count = db.scalar(
+        select(func.count()).select_from(RoomMember).join(Room, Room.id == RoomMember.room_id)
+        .where(Room.dissolved_at.is_(None))
+    ) or 0
+    # Online accounts are distinct, restricted to current memberships and visible data.
+    online_count = db.scalar(
+        select(func.count(func.distinct(RoomPresence.user_id)))
+        .select_from(RoomPresence)
+        .join(Room, Room.id == RoomPresence.room_id)
+        .join(RoomMember, and_(RoomMember.room_id == RoomPresence.room_id,
+                              RoomMember.user_id == RoomPresence.user_id))
+        .join(User, User.id == RoomPresence.user_id)
+        .where(Room.dissolved_at.is_(None), User.status == 'active',
+               RoomPresence.status != 'offline',
+               RoomPresence.last_heartbeat_at >= utcnow() - timedelta(seconds=WINDOW),
+               or_(User.id == admin.id,
+                   and_(User.is_private_mode.is_(False),
+                        User.id.in_(shared_user_ids(admin.id)))))
+    ) or 0
 
     today_str, _ = room_service._cn_bounds()
     record_count = db.scalar(select(func.count()).select_from(LearningRecord))
@@ -123,8 +134,8 @@ def overview(request: Request, db=Depends(get_db)):
     return ok({
         'member_count': len(users),
         'vip_count': sum(1 for u in users if feature_service.is_vip(u)),
-        'room_capacity': room.capacity if room else 0,
         'room_member_count': room_member_count,
+        'online_count': online_count,
 
         'today': today_str,
         'record_count': record_count,
@@ -152,7 +163,6 @@ def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db))
         raise ApiError(409, 40901, '该邮箱已被使用')
     from ..services.admission import check_capacity
     check_capacity(db, request.app.state.settings)
-    room = room_service.get_default_room(db)
     user = User(email=body.email, nickname=body.nickname,
                 password_hash=hash_password(body.password), role='member',
                 exam_year=config_get(db,'exam_year',2028),

@@ -1,10 +1,11 @@
-"""四人自习室领域服务：固定房间、成员、心跳在线、统计聚合、留言、目标墙。
+"""多房间自习室领域服务：准入、成员、心跳在线、统计聚合、留言、目标墙。
 
 排行榜数据直接从 learning_records 中 type=session 的记录实时聚合（不做日聚合表、不允许前端自报）；
 在线 / 正在学由心跳维持（room_presence），与学习记录解耦。
 """
 import json
 from .group import shared_user_ids, same_group
+from .presence import WINDOW as ONLINE_WINDOW_SEC
 import secrets
 import string
 import time
@@ -24,7 +25,6 @@ from . import messages as message_service
 
 # 中国时区固定 UTC+8（无夏令时），用固定偏移避免依赖系统时区库
 CN = timezone(timedelta(hours=8))
-ONLINE_WINDOW_SEC = 90          # 超过 90 秒无心跳视为离线
 MAX_FOCUS_SEC = 6 * 3600        # 单次进行中专注展示上限
 MESSAGE_LIMIT = 50
 room_write_lock = threading.RLock()

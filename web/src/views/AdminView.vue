@@ -314,10 +314,13 @@ async function toggleAnnouncement(row){
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.vip_count || 0 }}</div><div class="ov-l">VIP</div></div>
 
-        <div class="ov"><div class="ov-n tnum">{{ overview.room_member_count }}</div><div class="ov-l">房间席位占用</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.room_member_count }}</div><div class="ov-l">有效房间席位占用（人次）</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.online_count }}</div><div class="ov-l">可见在线成员（去重）</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtBytes(overview.attachment_bytes) }}</div><div class="ov-l">图片占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.record_count }}</div><div class="ov-l">同步记录</div></div>
       </div>
+
+      <p v-if="overview" class="field-hint">席位统计全部未解散房间的成员关系，同一人在不同房间分别计次。在线人数按90秒有效心跳去重，并遵守小组共享与隐私权限。</p>
 
       <div class="tabs">
         <button :class="{ on: tab === 'invite' }" @click="switchTab('invite')">邀请码</button>
