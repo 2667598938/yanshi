@@ -4,12 +4,12 @@ import BlobImage from './BlobImage.vue'
 import { schoolApi } from '../api'
 import { db } from '../db'
 import { Check, Target, MapPin } from 'lucide-vue-next'
-import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
+import { SCHOOL_MAP } from '../data/schools'
 import { useAppStore } from '../stores/app'
 import { useProfileStore } from '../stores/profile'
 import { useToast } from '../composables/useToast'
-import { daysUntil, weekLabel } from '../utils/date'
 import TimeNodesHome from './TimeNodesHome.vue'
+import SchoolBullets from './SchoolBullets.vue'
 
 const schools = ref([])
 const app = useAppStore()
@@ -37,7 +37,7 @@ onMounted(async () => {
   if (!alive) return
   mergeSchools(cached?.value)
   carousel = setInterval(() => {
-    if (document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
     if (schools.value.length) browseIndex.value = (browseIndex.value + 1) % schools.value.length
   }, 6000)
   try {
@@ -55,13 +55,6 @@ const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3)
 
 const school = computed(() => schools.value[browseIndex.value] || schools.value[0] || { key:'',name:'我的梦校',color:'#526484',logo:'',view:'',motto:'自由添加你的目标院校',city:'' })
 const isDream = computed(() => school.value.key === app.dreamSchool)
-const days = computed(() => daysUntil(app.examDate))
-
-
-const examDate = computed(() => {
-  const d = new Date(app.examDate + 'T00:00:00')
-  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日 · ${weekLabel(d)}`
-})
 
 function pick(i) {
   browseIndex.value = i
@@ -102,6 +95,7 @@ async function setDream() {
         </button>
       </div>
 
+      <SchoolBullets />
       <TimeNodesHome />
 
       <div class="school-strip">

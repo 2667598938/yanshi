@@ -93,5 +93,12 @@ def refresh_facts(db, uid, primary_ids=()):
         ):
             row = sessions[f.record_id]
             row.revision += 1
-            db.add(LearningChange(user_id=uid, record_id=row.id, revision=row.revision))
+            db.add(
+                LearningChange(
+                    user_id=uid,
+                    record_id=row.id,
+                    revision=row.revision,
+                    record_type="session",
+                )
+            )
     db.flush()

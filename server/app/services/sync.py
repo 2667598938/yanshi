@@ -357,7 +357,10 @@ def execute_commands(db, user_id: int, command_dict: dict, before_commit=None) -
                 )
                 db.add(
                     LearningChange(
-                        user_id=user_id, record_id=record_id, revision=new_revision
+                        user_id=user_id,
+                        record_id=record_id,
+                        revision=new_revision,
+                        record_type=record.get("type") if record else previous_type,
                     )
                 )
 

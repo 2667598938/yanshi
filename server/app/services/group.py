@@ -2,7 +2,7 @@
 
 import json
 from sqlalchemy import select, func
-from ..models import User, StudyGroup, StudyGroupMember, LearningRecord
+from ..models import User, StudyGroup, StudyGroupMember, LearningRecord, LearningChange
 from ..errors import ApiError
 from .session_records import display_record
 
@@ -121,12 +121,21 @@ def shared_records(db, viewer, owner_id, after="", kind=None):
     )
     if kind:
         query = query.where(func.json_extract(LearningRecord.body, "$.type") == kind)
+    cursor = (
+        db.scalar(
+            select(func.max(LearningChange.id)).where(
+                LearningChange.user_id == owner_id
+            )
+        )
+        or 0
+    )
     rows = db.scalars(query.order_by(LearningRecord.id).limit(200)).all()
     return {
         "items": [
             project(display_record(db, owner_id, json.loads(row.body))) for row in rows
         ],
         "next": rows[-1].id if len(rows) == 200 else None,
+        "cursor": cursor,
     }
 
 
@@ -135,3 +144,36 @@ def shared_user_ids(viewer_id):
         StudyGroupMember.user_id == viewer_id
     )
     return select(StudyGroupMember.user_id).where(StudyGroupMember.group_id.in_(groups))
+
+
+def shared_changes(db, viewer, owner_id, since):
+    """Account-scoped monotonic log, including deletions. Recheck ACL on every page.
+
+    Client retains the FIRST snapshot-page cursor and replays subsequent changes;
+    writes/deletions during snapshot pagination are therefore never lost.
+    Non-shared changes advance the cursor but never expose record identifiers.
+    """
+    require_read(db, viewer, owner_id)
+    changes = db.scalars(
+        select(LearningChange)
+        .where(LearningChange.user_id == owner_id, LearningChange.id > since)
+        .order_by(LearningChange.id)
+        .limit(200)
+    ).all()
+    items = {}
+    for change in changes:
+        if change.record_type not in FIELDS:
+            continue
+        row = db.get(LearningRecord, (owner_id, change.record_id))
+        record = json.loads(row.body) if row and not row.deleted else None
+        items[change.record_id] = {
+            "id": change.record_id,
+            "record": project(display_record(db, owner_id, record))
+            if record and record.get("type") in FIELDS
+            else None,
+        }
+    return {
+        "items": list(items.values()),
+        "cursor": changes[-1].id if changes else since,
+        "has_more": len(changes) == 200,
+    }

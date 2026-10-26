@@ -6,27 +6,49 @@ import { useAuthStore } from '../stores/auth'
 import BlobImage from '../components/BlobImage.vue'
 const router=useRouter(), auth=useAuthStore()
 const members=ref([]), selected=ref(null), records=ref([]), error=ref(''), tab=ref('task')
-let interval, generation=0,alive=true
+let interval, generation=0, alive=true, flight=null, cursor=null
+function clear(){ records.value=[]; cursor=null }
+function valid(seq,account){return alive&&seq===generation&&account===auth.user?.id}
 async function load(){
-  const seq=++generation, account=auth.user?.id
-  if(document.visibilityState==='hidden'){records.value=[];return}
+  const seq=generation, account=auth.user?.id
+  if(document.visibilityState==='hidden'){generation++;clear();return}
+  if(flight?.seq===seq)return
+  const token={seq};flight=token
   try{
     const rows=await groupApi.members()
-    if(!alive||seq!==generation||account!==auth.user?.id)return
+    if(!valid(seq,account))return
     members.value=rows
     const member=rows.find(row=>row.id===selected.value)
-    if(!member || (member.is_private_mode&&member.id!==account)){records.value=[];return}
-    const all=[];let after=''
-    for(;;){
-      const data=await groupApi.learning(member.id,after);all.push(...data.items)
-      if(!data.next)break
-      after=data.next
+    if(!member || (member.is_private_mode&&member.id!==account)){clear();return}
+    let nextCursor=cursor, result=new Map(records.value.map(row=>[row.id,row]))
+    if(nextCursor===null){
+      result=new Map();let after=''
+      for(;;){
+        const data=await groupApi.learning(member.id,after)
+        if(!valid(seq,account))return
+        // Keep the FIRST page's watermark: changes during pagination must replay.
+        if(nextCursor===null)nextCursor=data.cursor
+        for(const row of data.items)result.set(row.id,row)
+        if(!data.next)break
+        after=data.next
+      }
     }
-    if(alive&&seq===generation&&account===auth.user?.id){records.value=all;error.value=''}
-  }catch(e){if(alive&&seq===generation){records.value=[];error.value=e.status===404?'该成员已开启隐私或共享权限已变化':e.message}}
+    for(;;){
+      const data=await groupApi.changes(member.id,nextCursor)
+      if(!valid(seq,account))return
+      for(const change of data.items){
+        if(change.record)result.set(change.id,change.record)
+        else result.delete(change.id)
+      }
+      nextCursor=data.cursor
+      if(!data.has_more)break
+    }
+    if(valid(seq,account)){records.value=[...result.values()];cursor=nextCursor;error.value=''}
+  }catch(e){if(valid(seq,account)){clear();error.value=e.status===404?'该成员已开启隐私或共享权限已变化':e.message}}
+  finally{if(flight===token)flight=null}
 }
-watch(()=>auth.user?.id,()=>{generation++;records.value=[];members.value=[];selected.value=null})
-function select(member){records.value=[];selected.value=member.id;load()}
+watch(()=>auth.user?.id,()=>{generation++;clear();members.value=[];selected.value=null;load()})
+function select(member){generation++;clear();selected.value=member.id;load()}
 const chosen=computed(()=>members.value.find(row=>row.id===selected.value))
 const visible=computed(()=>records.value.filter(row=>row.type===tab.value))
 const heat=computed(()=>{

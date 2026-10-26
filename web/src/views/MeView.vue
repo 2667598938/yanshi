@@ -22,6 +22,7 @@ import { inspectBackup, restoreBackup } from '../utils/restore'
 import { fmtMinutes, todayKey } from '../utils/date'
 import { authApi, publicApi, attachmentApi, messageApi, schoolApi } from '../api'
 import BlobImage from '../components/BlobImage.vue'
+import { useLearningSettingsStore } from '../stores/learningSettings'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
@@ -29,6 +30,12 @@ const timer = useTimerStore()
 const app = useAppStore()
 const auth = useAuthStore()
 const profile = useProfileStore()
+const learningSettings = useLearningSettingsStore()
+onMounted(() => learningSettings.load(true).catch(() => {}))
+async function toggleBullets() {
+  try { await learningSettings.save({ ...learningSettings.value, bulletEnabled: !learningSettings.value.bulletEnabled }) }
+  catch (e) { toast(e.message || '设置保存失败') }
+}
 const { toast } = useToast()
 
 const sheetType = ref(null)
@@ -352,39 +359,37 @@ onMounted(() => {
       <div class="group">
         <div class="group-title">学习设置</div>
         <div class="card menu">
-          <div class="row" @click="open('school')">
+          <button type="button" class="row" @click="open('school')">
             <span class="row-ic c-blue"><Target :size="18" /></span>
             <span class="row-label">我的梦校</span>
             <span class="row-val">{{ school.short }}</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/subjects')">
+          </button>
+          <button class="row" @click="router.push('/schools/manage')"><span class="row-ic c-purple"><School :size="18" /></span><span class="row-label">梦校管理</span><span class="row-val">新增 / 相册 / 排序</span><ChevronRight :size="17" class="row-arrow" /></button>
+          <button class="row" @click="router.push('/settings/time-nodes')"><span class="row-ic c-blue"><Clock3 :size="18" /></span><span class="row-label">时间节点与专属寄语</span><ChevronRight :size="17" class="row-arrow" /></button>
+          <button class="row" role="switch" :aria-checked="learningSettings.value.bulletEnabled" @click="toggleBullets"><span class="row-ic c-gold"><Sparkles :size="18" /></span><span class="row-label">梦校励志弹幕</span><span class="row-val">{{ learningSettings.value.bulletEnabled ? '开启' : '关闭' }}</span></button>
+          <button type="button" class="row" @click="router.push('/subjects')">
             <span class="row-ic c-purple"><BookMarked :size="18" /></span>
             <span class="row-label">科目管理</span>
             <span class="row-val">自定义 / 归档</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="open('goal')">
+          </button>
+          <button type="button" class="row" @click="open('goal')">
             <span class="row-ic c-orange"><Clock3 :size="18" /></span>
             <span class="row-label">每日专注目标</span>
             <span class="row-val">{{ fmtMinutes(auth.user?.daily_goal_min || app.dailyGoalMin) }}</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/settings/learning')">
+          </button>
+          <button type="button" class="row" @click="router.push('/settings/learning')">
             <span class="row-ic c-orange"><Clock3 :size="18" /></span>
             <span class="row-label">专注与休息设置</span><ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="toggleNotify">
+          </button>
+          <button type="button" class="row" role="switch" :aria-checked="app.notifyEnabled" @click="toggleNotify">
             <span class="row-ic c-purple"><Bell :size="18" /></span>
             <span class="row-label">到点浏览器通知</span>
             <span class="switch" :class="{ on: app.notifyEnabled }"><span class="knob"></span></span>
-          </div>
-          <div class="row" @click="togglePrivacy">
-            <span class="row-ic c-purple"><EyeOff :size="18" /></span>
-            <span class="row-label">小组隐私模式</span>
-            <span class="row-val">一键停止全部学习数据共享</span>
-            <span class="switch" :class="{ on: auth.user?.is_private_mode }"><span class="knob"></span></span>
-          </div>
+          </button>
+
         </div>
       </div>
 
@@ -392,35 +397,35 @@ onMounted(() => {
       <div class="group">
         <div class="group-title">学习工具</div>
         <div class="card menu">
-          <div class="row" @click="manualSync">
+          <button type="button" class="row" @click="manualSync">
             <span class="row-ic c-blue"><RefreshCw :size="18" /></span>
             <span class="row-label">立即同步</span>
             <span class="row-val">{{ syncing ? '同步中…' : lastSyncText }}</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/tasks')">
+          </button>
+          <button type="button" class="row" @click="router.push('/tasks')">
             <span class="row-ic c-blue"><ListChecks :size="18" /></span>
             <span class="row-label">任务清单</span>
             <span class="row-val">计划 / 验收</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/mistakes')">
+          </button>
+          <button type="button" class="row" @click="router.push('/mistakes')">
             <span class="row-ic c-red"><NotebookPen :size="18" /></span>
             <span class="row-label">错题本</span>
             <span class="row-val">艾宾浩斯复习</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/error-types')">
+          </button>
+          <button type="button" class="row" @click="router.push('/error-types')">
             <span class="row-ic c-purple"><Shapes :size="18" /></span>
             <span class="row-label">错误类型管理</span>
             <span class="row-val">自定义 / 增删改</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/ai')">
+          </button>
+          <button type="button" class="row" @click="router.push('/ai')">
             <span class="row-ic c-ink"><Sparkles :size="18" /></span>
             <span class="row-label">AI 助教</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
+          </button>
         </div>
       </div>
 
@@ -428,42 +433,42 @@ onMounted(() => {
       <div class="group">
         <div class="group-title">资料与消息</div>
         <div class="card menu">
-          <div class="row" @click="router.push('/resources')">
+          <button type="button" class="row" @click="router.push('/resources')">
             <span class="row-ic c-blue"><BookOpen :size="18" /></span>
             <span class="row-label">资料库</span>
             <span class="row-val">{{ auth.isVip ? '可发布' : 'VIP 可发布' }}</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/resources?tab=fav')">
+          </button>
+          <button type="button" class="row" @click="router.push('/resources?tab=fav')">
             <span class="row-ic c-gold"><Star :size="18" /></span>
             <span class="row-label">我的收藏</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/messages')">
+          </button>
+          <button type="button" class="row" @click="router.push('/messages')">
             <span class="row-ic c-purple"><MessagesSquare :size="18" /></span>
             <span class="row-label">消息中心</span>
             <span v-if="unread" class="unread-badge">{{ unread > 99 ? '99+' : unread }}</span>
             <span v-else class="row-val">暂无未读</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/posts')">
+          </button>
+          <button type="button" class="row" @click="router.push('/posts')">
             <span class="row-ic c-blue"><MessageSquare :size="18" /></span>
             <span class="row-label">研友动态</span>
             <span class="row-val">发帖 · 评论</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/inspirations')">
+          </button>
+          <button type="button" class="row" @click="router.push('/inspirations')">
             <span class="row-ic c-gold"><Sparkles :size="18" /></span>
             <span class="row-label">励志区</span>
             <span class="row-val">投稿轮播</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/dream-wall')">
+          </button>
+          <button type="button" class="row" @click="router.push('/dream-wall')">
             <span class="row-ic c-purple"><School :size="18" /></span>
             <span class="row-label">梦校墙</span>
-            <span class="row-val">七所梦校</span>
+            <span class="row-val">自定义院校 / 多图相册</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
+          </button>
         </div>
       </div>
 
@@ -471,92 +476,100 @@ onMounted(() => {
       <div class="group">
         <div class="group-title">会员与申请</div>
         <div class="card menu">
-          <div class="row" @click="router.push('/vip')">
+          <button type="button" class="row" @click="router.push('/vip')">
             <span class="row-ic c-gold"><Crown :size="18" /></span>
             <span class="row-label">会员中心</span>
             <span class="row-val">{{ auth.isVip ? `VIP · ${vipUntil} 到期` : '未开通' }}</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="router.push('/requests')">
+          </button>
+          <button type="button" class="row" @click="router.push('/requests')">
             <span class="row-ic c-blue"><ClipboardCheck :size="18" /></span>
             <span class="row-label">功能申请</span>
             <span class="row-val">提交 / 查看进度</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
+          </button>
         </div>
       </div>
 
       <div class="group">
         <div class="group-title">账号安全</div>
-        <div class="card menu"><div class="row" @click="router.push('/me/phone')">
-          <span class="row-label">绑定手机号</span><span class="row-val">{{ auth.user?.phone ? '已绑定' : '未绑定' }}</span><ChevronRight :size="17" />
-        </div></div>
+        <div class="card menu"><button type="button" class="row" @click="router.push('/me/phone')">
+          <span class="row-ic c-blue"><ShieldCheck :size="18" /></span><span class="row-label">绑定手机号</span><span class="row-val">{{ auth.user?.phone ? '已绑定' : '未绑定' }}</span><ChevronRight :size="17" />
+        </button></div>
       </div>
       <!-- 管理与账号 -->
       <div class="group" v-if="auth.isAdmin">
         <div class="group-title">管理</div>
         <div class="card menu">
-          <div class="row" @click="router.push('/admin')">
+          <button type="button" class="row" @click="router.push('/admin')">
             <span class="row-ic c-gold"><ShieldCheck :size="18" /></span>
             <span class="row-label">后台管理</span>
             <span class="row-val">邀请码 / 成员 / 公告</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
+          </button>
         </div>
       </div>
 
-      <div class="group"><div class="card menu">
-        <div class="row" @click="router.push('/group/admission')">小组入组申请与记录<ChevronRight :size="17" /></div>
-        <div class="row" @click="router.push('/group')">小组学习数据 · 默认互通<ChevronRight :size="17" /></div>
-        <div class="row" @click="router.push('/schools/manage')">我的梦校 · 新增、删除、排序<ChevronRight :size="17" /></div>
-        <div class="row" @click="router.push('/settings/time-nodes')">时间节点管理与自定义寄语<ChevronRight :size="17" /></div>
-      </div></div>
+      <div class="group">
+        <div class="group-title">小组与共享</div>
+        <p class="group-help">受邀加入后互看学习数据；房间准入和会员权益分别管理。</p>
+        <div class="card menu">
+          <button class="row" @click="router.push('/group/admission')"><span class="row-ic c-blue"><ClipboardCheck :size="18" /></span><span class="row-label">入组申请与记录</span><ChevronRight :size="17" class="row-arrow" /></button>
+          <button type="button" class="row" role="switch" :aria-checked="!!auth.user?.is_private_mode" @click="togglePrivacy">
+            <span class="row-ic c-purple"><EyeOff :size="18" /></span>
+            <span class="row-label">小组隐私模式</span>
+            <span class="row-val">一键停止全部学习数据共享</span>
+            <span class="switch" :class="{ on: auth.user?.is_private_mode }"><span class="knob"></span></span>
+          </button>
+          <button class="row" @click="router.push('/group')"><span class="row-ic c-green"><BookOpen :size="18" /></span><span class="row-label">小组学习数据</span><span class="row-val">只读互助</span><ChevronRight :size="17" class="row-arrow" /></button>
+        </div>
+      </div>
       <!-- 数据与关于 -->
       <div class="group">
         <div class="group-title">数据与关于</div>
         <div class="card menu">
-          <div class="row" @click="exportBackup">
+          <button type="button" class="row" @click="exportBackup">
             <span class="row-ic c-green"><Download :size="18" /></span>
             <span class="row-label">导出备份（本地图片及云端引用）</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="backupInput?.click()">
+          </button>
+          <button type="button" class="row" @click="backupInput?.click()">
             <span class="row-ic c-blue"><Download :size="18" /></span><span class="row-label">从备份恢复</span><ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="openLegal('terms')">
+          </button>
+          <button type="button" class="row" @click="openLegal('terms')">
             <span class="row-ic c-blue"><FileText :size="18" /></span>
             <span class="row-label">用户协议</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="openLegal('privacy')">
+          </button>
+          <button type="button" class="row" @click="openLegal('privacy')">
             <span class="row-ic c-blue"><FileText :size="18" /></span>
             <span class="row-label">隐私政策</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="openLegal('disclaimer')">
+          </button>
+          <button type="button" class="row" @click="openLegal('disclaimer')">
             <span class="row-ic c-blue"><FileText :size="18" /></span>
             <span class="row-label">免责声明</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row" @click="open('about')">
+          </button>
+          <button type="button" class="row" @click="open('about')">
             <span class="row-ic c-blue"><Info :size="18" /></span>
             <span class="row-label">关于研时</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row danger" @click="open('clear')">
+          </button>
+          <button type="button" class="row danger" @click="open('clear')">
             <span class="row-ic c-gray"><Trash2 :size="18" /></span>
             <span class="row-label">清空本地记录</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
-          <div class="row danger" @click="logout">
+          </button>
+          <button type="button" class="row danger" @click="logout">
             <span class="row-ic c-gray"><LogOut :size="18" /></span>
             <span class="row-label">退出登录</span>
             <ChevronRight :size="17" class="row-arrow" />
-          </div>
+          </button>
         </div>
       </div>
 
-      <div class="version">研时 v0.3 · 四人私密版</div>
+      <div class="version">研时 · 四人学习小组</div>
     </div>
 
     <!-- 弹层 -->
@@ -791,4 +804,13 @@ onMounted(() => {
 .modal-head h3 { margin: 0; font-size: 16px; }
 .modal-head button { border: none; background: #f1f4fa; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 .modal-body { padding: 16px 18px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.8; color: #3a4256; margin: 0; }
+</style>
+
+<style scoped>
+button.row{width:100%;background:transparent;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.group-help{font-size:12px;line-height:1.6;color:var(--sub);margin:0 4px 10px}
+.row-label{min-width:0}.row-val{max-width:48%;white-space:normal;text-align:right}
+button.row:not(:last-child){border-bottom:1px solid var(--line)}
+.switch{flex-shrink:0}
+button.row:focus-visible{outline:2px solid var(--blue,#526484);outline-offset:-2px;border-radius:8px}
 </style>

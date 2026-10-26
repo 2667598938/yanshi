@@ -408,3 +408,14 @@ button {
 .view-enter-from {
   opacity: 0;
 }
+
+/* Subtle entrance and feedback; no delayed route unmount or hidden cached pages. */
+@media (prefers-reduced-motion: no-preference) {
+  .app-main > :first-child { animation: page-arrive 180ms ease-out; }
+  .btn, .row, .card { transition: background-color 140ms ease, box-shadow 140ms ease; }
+  .btn:active { transform: translateY(1px); }
+  @keyframes page-arrive { from { transform: translateY(5px); } to { transform: translateY(0); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

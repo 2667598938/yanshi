@@ -86,6 +86,7 @@ export const attachmentApi = {
 // ------------------------------------------------------------ 院校
 export const groupApi = {
   members: () => http.get('/group/members'),
+  changes: (id, since) => http.get(`/group/members/${id}/learning/changes`, { query: { since } }),
   learning: (id, after = '') => http.get(`/group/members/${id}/learning`, { query: { after } }),
   presence: (body) => http.post('/group/presence', body),
 }
@@ -176,6 +177,7 @@ export const postApi = {
 }
 
 export const inspirationApi = {
+  bullets: () => http.get('/inspirations/bullets', { auth: false }),
   list: () => http.get('/inspirations', { auth: false }),
   mine: () => http.get('/inspirations/mine'),
   submit: (body) => http.post('/inspirations', body),

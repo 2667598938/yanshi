@@ -2,10 +2,11 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { schoolApi } from '../api'
 import { db } from '../db'
+import SchoolBullets from '../components/SchoolBullets.vue'
 import BlobImage from '../components/BlobImage.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, MapPin, Quote, ChevronRight } from 'lucide-vue-next'
-import { SCHOOLS, SCHOOL_MAP } from '../data/schools'
+import { SCHOOL_MAP } from '../data/schools'
 
 const router = useRouter()
 const route = useRoute()
@@ -29,7 +30,7 @@ function merge(rows) {
 }
 onMounted(async () => {
   interval = setInterval(() => {
-    if (active.value && document.visibilityState === 'visible' && Date.now() - lastManual >= 10000) albumIndex.value += 1
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && active.value && document.visibilityState === 'visible' && Date.now() - lastManual >= 10000) albumIndex.value += 1
   }, 5000)
   try {
     const cached = await db.kv.get('schools:catalog')
@@ -56,6 +57,7 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
         <div class="wh-sub">我的自由梦校墙 · 随时新增、删除与排序</div>
       </div>
 
+      <SchoolBullets />
       <button class="btn btn-primary mb16" @click="router.push('/schools/manage')">管理我的梦校</button>
       <p v-if="!schools.length">还没有梦校，点击上方按钮添加。</p>
       <div class="school-grid">
