@@ -79,7 +79,18 @@ async function submit() {
 }
 
 function statusCls(s) {
-  return s === 'approved' ? 'ok' : s === 'rejected' ? 'no' : 'wait'
+  return s === 'approved' ? 'ok' : ['rejected', 'withdrawn', 'taken_down'].includes(s) ? 'no' : 'wait'
+}
+
+async function withdraw(row) {
+  if (!confirm('撤回后将从励志区和梦校弹幕池移除，且不能直接恢复。确认撤回？')) return
+  try {
+    await inspirationApi.withdraw(row.id)
+    toast('已撤回')
+    await load()
+  } catch (e) {
+    toast(e.message)
+  }
 }
 
 onMounted(async () => {
@@ -140,6 +151,7 @@ onBeforeUnmount(() => clearInterval(timer))
             <div v-if="m.review_note" class="mine-note">审核备注：{{ m.review_note }}</div>
           </div>
           <span class="status" :class="statusCls(m.status)">{{ m.status_label }}</span>
+          <button v-if="['pending', 'approved'].includes(m.status)" class="mine-withdraw" @click="withdraw(m)">撤回</button>
         </div>
       </div>
     </div>
@@ -200,6 +212,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .status.ok { background: #e7f7ee; color: #1f9d55; }
 .status.no { background: #fdecec; color: var(--red); }
 .status.wait { background: #fff3df; color: var(--accent-deep); }
+.mine-withdraw { border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 8px; font-size: 11px; padding: 3px 8px; cursor: pointer; flex-shrink: 0; align-self: center; }
 .mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
 .sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
 .sheet-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 12px; }

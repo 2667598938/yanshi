@@ -1,4 +1,7 @@
-"""AI 助教服务：VIP 用户自填 Key（OpenAI 兼容），保留服务端兜底 Key。"""
+"""AI 助教服务：VIP 用户自填 Key（OpenAI 兼容）为唯一主路径。
+
+`call_ark` / `stream_ark` 仅为历史/测试占位，生产聊天路由不会调用，也不会回退平台 Key。
+"""
 import json
 import time
 
@@ -183,7 +186,7 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
 
 
 async def stream_ark(settings, messages):
-    """服务端兜底 Key（火山方舟）流式输出。"""
+    """历史测试占位（火山方舟），生产聊天不调用。"""
     if not settings.ai_enabled:
         raise ApiError(503, 50301, 'AI 尚未配置（服务端未填写火山方舟 Key）')
     url = settings.volc_base_url.rstrip('/') + '/chat/completions'

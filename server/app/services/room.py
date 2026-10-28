@@ -5,7 +5,7 @@
 """
 
 import json
-from .group import shared_user_ids, same_group
+from .group import shared_user_ids
 from .presence import WINDOW as ONLINE_WINDOW_SEC
 from .session_records import display_record
 import secrets
@@ -674,6 +674,8 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
     member_payload = []
     rankable = []
     online_count = 0
+    # 同组关系一次批量查出：避免在成员循环里逐人查询（房间越大越慢）
+    peer_ids = set(db.scalars(shared_user_ids(current_user.id)).all())
     for m in members:
         u = users.get(m.user_id)
         if u is None:
@@ -684,15 +686,11 @@ def room_state(db, current_user, room=None, limit_messages=MESSAGE_LIMIT):
             and p.status != "offline"
             and (now - p.last_heartbeat_at).total_seconds() <= ONLINE_WINDOW_SEC
         )
-        if online and (
-            u.id == current_user.id
-            or (not u.is_private_mode and same_group(db, current_user.id, u.id))
-        ):
-            online_count += 1
         private = bool(u.is_private_mode)
-        hide = u.id != current_user.id and (
-            private or not same_group(db, current_user.id, u.id)
-        )
+        shared = u.id == current_user.id or u.id in peer_ids
+        if online and (u.id == current_user.id or (not private and shared)):
+            online_count += 1
+        hide = u.id != current_user.id and (private or not shared)
         display_status = p.status if online else "offline"
         focus_sec = None
         if online and p and p.status == "focusing" and p.focus_started_at:

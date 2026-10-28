@@ -27,9 +27,9 @@ def decode(request: Request, token: str, kind: str):
             token, request.app.state.secret,
             audience=settings.jwt_audience, issuer=settings.jwt_issuer, algorithms=['HS256'])
     except ExpiredSignatureError:
-        raise ApiError(401, 40102, '登录已过期')
+        raise ApiError(401, 40102, '登录已过期') from None
     except InvalidTokenError:
-        raise ApiError(401, 40101, '请先登录')
+        raise ApiError(401, 40101, '请先登录') from None
     for key in ('exp', 'iat', 'sub', 'jti', 'kind', 'ver'):
         if key not in data:
             raise ApiError(401, 40101, '请先登录')

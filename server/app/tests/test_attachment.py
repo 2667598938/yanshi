@@ -1,9 +1,14 @@
 """图片附件与院校库（v0.3-d）测试。"""
+import json
+from datetime import timedelta
 from io import BytesIO
 
 from PIL import Image
+from sqlalchemy import select
 
+from app.models import Attachment, LearningRecord, User
 from app.tests.conftest import login, read_latest_code
+from app.time import utcnow
 
 ADMIN = {'email': 'admin@test.com', 'password': 'Admin2028'}
 
@@ -35,6 +40,33 @@ def upload(client, url, headers, biz=None):
     if biz:
         url += '?biz=' + biz
     return client.post(url, headers=headers, files=files)
+
+
+def test_orphan_reclaim_keeps_referenced_images_and_frees_quota(client):
+    admin = login(client, **ADMIN)
+    a = ah(admin['access_token'])
+    f = register_friend(client, a, 'img-reclaim@test.com', '空间同学')
+    used = upload(client, '/api/v1/attachments/image', f, biz='mistake').json()['data']['key']
+    orphan = upload(client, '/api/v1/attachments/image', f, biz='mistake').json()['data']['key']
+    with client.app.state.session_factory() as db:
+        uid = db.scalar(select(User.id).where(User.email == 'img-reclaim@test.com'))
+        db.add(LearningRecord(user_id=uid, id='mk-used', body=json.dumps({
+            'type': 'mistake', 'content': '题目', 'images': [used], 'answerImages': [],
+        }, ensure_ascii=False), revision=1, deleted=0, updated_at=utcnow()))
+        for row in db.scalars(select(Attachment).where(
+                Attachment.uploader_id == uid)).all():
+            row.created_at = utcnow() - timedelta(hours=25)
+        db.commit()
+
+    summary = client.get('/api/v1/attachments/storage', headers=f).json()['data']
+    assert summary['orphan_count'] == 1
+    assert summary['orphan_bytes'] > 0
+    reclaimed = client.post('/api/v1/attachments/reclaim', headers=f).json()['data']
+    assert reclaimed['deleted'] == 1 and reclaimed['freed_bytes'] > 0
+
+    assert client.get('/api/v1/attachments/view', params={'key': used}, headers=f).status_code == 200
+    assert client.get('/api/v1/attachments/view', params={'key': orphan}, headers=f).status_code == 404
+    assert client.get('/api/v1/attachments/storage', headers=f).json()['data']['orphan_count'] == 0
 
 
 def test_avatar_upload_and_view_permission(client):

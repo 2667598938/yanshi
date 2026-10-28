@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from ..deps import require_enabled_feature, audit, get_admin, get_current_user, get_db
 from ..errors import ApiError, ok
 from ..models import Attachment, Inspiration, User
-from ..schemas.community import InspirationInput, InspirationReview
+from ..schemas.community import InspirationInput, InspirationNote, InspirationReview, InspirationTakedown
 from ..serializers import iso
 from ..services.messages import create_message
 from ..time import utcnow
@@ -17,7 +17,13 @@ router = APIRouter(
     dependencies=[Depends(require_enabled_feature("inspiration"))],
 )
 
-STATUS_LABEL = {"pending": "待审核", "approved": "已通过", "rejected": "已驳回"}
+STATUS_LABEL = {
+    "pending": "待审核",
+    "approved": "已通过",
+    "rejected": "已驳回",
+    "withdrawn": "作者已撤回",
+    "taken_down": "已下架",
+}
 
 
 def item_dict(row, user=None, with_user=False):
@@ -109,6 +115,68 @@ def submit_inspiration(
     db.commit()
     db.refresh(row)
     return ok(item_dict(row))
+
+
+@router.post("/inspirations/{iid}/withdraw")
+def withdraw_inspiration(
+    iid: int,
+    body: InspirationNote,
+    request: Request,
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    row = db.get(Inspiration, iid)
+    if not row or row.user_id != user.id:
+        raise ApiError(404, 40401, "投稿不存在")
+    if row.status not in {"pending", "approved"}:
+        raise ApiError(400, 40001, "该投稿当前不能撤回")
+    row.status = "withdrawn"
+    row.review_note = body.note.strip() or "作者撤回"
+    row.reviewed_by = user.id
+    row.reviewed_at = utcnow()
+    audit(db, request, "inspiration.withdraw", user_id=user.id, detail=str(iid))
+    db.commit()
+    return ok(item_dict(row))
+
+
+@router.post("/admin/inspirations/{iid}/takedown")
+def takedown_inspiration(
+    iid: int,
+    body: InspirationTakedown,
+    request: Request,
+    db=Depends(get_db),
+    admin=Depends(get_admin),
+):
+    row = db.get(Inspiration, iid)
+    if not row:
+        raise ApiError(404, 40401, "投稿不存在")
+    if row.status != "approved":
+        raise ApiError(400, 40001, "仅已通过的投稿可以下架")
+    row.status = "taken_down"
+    row.review_note = body.note.strip()
+    row.reviewed_by = admin.id
+    row.reviewed_at = utcnow()
+    author = db.get(User, row.user_id)
+    create_message(
+        db,
+        author,
+        "content",
+        "励志投稿已下架",
+        f"你的投稿已从励志区和梦校弹幕池下架。原因：{row.review_note}",
+        link="/inspirations",
+        dedupe_key=f"inspiration-takedown:{iid}",
+        email=True,
+        settings=request.app.state.settings,
+    )
+    audit(
+        db,
+        request,
+        "admin.takedown_inspiration",
+        user_id=row.user_id,
+        detail=f"{iid} {row.review_note}",
+    )
+    db.commit()
+    return ok(item_dict(row, author, with_user=True))
 
 
 @router.get("/admin/inspirations")

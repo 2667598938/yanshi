@@ -81,6 +81,8 @@ export const attachmentApi = {
     return http.post('/attachments/image', fd, { query: { biz } })
   },
   remove: (key) => http.del('/attachments', { query: { key } }),
+  storage: () => http.get('/attachments/storage'),
+  reclaim: () => http.post('/attachments/reclaim', {}),
 }
 
 // ------------------------------------------------------------ 院校
@@ -142,7 +144,7 @@ export const errorTypeApi = {
 }
 
 export const messageApi = {
-  list: (limit = 50) => http.get('/messages', { query: { limit } }),
+  list: (limit = 50, beforeId = null) => http.get('/messages', { query: { limit, ...(beforeId ? { before_id: beforeId } : {}) } }),
   unread: () => http.get('/messages/unread-count'),
   read: (id) => http.post(`/messages/${id}/read`, {}),
   readAll: () => http.post('/messages/read-all', {}),
@@ -183,6 +185,8 @@ export const inspirationApi = {
   submit: (body) => http.post('/inspirations', body),
   adminList: (status = 'pending') => http.get('/admin/inspirations', { query: { status } }),
   adminReview: (id, body) => http.post(`/admin/inspirations/${id}/review`, body),
+  withdraw: (id, note = '') => http.post(`/inspirations/${id}/withdraw`, { note }),
+  takedown: (id, note) => http.post(`/admin/inspirations/${id}/takedown`, { note }),
 }
 
 // ------------------------------------------------------------ 后台

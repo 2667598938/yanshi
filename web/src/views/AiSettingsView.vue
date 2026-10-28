@@ -29,6 +29,11 @@ const supportsImages = ref(false)
 const supportsTools = ref(false)
 const status = ref(null)
 const models = ref([])
+const modelSearch = ref('')
+const filteredModels = computed(() => {
+  const q = modelSearch.value.trim().toLowerCase()
+  return q ? models.value.filter((m) => m.id.toLowerCase().includes(q)) : models.value
+})
 const fetching = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
@@ -228,9 +233,13 @@ onMounted(load)
               <RefreshCw :size="15" />{{ fetching ? '拉取中…' : '拉取列表' }}
             </button>
           </div>
+          <div v-if="models.length" class="model-filter">
+            <input v-model="modelSearch" class="input" placeholder="搜索模型 ID" aria-label="搜索模型 ID" />
+            <span class="model-count">{{ filteredModels.length }} / {{ models.length }}</span>
+          </div>
           <div v-if="models.length" class="model-list">
             <button
-              v-for="m in models.slice(0, 12)"
+              v-for="m in filteredModels"
               :key="m.id"
               class="model-chip"
               :class="{ on: model === m.id }"
@@ -238,6 +247,7 @@ onMounted(load)
             >
               {{ m.id }}{{ m.id === currentProvider?.model ? ' · 推荐' : '' }} · {{ m.supports_images == null ? '图片能力未知' : m.supports_images ? '支持图片' : '不支持图片' }} · 上下文{{ m.context_length || '未知' }}
             </button>
+            <p v-if="!filteredModels.length" class="field-hint">没有匹配的模型，可直接在上方输入完整模型 ID。</p>
           </div>
 
           <div class="field-hint">模型列表不保证提供能力信息；请根据服务商说明确认当前模型能力。</div>
@@ -308,7 +318,10 @@ onMounted(load)
 .field-hint { font-size: 11px; color: var(--faint); margin-top: 5px; line-height: 1.6; }
 .model-row { display: flex; gap: 8px; }
 .model-row .input { flex: 1; }
-.model-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.model-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; max-height: 30vh; overflow-y: auto; }
+.model-filter { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.model-filter .input { flex: 1; }
+.model-count { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .model-chip {
   border: 1px solid var(--line); background: #fafbfe; color: var(--sub);
   border-radius: 999px; padding: 5px 10px; font-size: 11px; cursor: pointer;

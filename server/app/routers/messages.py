@@ -12,10 +12,13 @@ router = APIRouter(prefix='/api/v1/messages', tags=['messages'])
 
 
 @router.get('')
-def list_messages(limit: int = 50, user=Depends(get_current_user), db=Depends(get_db)):
+def list_messages(limit: int = 50, before_id: int | None = None,
+                  user=Depends(get_current_user), db=Depends(get_db)):
     limit = min(max(limit, 1), 100)
-    rows = db.scalars(select(Message).where(
-        Message.user_id == user.id).order_by(Message.id.desc()).limit(limit)).all()
+    query = select(Message).where(Message.user_id == user.id)
+    if before_id:
+        query = query.where(Message.id < before_id)
+    rows = db.scalars(query.order_by(Message.id.desc()).limit(limit)).all()
     return ok([message_dict(r) for r in rows])
 
 

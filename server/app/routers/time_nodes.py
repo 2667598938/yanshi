@@ -6,48 +6,52 @@ from sqlalchemy import select
 from ..deps import get_current_user, get_db
 from ..models import TimeNode, LearningRecord, LearningChange
 from ..errors import ok
-from ..services.sync import sync_write_lock
+from ..services.write_guard import account_write
 
 router = APIRouter(prefix="/api/v1/time-nodes", tags=["time-nodes"])
 
 
+def _init_nodes(db, user):
+    try:
+        exam_day = date.fromisoformat(
+            user.exam_date or config_get(db, "exam_date", "2027-12-25")
+        )
+    except (ValueError, TypeError):
+        exam_day = date(2027, 12, 25)
+    score_day = date(min(exam_day.year + 1, 9999), 2, 20)
+    for key, name, day in [
+        ("exam", "考研初试", exam_day.isoformat()),
+        ("score", "初试出分", score_day.isoformat()),
+    ]:
+        record_id = f"time-node-{key}"
+        if db.get(LearningRecord, (user.id, record_id)):
+            continue
+        value = dict(node_name=name, target_date=day, show_on_home=True, custom_msg="")
+        db.add(TimeNode(user_id=user.id, id=record_id, **value))
+        db.add(
+            LearningRecord(
+                user_id=user.id,
+                id=record_id,
+                body=json.dumps(
+                    {"id": record_id, "type": "timeNode", "value": value},
+                    ensure_ascii=False,
+                ),
+                revision=1,
+                deleted=0,
+            )
+        )
+        db.add(LearningChange(user_id=user.id, record_id=record_id, revision=1))
+    user.time_nodes_initialized = True
+
+
 @router.get("")
 def nodes(user=Depends(get_current_user), db=Depends(get_db)):
-    with sync_write_lock:
-        db.refresh(user, with_for_update=True)
-        if not user.time_nodes_initialized:
-            try:
-                exam_day = date.fromisoformat(
-                    user.exam_date or config_get(db, "exam_date", "2027-12-25")
-                )
-            except (ValueError, TypeError):
-                exam_day = date(2027, 12, 25)
-            score_day = date(min(exam_day.year + 1, 9999), 2, 20)
-            for key, name, day in [
-                ("exam", "考研初试", exam_day.isoformat()),
-                ("score", "初试出分", score_day.isoformat()),
-            ]:
-                record_id = f"time-node-{key}"
-                if db.get(LearningRecord, (user.id, record_id)):
-                    continue
-                value = dict(
-                    node_name=name, target_date=day, show_on_home=True, custom_msg=""
-                )
-                db.add(TimeNode(user_id=user.id, id=record_id, **value))
-                db.add(
-                    LearningRecord(
-                        user_id=user.id,
-                        id=record_id,
-                        body=json.dumps(
-                            {"id": record_id, "type": "timeNode", "value": value},
-                            ensure_ascii=False,
-                        ),
-                        revision=1,
-                        deleted=0,
-                    )
-                )
-                db.add(LearningChange(user_id=user.id, record_id=record_id, revision=1))
-            user.time_nodes_initialized = True
+    if not user.time_nodes_initialized:
+        # 首次初始化写库：BEGIN IMMEDIATE/行锁 + 双检，避免多进程重复插入。
+        with account_write(db, user.id):
+            db.refresh(user, with_for_update=True)
+            if not user.time_nodes_initialized:
+                _init_nodes(db, user)
             db.commit()
     records = db.scalars(
         select(LearningRecord).where(

@@ -32,3 +32,11 @@ class InspirationInput(Strict):
 class InspirationReview(Strict):
     action: Literal['approve', 'reject']
     note: str = Field(default='', max_length=300)
+
+
+class InspirationNote(Strict):
+    note: str = Field(default='', max_length=300)
+
+
+class InspirationTakedown(Strict):
+    note: str = Field(min_length=5, max_length=300)

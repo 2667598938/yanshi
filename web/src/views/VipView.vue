@@ -119,7 +119,7 @@ onMounted(load)
   border-radius: 22px;
   padding: 20px 18px 18px;
   color: #fff;
-  background: linear-gradient(150deg, #2d4f80, #16294d 70%);
+  background: linear-gradient(150deg, #4f46e5, #312e81 70%);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -148,8 +148,8 @@ onMounted(load)
   font-size: 11px;
   font-weight: 700;
   color: #3a2700;
-  background: linear-gradient(120deg, #ffd88a, #f0a830);
-  padding: 4px 10px;
+  background: linear-gradient(120deg, #fcd34d, #f59e0b);
+  padding: 4px 8px;
   border-radius: 999px;
 }
 .vh-state {

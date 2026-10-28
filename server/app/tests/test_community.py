@@ -59,6 +59,50 @@ def test_posts_and_nested_comments(client):
     assert client.get(f'/api/v1/posts/{pid}', headers=p1).status_code == 404
 
 
+def test_inspiration_author_withdraw_and_admin_takedown_leave_public_pool(client):
+    admin = login(client, **ADMIN)
+    ah = h(admin['access_token'])
+    make_member(client, ah, 'insp-withdraw@test.com', '励志作者')
+    user = h(login(client, 'insp-withdraw@test.com', 'Friend2028')['access_token'])
+
+    first = client.post('/api/v1/inspirations', headers=user,
+                        json={'content': '撤回测试文案', 'image_key': ''})
+    assert first.status_code == 200, first.text
+    iid = first.json()['data']['id']
+    assert client.post(f'/api/v1/admin/inspirations/{iid}/review', headers=ah,
+                       json={'action': 'approve', 'note': ''}).status_code == 200
+    assert any(x['id'] == iid for x in client.get('/api/v1/inspirations').json()['data'])
+    assert any(x['id'] == iid for x in client.get('/api/v1/inspirations/bullets').json()['data'])
+
+    assert client.post(f'/api/v1/inspirations/{iid}/withdraw', headers=user,
+                       json={'note': '发错了'}).status_code == 200
+    assert not any(x['id'] == iid for x in client.get('/api/v1/inspirations').json()['data'])
+    assert not any(x['id'] == iid for x in client.get('/api/v1/inspirations/bullets').json()['data'])
+    mine = client.get('/api/v1/inspirations/mine', headers=user).json()['data']
+    assert next(x for x in mine if x['id'] == iid)['status'] == 'withdrawn'
+
+    second = client.post('/api/v1/inspirations', headers=user,
+                         json={'content': '下架测试文案', 'image_key': ''}).json()['data']
+    assert client.post(f"/api/v1/admin/inspirations/{second['id']}/review", headers=ah,
+                       json={'action': 'approve', 'note': ''}).status_code == 200
+    assert client.post(f"/api/v1/admin/inspirations/{second['id']}/takedown", headers=ah,
+                       json={'note': '短'}).status_code == 400
+    taken = client.post(f"/api/v1/admin/inspirations/{second['id']}/takedown", headers=ah,
+                        json={'note': '内容不再适合公开展示'})
+    assert taken.status_code == 200, taken.text
+    assert taken.json()['data']['status'] == 'taken_down'
+    assert not any(x['id'] == second['id'] for x in client.get('/api/v1/inspirations').json()['data'])
+    assert not any(x['id'] == second['id'] for x in client.get('/api/v1/inspirations/bullets').json()['data'])
+    msgs = client.get('/api/v1/messages', headers=user).json()['data']
+    assert any('下架' in m['title'] for m in msgs)
+
+    # 其他成员不能撤回；管理员也不能对未通过内容下架
+    make_member(client, ah, 'insp-other@test.com', '路人')
+    other = h(login(client, 'insp-other@test.com', 'Friend2028')['access_token'])
+    assert client.post(f'/api/v1/inspirations/{second["id"]}/withdraw', headers=other,
+                       json={'note': ''}).status_code == 404
+
+
 def test_admin_delete_requires_reason(client):
     """管理员删除他人内容必须填写原因；作者自删不受限。"""
     admin = login(client, **ADMIN)

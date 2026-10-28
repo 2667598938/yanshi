@@ -7,6 +7,7 @@ import {
 import SubjectIcon from '../components/SubjectIcon.vue'
 import { useTasksStore } from '../stores/tasks'
 import { useSubjectsStore } from '../stores/subjects'
+import { useClockStore } from '../stores/clock'
 import { PHASES, PHASE_MAP } from '../data/subjects'
 import { todayKey, mdWeekLabel } from '../utils/date'
 import { useToast } from '../composables/useToast'
@@ -14,6 +15,7 @@ import { useToast } from '../composables/useToast'
 const router = useRouter()
 const tasks = useTasksStore()
 const subjects = useSubjectsStore()
+const clock = useClockStore()
 const { toast } = useToast()
 
 const saving = ref(false)
@@ -26,14 +28,14 @@ const fCriteria = ref('')
 const fDue = ref(todayKey())
 const fEstimated = ref(0)
 
-const today = todayKey()
+const today = computed(() => clock.today)
 const overdue = computed(() =>
-  tasks.open.filter((t) => t.dueDate && t.dueDate < today))
+  tasks.open.filter((t) => t.dueDate && t.dueDate < today.value))
 const todayTasks = computed(() =>
-  tasks.open.filter((t) => t.dueDate === today))
+  tasks.open.filter((t) => t.dueDate === today.value))
 const future = computed(() =>
   tasks.open
-    .filter((t) => !t.dueDate || t.dueDate > today)
+    .filter((t) => !t.dueDate || t.dueDate > today.value)
     .sort((a, b) => (a.dueDate||'9999').localeCompare(b.dueDate||'9999')))
 const doneList = computed(() =>
   tasks.list.filter((t) => t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).slice(0,30))
@@ -49,7 +51,7 @@ function subjOf(id) {
 }
 function dateLabel(key) {
   if(!key)return '未设截止日期'
-  if (key === today) return '今天'
+  if (key === today.value) return '今天'
   return mdWeekLabel(key)
 }
 
@@ -59,7 +61,7 @@ function openAdd() {
   fSubject.value = subjects.active[0]?.id || 'other'
   fPhase.value = 'custom'
   fCriteria.value = ''
-  fDue.value = today
+  fDue.value = today.value
   fEstimated.value = 0
   sheet.value = true
 }

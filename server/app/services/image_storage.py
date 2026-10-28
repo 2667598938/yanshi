@@ -62,6 +62,19 @@ class ImageStorage:
         finally:
             client.close()
 
+    def delete(self, key):
+        self.path(key)  # 先校验对象标识，避免删除任意路径
+        if self.s.image_storage != 'qiniu':
+            self.path(key).unlink(missing_ok=True)
+            return
+        client = self._s3_client()
+        try:
+            client.delete_object(Bucket=self.s.qiniu_bucket, Key=key)
+        except Exception:
+            raise ApiError(502, 50201, '图片删除失败，请稍后重试') from None
+        finally:
+            client.close()
+
     def presigned_url(self, key):
         client = self._s3_client()
         try:

@@ -4,6 +4,7 @@ import { todayKey } from '../utils/date'
 import { REVIEW_INTERVALS } from '../data/subjects'
 import { enqueueRecord, enqueueDelete } from '../sync/engine'
 import { toPlain } from '../utils/plain'
+import { useClockStore } from './clock'
 
 // 错题本：图片以 Blob 存 IndexedDB；艾宾浩斯 8 节点（5min → 15d）
 const OLD_TO_NEW_STAGE = [3, 4, 5, 6, 7, 7]
@@ -35,7 +36,7 @@ export const useMistakesStore = defineStore('mistakes', {
     sorted: (s) => [...s.list].sort((a, b) => b.createdAt - a.createdAt),
     // 今日待复习（含已逾期）
     dueReview() {
-      const now = Date.now()
+      const now = useClockStore().now
       return this.sorted.filter(
         (x) => !x.mastered && x.nextReviewAt && x.nextReviewAt <= now
       )

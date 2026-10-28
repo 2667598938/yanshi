@@ -29,6 +29,8 @@ const inspirations = ref([])
 const inspFilter = ref('pending')
 const inspTarget = ref(null)
 const inspNote = ref('')
+const takedownTarget = ref(null)
+const takedownNote = ref('')
 const tab = ref('invite')
 
 const sheet = ref(null)
@@ -109,6 +111,26 @@ async function rejectInspiration() {
     toast('已驳回')
     sheet.value = null
     inspTarget.value = null
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+function openTakedown(row) {
+  takedownTarget.value = row
+  takedownNote.value = ''
+  sheet.value = 'insp-takedown'
+}
+
+async function takedownInspiration() {
+  if (takedownNote.value.trim().length < 5) return toast('下架原因至少5字')
+  try {
+    const next = await inspirationApi.takedown(takedownTarget.value.id, takedownNote.value.trim())
+    Object.assign(takedownTarget.value, next)
+    toast('已下架，新的列表与弹幕请求不会再返回')
+    sheet.value = null
+    takedownTarget.value = null
+    await loadInspirations(inspFilter.value)
   } catch (e) {
     toast(e.message)
   }
@@ -309,7 +331,7 @@ async function toggleAnnouncement(row){
     </div>
 
     <div class="page">
-      <router-link class="btn btn-outline" to="/admin/group">小组邀请与入组审批</router-link>
+      <router-link class="btn btn-outline" to="/admin/group">小组邀请与入组申请审批</router-link>
       <!-- 概览 -->
       <div v-if="overview" class="ov-grid">
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>
@@ -326,8 +348,8 @@ async function toggleAnnouncement(row){
       <div class="tabs">
         <button :class="{ on: tab === 'invite' }" @click="switchTab('invite')">邀请码</button>
         <button :class="{ on: tab === 'member' }" @click="switchTab('member')">成员</button>
-        <button :class="{ on: tab === 'request' }" @click="switchTab('request')">审批</button>
-        <button :class="{ on: tab === 'content' }" @click="switchTab('content')">内容</button>
+        <button :class="{ on: tab === 'request' }" @click="switchTab('request')">功能审批</button>
+        <button :class="{ on: tab === 'content' }" @click="switchTab('content')">励志内容审核</button>
         <button :class="{ on: tab === 'announce' }" @click="switchTab('announce')">公告</button>
       </div>
 
@@ -414,6 +436,8 @@ async function toggleAnnouncement(row){
           <button :class="{ on: inspFilter === 'pending' }" @click="loadInspirations('pending')">待审核</button>
           <button :class="{ on: inspFilter === 'approved' }" @click="loadInspirations('approved')">已通过</button>
           <button :class="{ on: inspFilter === 'rejected' }" @click="loadInspirations('rejected')">已驳回</button>
+          <button :class="{ on: inspFilter === 'taken_down' }" @click="loadInspirations('taken_down')">已下架</button>
+          <button :class="{ on: inspFilter === 'withdrawn' }" @click="loadInspirations('withdrawn')">作者撤回</button>
         </div>
         <div v-if="!inspirations.length" class="empty">暂无投稿</div>
         <div v-for="it in inspirations" :key="it.id" class="req-card">
@@ -433,6 +457,9 @@ async function toggleAnnouncement(row){
           <div v-if="it.status === 'pending'" class="req-actions">
             <button class="req-reject" @click="openInspReject(it)"><X :size="14" />驳回</button>
             <button class="req-approve" @click="approveInspiration(it)"><Check :size="14" />通过</button>
+          </div>
+          <div v-if="it.status === 'approved'" class="req-actions">
+            <button class="req-reject" @click="openTakedown(it)">下架</button>
           </div>
         </div>
       </div>
@@ -528,6 +555,17 @@ async function toggleAnnouncement(row){
           <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
         </template>
 
+        <template v-else-if="sheet === 'insp-takedown'">
+          <div class="sheet-title">下架励志投稿</div>
+          <div class="vip-current">{{ takedownTarget?.user?.nickname }}：{{ takedownTarget?.content }}</div>
+          <label class="sf">
+            <span>下架原因（至少5字，投稿人可见）</span>
+            <textarea v-model="takedownNote" class="ta" rows="3" maxlength="300" placeholder="下架后会从励志区和弹幕池移除"></textarea>
+          </label>
+          <button class="btn btn-danger btn-block mt16" @click="takedownInspiration">确认下架</button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
+        </template>
+
         <template v-else-if="sheet === 'announce'">
           <div class="sheet-title">发布公告</div>
           <textarea v-model="announcementForm" class="ta" rows="4" maxlength="1000" placeholder="四名成员在首页可见的公告"></textarea>
@@ -559,7 +597,7 @@ async function toggleAnnouncement(row){
 .mini { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--sub); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .mini.danger { color: var(--red); }
 .tag { font-size: 10px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
-.tag-new { background: #e7f6f0; color: #1f9d63; }
+.tag-new { background: #ecfdf5; color: #10b981; }
 .tag-used { background: #eef1f6; color: var(--faint); }
 .tag-admin { background: #fff3df; color: var(--accent-deep); }
 .tag-ban { background: #fdecec; color: var(--red); }

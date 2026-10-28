@@ -868,7 +868,7 @@ def update_config(
             db.commit()
         except IntegrityError:
             db.rollback()
-            raise ApiError(409, 40902, "配置已被其他请求修改，请刷新比较")
+            raise ApiError(409, 40902, "配置已被其他请求修改，请刷新比较") from None
         return ok({**changed, "revision": revision + 1})
 
 

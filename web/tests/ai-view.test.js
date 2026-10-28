@@ -165,3 +165,38 @@ it('确认任务导入后切到新对话，导入成功仍正常同步和提示'
  resolve({state:'imported',imported_count:1});await flushPromises()
  expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('任务已导入'))
 })
+
+it('配置读取失败时提示重新连接，不误导去配 Key',async()=>{
+ aiApi.enabled.mockRejectedValueOnce(new Error('网络不可用'))
+ await render()
+ expect(wrapper.text()).toContain('AI 服务暂时连不上')
+ expect(wrapper.text()).toContain('重新连接')
+ expect(wrapper.text()).not.toContain('还差一步：配置你的 API Key')
+ expect(wrapper.find('.composer').exists()).toBe(false)
+ // 网络恢复后重试能回到正常对话
+ aiApi.enabled.mockResolvedValue({enabled:true,access:true,v1_readonly:true})
+ await wrapper.findAll('button').find(b=>b.text().includes('重新连接')).trigger('click')
+ await flushPromises()
+ expect(wrapper.find('.composer').exists()).toBe(true)
+})
+
+it('空态起步问题点一下填入输入框',async()=>{
+ await render()
+ const starter=wrapper.find('.starter')
+ expect(starter.exists()).toBe(true)
+ const text=starter.text().trim()
+ await starter.trigger('click')
+ expect(wrapper.get('.composer input').element.value).toBe(text)
+})
+
+it('打开历史对话立即显示加载骨架，返回后渲染列表',async()=>{
+ let resolve
+ aiApi.conversations.mockImplementation(()=>new Promise(r=>{resolve=r}))
+ await render()
+ await wrapper.findAll('.nav-actions button')[2].trigger('click')
+ expect(wrapper.find('.hist-loading').exists()).toBe(true)
+ resolve([{id:11,title:'旧会话'}])
+ await flushPromises()
+ expect(wrapper.find('.hist-loading').exists()).toBe(false)
+ expect(wrapper.get('.hist-row').text()).toContain('旧会话')
+})

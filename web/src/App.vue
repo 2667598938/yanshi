@@ -1,5 +1,5 @@
 <script setup>
-import { watch, onBeforeUnmount } from 'vue'
+import { watch, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import TabBar from './components/TabBar.vue'
 import ToastLayer from './components/ToastLayer.vue'
@@ -14,6 +14,7 @@ import { useTimerOwnership } from './composables/useTimerOwnership'
 import SessionIssues from './components/SessionIssues.vue'
 import { useGroupPresence } from './composables/useGroupPresence'
 import { useNotificationsStore } from './stores/notifications'
+import { useClockStore } from './stores/clock'
 
 const timer = useTimerStore()
 const app = useAppStore()
@@ -21,10 +22,35 @@ const subjects = useSubjectsStore()
 const route = useRoute()
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
+const clock = useClockStore()
+const noticeStack = ref(null)
+const noticeH = ref(0)
+let noticeObserver = null
+function measureNotices() {
+  noticeH.value = noticeStack.value?.offsetHeight || 0
+}
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined') {
+    noticeObserver = new ResizeObserver(measureNotices)
+    if (noticeStack.value) noticeObserver.observe(noticeStack.value)
+  }
+  measureNotices()
+  window.addEventListener('resize', measureNotices)
+})
+watch(
+  () => [auth.user?.is_private_mode, timer.remoteLease, timer.leaseLost],
+  () => nextTick(measureNotices),
+)
+clock.start()
 useGroupPresence()
 useTimerOwnership()
 watch(() => auth.user?.id, (id) => { if (id) notifications.start(); else notifications.stop() }, { immediate: true })
-onBeforeUnmount(() => notifications.stop())
+onBeforeUnmount(() => {
+  notifications.stop()
+  clock.stop()
+  noticeObserver?.disconnect()
+  window.removeEventListener('resize', measureNotices)
+})
 
 // 番茄完成提示音（Web Audio 合成，无需音频文件）
 function playChime() {
@@ -71,12 +97,14 @@ watch(
 </script>
 
 <template>
-  <div class="app-shell">
-    <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
-    <div v-if="timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
-    <div v-if="timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
+  <div class="app-shell" :style="{ '--notice-h': noticeH + 'px' }">
+    <div ref="noticeStack" class="notice-stack">
+      <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
+      <div v-if="timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
+      <div v-if="timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
+      <OfflineBanner />
+    </div>
     <SessionIssues />
-    <OfflineBanner />
     <CommunityIssues />
     <main class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }">
       <router-view :key="route.path" />

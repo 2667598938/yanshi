@@ -56,11 +56,11 @@ const isStopwatch = computed(() =>
   phase.value === 'idle' ? mode.value === 'stopwatch' : timer.current?.mode === 'stopwatch'
 )
 const ringColor = computed(() => {
-  if (timer.rest) return '#1f9d63'
+  if (timer.rest) return '#10b981'
   if (phase.value === 'paused') return '#94a3b8'
-  return isStopwatch.value ? '#3a7fc4' : '#f2705b'
+  return isStopwatch.value ? '#6366f1' : '#8b5cf6'
 })
-const ringStart = computed(() => (isStopwatch.value ? '#82b4e8' : '#ff9d8a'))
+const ringStart = computed(() => (isStopwatch.value ? '#a5b4fc' : '#c4b5fd'))
 const ringProgress = computed(() => {
   if (timer.rest) return 1 - timer.restRemainingSec / timer.rest.plannedSec
   if (phase.value === 'idle') return 0
@@ -300,7 +300,7 @@ watch(
               :key="d"
               class="pill"
               :class="{ active: !customOpen && plan === d }"
-              :style="!customOpen && plan === d ? { background: 'var(--tomato)' } : {}"
+              :style="!customOpen && plan === d ? { background: 'var(--primary)' } : {}"
               @click="customOpen = false; plan = d"
             >
               {{ d }}
@@ -308,7 +308,7 @@ watch(
             <button
               class="pill"
               :class="{ active: customOpen }"
-              :style="customOpen ? { background: 'var(--tomato)' } : {}"
+              :style="customOpen ? { background: 'var(--primary)' } : {}"
               @click="customOpen = true; customVal = plan"
             >
               自定义
@@ -412,7 +412,7 @@ watch(
 }
 
 .focus-hero {
-  background: linear-gradient(160deg, #2b2f45 0%, #1c2238 55%, #161b2e 100%);
+  background: linear-gradient(160deg, #4c1d95 0%, #312e81 55%, #1e1b4b 100%);
   border-radius: 26px;
   padding: 26px 18px 22px;
   box-shadow: 0 16px 34px rgba(22, 27, 46, 0.3);
@@ -421,7 +421,7 @@ watch(
   align-items: center;
 }
 .focus-hero.sw {
-  background: linear-gradient(160deg, #1f3b5c 0%, #16294d 55%, #10203f 100%);
+  background: linear-gradient(160deg, #4338ca 0%, #312e81 55%, #1e1b4b 100%);
 }
 .clock {
   font-size: 56px;
@@ -460,8 +460,8 @@ watch(
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #ff8a72, var(--tomato-deep));
-  box-shadow: 0 8px 20px rgba(224, 82, 63, 0.32);
+  background: var(--primary-grad);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -274,7 +274,7 @@ async function remove() {
   box-shadow: var(--shadow-soft);
 }
 .due-card.hot {
-  background: linear-gradient(135deg, #fff3e6, #ffe7d8);
+  background: linear-gradient(135deg, #fff7ed, #ffe9d6);
 }
 .due-ic {
   width: 44px;
@@ -448,9 +448,9 @@ async function remove() {
   height: 54px;
   border-radius: 50%;
   border: none;
-  background: linear-gradient(135deg, #ff8a72, var(--tomato-deep));
+  background: var(--primary-grad);
   color: #fff;
-  box-shadow: 0 12px 24px rgba(224, 82, 63, 0.42);
+  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.34);
   display: flex;
   align-items: center;
   justify-content: center;

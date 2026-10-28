@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { localAccountScope, uid } from '../db'
 import { todayKey, dayKey } from '../utils/date'
 import { writeRecord, patchRecord, enqueueDelete } from '../sync/engine'
+import { useClockStore } from './clock'
 
 // 学习计划 / 任务清单。任务完成与否是"真学会"的指标之一，与时长并列。
 export const useTasksStore = defineStore('tasks', {
@@ -16,18 +17,18 @@ export const useTasksStore = defineStore('tasks', {
     open: (s) => s.list.filter((t) => !t.done),
     // 今日到期 + 已逾期（未完成）
     dueToday() {
-      const t = todayKey()
+      const t = useClockStore().today
       return this.open
         .filter((x) => x.dueDate && x.dueDate <= t)
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
     },
     overdueCount() {
-      const t = todayKey()
+      const t = useClockStore().today
       return this.open.filter((x) => x.dueDate && x.dueDate < t).length
     },
     // 今日到期的全部任务（含已完成，用于今日完成率）
     todayAll() {
-      const t = todayKey()
+      const t = useClockStore().today
       return this.sorted.filter((x) => x.dueDate === t)
     },
   },

@@ -5,13 +5,16 @@ import json
 import tempfile
 import threading
 import warnings
+from datetime import timedelta
 from pathlib import Path
 
 from PIL import Image, ImageOps
 from sqlalchemy import func, select
 
 from ..errors import ApiError
-from ..models import Attachment, Inspiration, School
+from ..models import (
+    AIConversation, AIMessage, Attachment, Inspiration, LearningRecord, School, User,
+)
 from ..time import utcnow
 
 Image.MAX_IMAGE_PIXELS = 4096 * 4096
@@ -168,3 +171,73 @@ def create_attachment(db, settings, user, biz_type, processed, size, width, heig
 def mark_deleted(row):
     if not row.deleted_at:
         row.deleted_at = utcnow()
+
+
+ORPHAN_GRACE_HOURS = 24
+
+
+def referenced_keys(db, user_id):
+    """仍在题目、相册、聊天、头像、励志投稿中被引用的本人附件 key。"""
+    keys = set()
+    user = db.get(User, user_id)
+    if user and user.avatar_key:
+        keys.add(user.avatar_key)
+    for record in db.scalars(
+        select(LearningRecord).where(
+            LearningRecord.user_id == user_id, LearningRecord.deleted == 0
+        )
+    ).all():
+        try:
+            body = json.loads(record.body or "{}")
+        except (TypeError, ValueError):
+            continue
+        if body.get("type") == "mistake":
+            keys.update(key for key in body.get("images", []) if key)
+            keys.update(key for key in body.get("answerImages", []) if key)
+    for school in db.scalars(
+        select(School).where(School.owner_id == user_id)
+    ).all():
+        if school.logo_key:
+            keys.add(school.logo_key)
+        try:
+            keys.update(key for key in json.loads(school.album_keys or "[]") if key)
+        except (TypeError, ValueError):
+            pass
+    for row in db.scalars(
+        select(Inspiration).where(Inspiration.user_id == user_id)
+    ).all():
+        if row.image_key:
+            keys.add(row.image_key)
+    for image_keys in db.scalars(
+        select(AIMessage.image_keys)
+        .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
+        .where(AIConversation.user_id == user_id)
+    ).all():
+        try:
+            keys.update(key for key in json.loads(image_keys or "[]") if key)
+        except (TypeError, ValueError):
+            pass
+    return keys
+
+
+def orphan_attachments(db, user_id, *, grace_hours=ORPHAN_GRACE_HOURS):
+    cutoff = utcnow() - timedelta(hours=grace_hours)
+    used = referenced_keys(db, user_id)
+    rows = db.scalars(
+        select(Attachment).where(
+            Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None)
+        )
+    ).all()
+    return [row for row in rows if row.object_key not in used and row.created_at <= cutoff]
+
+
+def storage_summary(db, user_id, quota_bytes, *, grace_hours=ORPHAN_GRACE_HOURS):
+    used = used_bytes(db, user_id)
+    orphans = orphan_attachments(db, user_id, grace_hours=grace_hours)
+    return {
+        "used_bytes": used,
+        "quota_bytes": int(quota_bytes),
+        "orphan_count": len(orphans),
+        "orphan_bytes": sum(int(row.size_bytes or 0) for row in orphans),
+        "grace_hours": grace_hours,
+    }

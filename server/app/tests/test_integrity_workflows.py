@@ -70,6 +70,24 @@ def test_duration_date_and_database_constraints(client):
             db.commit()
 
 
+def test_180_minute_countdown_is_completed_not_timeout(client):
+    h = headers(client)
+    end = int(datetime.now(timezone.utc).timestamp() * 1000)
+    row = {
+        **record("full-180"),
+        "startedAt": end - 180 * 60 * 1000,
+        "endedAt": end,
+        "plannedMin": 180,
+        "actualSec": 10800,
+    }
+    response = send(client, h, [row])
+    assert response.status_code == 200, response.text
+    clean = response.json()["data"]["changed"][0]["record"]
+    assert clean["actualSec"] == 10800
+    assert clean["status"] == "done"
+    assert clean["end_reason"] == "completed"
+
+
 def test_overlap_retained_but_not_counted(client):
     h = headers(client)
     a = record("overlap-a")
@@ -90,6 +108,80 @@ def test_overlap_retained_but_not_counted(client):
 
     with client.app.state.session_factory() as db:
         assert account_context(db, 1)["session_issues"]["excluded"] == 2
+
+
+def _window(start_hour, end_hour, key):
+    day = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    return {
+        **record(key),
+        "plannedMin": 180,
+        "startedAt": int((day.timestamp() + start_hour * 3600) * 1000),
+        "endedAt": int((day.timestamp() + end_hour * 3600) * 1000),
+        "actualSec": int((end_hour - start_hour) * 3600),
+    }
+
+
+def test_chained_overlap_can_keep_non_overlapping_records_and_drop_bridge(client):
+    h = headers(client)
+    rows = [
+        _window(0, 2, "chain-a"),
+        _window(1, 3, "chain-b"),
+        _window(2.5, 4, "chain-c"),
+    ]
+    assert send(client, h, rows).status_code == 200
+    conflicts = client.get("/api/v1/timer/conflicts", headers=h).json()["data"]
+    group = conflicts["groups"][0]
+    assert len(group["items"]) == 3
+    versions = {i["id"]: i["revision"] for i in group["items"]}
+
+    # A 与 B、B 与 C 重叠，A 与 C 不重叠：允许保留 A+C，仅放弃 B。
+    resolved = client.post(
+        "/api/v1/timer/resolve",
+        headers=h,
+        json={
+            "group_id": group["id"],
+            "keep_ids": ["chain-a", "chain-c"],
+            "versions": versions,
+            "confirmed": True,
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["data"] == {"deleted": 1, "kept": ["chain-a", "chain-c"]}
+    with client.app.state.session_factory() as db:
+        assert db.get(LearningRecord, (1, "chain-a")).deleted == 0
+        assert db.get(LearningRecord, (1, "chain-c")).deleted == 0
+        assert db.get(LearningRecord, (1, "chain-b")).deleted == 1
+        assert db.get(SessionFact, (1, "chain-a")).conflict is False
+        assert db.get(SessionFact, (1, "chain-c")).conflict is False
+    assert client.get("/api/v1/timer/conflicts", headers=h).json()["data"]["groups"] == []
+
+
+def test_resolve_rejects_keep_set_that_still_overlaps(client):
+    h = headers(client)
+    rows = [
+        _window(0, 2, "reject-a"),
+        _window(1, 3, "reject-b"),
+        _window(2.5, 4, "reject-c"),
+    ]
+    assert send(client, h, rows).status_code == 200
+    group = client.get("/api/v1/timer/conflicts", headers=h).json()["data"]["groups"][0]
+    versions = {i["id"]: i["revision"] for i in group["items"]}
+    response = client.post(
+        "/api/v1/timer/resolve",
+        headers=h,
+        json={
+            "group_id": group["id"],
+            "keep_ids": ["reject-a", "reject-b"],
+            "versions": versions,
+            "confirmed": True,
+        },
+    )
+    assert response.status_code == 400
+    with client.app.state.session_factory() as db:
+        assert all(
+            db.get(LearningRecord, (1, key)).deleted == 0
+            for key in ["reject-a", "reject-b", "reject-c"]
+        )
 
 
 def test_global_lease_excludes_second_device_and_release_is_scoped(client):

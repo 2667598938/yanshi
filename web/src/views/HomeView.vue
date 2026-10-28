@@ -25,7 +25,8 @@ import { useSubjectsStore } from '../stores/subjects'
 import { useTasksStore } from '../stores/tasks'
 import { useMistakesStore } from '../stores/mistakes'
 import { useAppStore } from '../stores/app'
-import { fmtMinutes, fmtClock, todayKey, mdLabel, weekLabel } from '../utils/date'
+import { useClockStore } from '../stores/clock'
+import { fmtMinutes, fmtClock, mdLabel, weekLabel } from '../utils/date'
 
 const router = useRouter()
 const timer = useTimerStore()
@@ -33,10 +34,11 @@ const subjects = useSubjectsStore()
 const tasks = useTasksStore()
 const mistakes = useMistakesStore()
 const app = useAppStore()
+const clock = useClockStore()
 
 const today = computed(() => {
-  const d = new Date()
-  return `${mdLabel(todayKey())} ${weekLabel(d)}`
+  const d = new Date(clock.now)
+  return `${mdLabel(clock.today)} ${weekLabel(d)}`
 })
 
 const goalPercent = computed(() =>
@@ -71,7 +73,7 @@ const encourage = computed(() => {
 
 <template>
   <div>
-    <SchoolHero />
+    <SchoolHero v-if="!app.heroCollapsed" />
 
     <div class="page">
       <div class="hello">
@@ -79,6 +81,9 @@ const encourage = computed(() => {
           <div class="hello-date">{{ today }}</div>
           <div class="hello-name">{{ app.nickname }}，沉潜一日，功不唐捐</div>
         </div>
+        <button class="hero-toggle" :aria-expanded="!app.heroCollapsed" @click="app.setHeroCollapsed(!app.heroCollapsed)">
+          {{ app.heroCollapsed ? '展开梦校' : '收起梦校' }}
+        </button>
       </div>
 
       <!-- 错题复习提醒 -->
@@ -183,7 +188,7 @@ const encourage = computed(() => {
           <div class="quick-ic q1"><ListChecks :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">任务清单</div>
-            <div class="quick-sub">计划 · 验收 · 完成率</div>
+            <div class="quick-sub">计划 · 验收</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -191,7 +196,7 @@ const encourage = computed(() => {
           <div class="quick-ic q3"><NotebookPen :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">错题本</div>
-            <div class="quick-sub">艾宾浩斯 · 复习提醒</div>
+            <div class="quick-sub">艾宾浩斯复习</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -199,7 +204,7 @@ const encourage = computed(() => {
           <div class="quick-ic q4"><BarChart3 :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">数据仪表盘</div>
-            <div class="quick-sub">热力图 · 占比 · 趋势</div>
+            <div class="quick-sub">热力图 · 趋势</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -207,7 +212,7 @@ const encourage = computed(() => {
           <div class="quick-ic q2"><Users :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">四人自习室</div>
-            <div class="quick-sub">并肩打卡 · 互相监督</div>
+            <div class="quick-sub">并肩打卡监督</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -215,7 +220,7 @@ const encourage = computed(() => {
           <div class="quick-ic q5"><BookOpen :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">资料库</div>
-            <div class="quick-sub">网盘分享 · VIP 完整链接</div>
+            <div class="quick-sub">网盘 · VIP 链接</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -223,7 +228,7 @@ const encourage = computed(() => {
           <div class="quick-ic q6"><MessageSquare :size="20" /></div>
           <div class="quick-txt">
             <div class="quick-name">研友动态</div>
-            <div class="quick-sub">记录 · 评论 · 互相打气</div>
+            <div class="quick-sub">记录 · 打气</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />
         </router-link>
@@ -239,44 +244,103 @@ const encourage = computed(() => {
 </template>
 
 <style scoped>
+/* 首页视觉：蓝紫渐变 + 玻璃拟态，仅调整样式层，不改动业务逻辑 */
+.page {
+  /* 配色与阴影变量集中管理，便于后续统一换肤 */
+  --p1: #4f46e5;
+  --p2: #8b5cf6;
+  --ink-1: #111827;
+  --ink-2: #4b5563;
+  --ink-3: #9ca3af;
+  --glass: rgba(255, 255, 255, 0.7);
+  --hairline: rgba(79, 70, 229, 0.1);
+  --shadow-card: 0 8px 24px rgba(79, 70, 229, 0.08), 0 2px 8px rgba(17, 24, 39, 0.04);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 16px calc(var(--tabbar-h) + 24px);
+  font-size: 14px;
+  color: var(--ink-1);
+}
+
+/* 问候区：标题使用柔和渐变文字 */
 .hello {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin: 16px 2px 10px;
+  margin: 24px 0 16px;
 }
 .hello-date {
   font-size: 12px;
-  color: var(--faint);
+  color: var(--ink-3);
+  letter-spacing: 0.4px;
 }
 .hello-name {
-  font-size: 17px;
+  margin-top: 4px;
+  font-size: 20px;
   font-weight: 800;
-  margin-top: 2px;
+  line-height: 1.4;
+  color: var(--p1);
+  background: linear-gradient(120deg, var(--p1), var(--p2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
+.hero-toggle {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* 错题复习提醒：暖色玻璃条，克制不刺眼 */
 .review-banner {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 12px 16px;
-  border-radius: 14px;
-  border: none;
-  background: linear-gradient(135deg, #fff3e6, #ffe1d0);
-  color: var(--tomato-deep);
-  font-size: 13.5px;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.92), rgba(255, 241, 242, 0.86));
+  color: #b45309;
+  font-size: 14px;
   font-weight: 700;
-  margin-bottom: 12px;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   cursor: pointer;
+  transition: transform 0.24s ease, box-shadow 0.24s ease;
+}
+.review-banner svg {
+  color: #f59e0b;
 }
 .rb-txt {
   flex: 1;
   text-align: left;
 }
 
-.stat-card {
-  padding: 16px 14px 14px;
+/* 玻璃卡片：统一圆角、16px 内边距与多层柔和阴影 */
+.card {
+  position: relative;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  background: var(--glass);
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: box-shadow 0.24s ease;
 }
+.card + .card {
+  margin-top: 16px;
+}
+
+/* 今日数据 */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -285,167 +349,188 @@ const encourage = computed(() => {
   text-align: center;
 }
 .stat-ic {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 8px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 8px;
 }
 .stat-ic.c1 {
-  background: #e6f0fb;
-  color: var(--primary);
+  background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  color: #4f46e5;
 }
 .stat-ic.c2 {
-  background: #fdece8;
-  color: var(--tomato);
+  background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+  color: #8b5cf6;
 }
 .stat-ic.c3 {
-  background: #fff3df;
-  color: var(--accent-deep);
+  background: linear-gradient(135deg, #fff7ed, #fef3c7);
+  color: #f59e0b;
 }
 .stat-num {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 800;
-  color: var(--ink);
+  color: var(--ink-1);
 }
 .stat-num .unit {
+  margin-left: 4px;
   font-size: 12px;
   font-weight: 600;
-  margin-left: 1px;
+  color: var(--ink-2);
 }
 .stat-label {
+  margin-top: 4px;
   font-size: 12px;
-  color: var(--faint);
-  margin-top: 2px;
+  color: var(--ink-3);
 }
+
+/* 今日目标进度 */
 .goal {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
 }
 .goal-top {
   display: flex;
   justify-content: space-between;
-  font-size: 12.5px;
-  color: var(--sub);
-  margin-bottom: 7px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
 }
 .goal-bar {
-  height: 9px;
-  border-radius: 999px;
-  background: var(--line);
+  height: 8px;
   overflow: hidden;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.1);
 }
 .goal-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--tomato));
+  background: linear-gradient(90deg, var(--p1), var(--p2));
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
   transition: width 0.5s ease;
 }
-.big-focus {
-  margin-top: 14px;
-  padding: 16px;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
 
-.mini-title {
+/* 主按钮：蓝紫渐变 + 柔和辉光 */
+.big-focus {
+  margin-top: 16px;
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--p1), var(--p2));
+  color: #fff;
   font-size: 14px;
   font-weight: 700;
-  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.26), 0 4px 8px rgba(79, 70, 229, 0.16);
+  transition: transform 0.24s ease, box-shadow 0.24s ease, filter 0.24s ease;
+}
+.big-focus:active {
+  transform: scale(0.99);
+}
+
+/* 卡片小标题 */
+.mini-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-1);
 }
 .more {
   font-size: 12px;
   font-weight: 600;
-  color: var(--primary);
+  color: var(--p1);
   cursor: pointer;
 }
 .mini-empty {
-  font-size: 13px;
-  color: var(--faint);
   padding: 4px 0 8px;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 .mini-task {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 0;
+  gap: 8px;
+  padding: 8px 0;
   cursor: pointer;
 }
 .mini-task + .mini-task {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--hairline);
 }
 .mini-check {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid var(--faint);
-  background: #fff;
-  color: transparent;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  border: 1.5px solid rgba(79, 70, 229, 0.28);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: transparent;
   cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 .mini-check.on {
-  background: var(--green);
-  border-color: var(--green);
+  border-color: transparent;
+  background: linear-gradient(135deg, #10b981, #34d399);
   color: #fff;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
 }
 .mini-task-name {
+  flex: 1;
   font-size: 14px;
   font-weight: 500;
-  flex: 1;
+  color: var(--ink-1);
 }
 .mini-task-name.done {
-  color: var(--faint);
+  color: var(--ink-3);
   text-decoration: line-through;
 }
 .add-task {
-  margin-top: 8px;
-  border: none;
-  background: none;
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  cursor: pointer;
+  margin-top: 8px;
   padding: 0;
+  border: none;
+  background: none;
+  color: var(--p1);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
+/* 科目分布 */
 .subj-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .subj-row:last-child {
   margin-bottom: 0;
 }
 .subj-name {
   width: 72px;
-  font-size: 12.5px;
-  font-weight: 700;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
 }
 .subj-track {
   flex: 1;
   height: 8px;
-  background: var(--line);
-  border-radius: 999px;
   overflow: hidden;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.08);
 }
 .subj-fill {
   height: 100%;
@@ -453,62 +538,67 @@ const encourage = computed(() => {
   transition: width 0.5s ease;
 }
 .subj-min {
-  width: 60px;
+  width: 56px;
+  flex-shrink: 0;
   text-align: right;
   font-size: 12px;
-  color: var(--sub);
-  flex-shrink: 0;
+  color: var(--ink-2);
 }
 
+/* 快捷入口 */
 .quick-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 16px;
 }
 .quick-card {
-  background: var(--card);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-soft);
-  padding: 14px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  background: var(--glass);
+  color: var(--ink-1);
   text-decoration: none;
-  color: var(--ink);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.24s ease, box-shadow 0.24s ease;
 }
 .quick-ic {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  border-radius: 12px;
 }
 .quick-ic.q1 {
-  background: #e6f0fb;
-  color: var(--primary);
+  background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  color: #4f46e5;
 }
 .quick-ic.q2 {
-  background: #e7f6f0;
-  color: var(--green);
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  color: #10b981;
 }
 .quick-ic.q3 {
-  background: #fdecec;
-  color: var(--tomato);
+  background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+  color: #8b5cf6;
 }
 .quick-ic.q4 {
-  background: #eef0fe;
-  color: var(--purple);
+  background: linear-gradient(135deg, #eef2ff, #ede9fe);
+  color: #6366f1;
 }
 .quick-ic.q5 {
-  background: #e6f7fb;
-  color: #0d8a9e;
+  background: linear-gradient(135deg, #ecfeff, #cffafe);
+  color: #0891b2;
 }
 .quick-ic.q6 {
-  background: #fdf0e8;
-  color: #d97706;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  color: #f59e0b;
 }
 .quick-txt {
   flex: 1;
@@ -519,30 +609,93 @@ const encourage = computed(() => {
   font-weight: 700;
 }
 .quick-sub {
-  font-size: 11px;
-  color: var(--faint);
-  margin-top: 2px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+  /* 单行展示，避免窄屏出现「单字换行」 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .quick-arrow {
-  color: var(--faint);
   flex-shrink: 0;
+  color: #c7d2fe;
+}
+/* 窄屏优先保证入口名称不被拆行，隐藏装饰箭头 */
+@media (max-width: 420px) {
+  .quick-arrow {
+    display: none;
+  }
 }
 
+/* 底部鼓励条：淡化玻璃，避免大面积重色 */
 .snow-card {
-  margin-top: 14px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--radius);
-  background: linear-gradient(135deg, var(--night2), var(--night));
-  color: #e9f0ff;
-  font-size: 13.5px;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.9), rgba(245, 243, 255, 0.86));
+  color: var(--ink-2);
+  font-size: 14px;
   font-weight: 500;
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 .snow-card svg {
-  color: #cfe0ff;
   flex-shrink: 0;
+  color: var(--p2);
+}
+
+/* 柔和交互：仅在支持悬停的设备启用，240ms 内完成 */
+@media (hover: hover) and (pointer: fine) {
+  .big-focus:hover {
+    transform: translateY(-2px) scale(1.03);
+    filter: brightness(1.06);
+    box-shadow: 0 16px 32px rgba(79, 70, 229, 0.3), 0 6px 12px rgba(79, 70, 229, 0.18);
+  }
+  .review-banner:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.18);
+  }
+  .quick-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(79, 70, 229, 0.14);
+  }
+  .mini-check:hover {
+    transform: scale(1.06);
+    border-color: rgba(79, 70, 229, 0.5);
+  }
+  .card:hover {
+    box-shadow: 0 12px 32px rgba(79, 70, 229, 0.12);
+  }
+}
+
+/* 键盘可达性 */
+.big-focus:focus-visible,
+.review-banner:focus-visible,
+.mini-check:focus-visible,
+.add-task:focus-visible,
+.quick-card:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.45);
+  outline-offset: 2px;
+}
+
+/* 进入动画：只做透明度，避免与 hover 变换冲突 */
+@media (prefers-reduced-motion: no-preference) {
+  .page > * {
+    animation: home-fade 0.2s ease-out;
+  }
+}
+@keyframes home-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 </style>

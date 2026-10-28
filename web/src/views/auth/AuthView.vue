@@ -33,7 +33,7 @@ const channels = ref(['email'])
 const thirdProviders = [
   { id: 'wechat', label: '微信', color: '#07C160' },
   { id: 'qq', label: 'QQ', color: '#12B7F5' },
-  { id: 'phone', label: '手机号', color: '#2f6fb0' },
+  { id: 'phone', label: '手机号', color: '#4f46e5' },
 ]
 
 function hasChannel(id) {
@@ -407,7 +407,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: 20px 16px;
-  background: linear-gradient(180deg, #f6f8fc 0%, #eef2f9 100%);
+  background: linear-gradient(180deg, #f8faff 0%, #f2f4ff 100%);
 }
 .auth-card {
   width: 100%;
@@ -426,7 +426,7 @@ onMounted(async () => {
   height: 56px;
   margin: 0 auto 10px;
   border-radius: 16px;
-  background: #2f6bff;
+  background: #4f46e5;
   color: #fff;
   font-size: 28px;
   font-weight: 700;
@@ -466,7 +466,7 @@ onMounted(async () => {
 }
 .tabs button.active {
   background: #fff;
-  color: #2f6bff;
+  color: #4f46e5;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(47, 107, 255, 0.12);
 }
@@ -486,9 +486,9 @@ onMounted(async () => {
   border-bottom: 2px solid transparent;
 }
 .mode-switch button.on {
-  color: #2f6bff;
+  color: #4f46e5;
   font-weight: 600;
-  border-bottom-color: #2f6bff;
+  border-bottom-color: #4f46e5;
 }
 .field-hint {
   font-size: 11.5px;
@@ -595,7 +595,7 @@ onMounted(async () => {
 }
 .field input:focus {
   outline: none;
-  border-color: #2f6bff;
+  border-color: #4f46e5;
   background: #fff;
 }
 .code-row {
@@ -613,8 +613,8 @@ onMounted(async () => {
 }
 .ghost-btn {
   white-space: nowrap;
-  border: 1px solid #2f6bff;
-  color: #2f6bff;
+  border: 1px solid #4f46e5;
+  color: #4f46e5;
   background: #fff;
   border-radius: 10px;
   padding: 0 12px;
@@ -635,14 +635,14 @@ onMounted(async () => {
   color: #6b7488;
 }
 .agree a {
-  color: #2f6bff;
+  color: #4f46e5;
   cursor: pointer;
 }
 .primary-btn {
   height: 48px;
   border: none;
   border-radius: 12px;
-  background: #2f6bff;
+  background: #4f46e5;
   color: #fff;
   font-size: 16px;
   font-weight: 600;
@@ -658,7 +658,7 @@ onMounted(async () => {
   margin: 0;
 }
 .info {
-  color: #1f9d63;
+  color: #10b981;
   font-size: 13px;
   margin: 0;
 }
@@ -668,7 +668,7 @@ onMounted(async () => {
   margin-top: 4px;
 }
 .bottom-links a {
-  color: #2f6bff;
+  color: #4f46e5;
   font-size: 13px;
   cursor: pointer;
 }

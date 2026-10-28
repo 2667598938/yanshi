@@ -31,9 +31,10 @@ export function contentBreakdown(rows) {
     grouped.set(name, (grouped.get(name) || 0) + Math.max(0, Number(row.actualSec) || 0))
   }
   const total = [...grouped.values()].reduce((sum, sec) => sum + sec, 0)
-  const colors = ['#f2705b', '#3a7fc4', '#1f9d63', '#8b6ccc', '#d49b32', '#d265a1', '#379a9a', '#76859b']
+  const colors = ['#4f46e5', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#6366f1', '#14b8a6']
   return [...grouped].map(([name, sec]) => ({ name, sec, pct: total ? sec / total * 100 : 0,
-    color: colors[[...name].reduce((hash, char) => hash + char.codePointAt(0), 0) % colors.length] }))
+    color: name === '未填写学习内容' ? '#94a3b8'
+      : colors[[...name].reduce((hash, char) => hash + char.codePointAt(0), 0) % colors.length] }))
     .filter((row) => row.sec > 0).sort((a, b) => b.sec - a.sec || a.name.localeCompare(b.name))
 }
 

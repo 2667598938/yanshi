@@ -6,6 +6,7 @@ import {
   Sparkles, Trash2, Info, Check, ListChecks, Download, Camera,
   LogOut, ShieldCheck, FileText, BookMarked, Crown, ClipboardCheck, Shapes,
   BookOpen, Star, MessagesSquare, MessageSquare, School, RefreshCw, EyeOff,
+  HardDrive, Archive,
 } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
@@ -56,6 +57,7 @@ const restorePreview = ref(null)
 const overwriteBackup = ref(false)
 const restoring = ref(false)
 const deleteCloudRecords = ref(false)
+const savingSheet = ref(false)
 
 async function readBackup(event) {
   const file = event.target.files?.[0]
@@ -113,6 +115,13 @@ async function manualSync() {
 }
 
 const schoolCatalog = ref([])
+const imageSpace = ref(null)
+const storageBusy = ref(false)
+function fmtBytes(n) {
+  const value = Number(n) || 0
+  if (value >= 1024 * 1024) return (value / 1024 / 1024).toFixed(1) + 'MB'
+  return Math.round(value / 1024) + 'KB'
+}
 const schoolChoices = computed(()=>schoolCatalog.value.map(row=>({...SCHOOL_MAP[row.key],...row,key:row.key,short:row.short||row.name,logo:row.logo_key||SCHOOL_MAP[row.key]?.logo||''})))
 const school = computed(() => {
   const key = auth.user?.target_school || app.dreamSchool
@@ -148,9 +157,11 @@ function close() {
 }
 
 async function saveProfile() {
+  if (savingSheet.value) return
   const name = nickDraft.value.trim()
   if (name.length < 2) return toast('昵称至少 2 个字')
   if (signatureDraft.value.trim().length > 80) return toast('签名最多 80 个字')
+  savingSheet.value = true
   try {
     await profile.save({
       nickname: name,
@@ -162,10 +173,14 @@ async function saveProfile() {
     toast('资料已更新')
   } catch (e) {
     toast(e.message)
+  } finally {
+    savingSheet.value = false
   }
 }
 
 async function pickSchool(key) {
+  if (savingSheet.value) return
+  savingSheet.value = true
   try {
     await profile.save({ target_school: key })
     app.setDreamSchool(key)
@@ -173,10 +188,14 @@ async function pickSchool(key) {
     toast('梦校已更新')
   } catch (e) {
     toast(e.message)
+  } finally {
+    savingSheet.value = false
   }
 }
 
 async function pickGoal(min) {
+  if (savingSheet.value) return
+  savingSheet.value = true
   try {
     await profile.save({ daily_goal_min: min })
     app.setDailyGoal(min)
@@ -184,6 +203,8 @@ async function pickGoal(min) {
     toast('今日目标已更新')
   } catch (e) {
     toast(e.message)
+  } finally {
+    savingSheet.value = false
   }
 }
 
@@ -232,12 +253,37 @@ async function exportBackup() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `研时备份_${todayKey()}.json`
+    a.download = `研时个人学习备份_${todayKey()}.json`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast('已导出备份（含本地题图、解析图及云端图片引用）')
+    toast('已导出个人学习备份（不含全站数据库、图片二进制与管理员配置）')
   } catch {
     toast('导出失败，图片可能无法读取，请重试')
+  }
+}
+
+async function openStorage() {
+  sheetType.value = 'storage'
+  imageSpace.value = null
+  try {
+    imageSpace.value = await attachmentApi.storage()
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
+async function reclaimImages() {
+  if (storageBusy.value) return
+  if (!confirm('只回收超过 24 小时且未被题目、相册、聊天、头像或励志投稿引用的图片。确认回收？')) return
+  storageBusy.value = true
+  try {
+    const result = await attachmentApi.reclaim()
+    toast(`已回收 ${result.deleted} 张，释放 ${fmtBytes(result.freed_bytes)}`)
+    imageSpace.value = await attachmentApi.storage()
+  } catch (e) {
+    toast(e.message)
+  } finally {
+    storageBusy.value = false
   }
 }
 
@@ -479,7 +525,7 @@ onMounted(() => {
           <button type="button" class="row" @click="router.push('/vip')">
             <span class="row-ic c-gold"><Crown :size="18" /></span>
             <span class="row-label">会员中心</span>
-            <span class="row-val">{{ auth.isVip ? `VIP · ${vipUntil} 到期` : '未开通' }}</span>
+            <span class="row-val">{{ auth.isVip ? (auth.user?.vip_permanent ? 'VIP · 永久有效' : `VIP · ${vipUntil} 到期`) : '未开通' }}</span>
             <ChevronRight :size="17" class="row-arrow" />
           </button>
           <button type="button" class="row" @click="router.push('/requests')">
@@ -530,7 +576,18 @@ onMounted(() => {
         <div class="card menu">
           <button type="button" class="row" @click="exportBackup">
             <span class="row-ic c-green"><Download :size="18" /></span>
-            <span class="row-label">导出备份（本地图片及云端引用）</span>
+            <span class="row-label">导出个人学习备份（JSON）</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </button>
+          <button type="button" class="row" @click="open('backup-scope')">
+            <span class="row-ic c-blue"><Archive :size="18" /></span>
+            <span class="row-label">个人学习备份包含什么</span>
+            <ChevronRight :size="17" class="row-arrow" />
+          </button>
+          <button type="button" class="row" @click="openStorage">
+            <span class="row-ic c-purple"><HardDrive :size="18" /></span>
+            <span class="row-label">图片空间与回收</span>
+            <span class="row-val">查看配额 / 安全回收</span>
             <ChevronRight :size="17" class="row-arrow" />
           </button>
           <button type="button" class="row" @click="backupInput?.click()">
@@ -596,7 +653,9 @@ onMounted(() => {
               <Check v-if="figureDraft === f.id" :size="12" class="figure-tick" />
             </button>
           </div>
-          <button class="btn btn-primary btn-block mt16" @click="saveProfile"><Check :size="17" />保存</button>
+          <button class="btn btn-primary btn-block mt16" :disabled="savingSheet" @click="saveProfile">
+            <Check :size="17" />{{ savingSheet ? '保存中…' : '保存' }}
+          </button>
           <button class="btn btn-ghost btn-block mt8" @click="close">取消</button>
         </template>
 
@@ -635,6 +694,32 @@ onMounted(() => {
           <button class="btn btn-primary btn-block mt16" @click="close">知道了</button>
         </template>
 
+        <template v-else-if="sheetType === 'backup-scope'">
+          <div class="sheet-title">个人学习备份范围</div>
+          <div class="about-body">
+            <p><b>包含：</b>科目、专注记录、任务、错题、时间节点、个人资料与学习偏好；本机题图/解析图会一起打包，云端图片只保存引用。</p>
+            <p><b>不包含：</b>AI 完整会话、API Key、梦校相册图片二进制、其他成员数据、社区全部内容、管理员配置、服务器数据库与全站图片。</p>
+            <p class="about-h">整站备份</p>
+            <p>不是这个 JSON 的职责。服务器数据库、上传图片、环境配置与密钥应由管理员用部署目录的备份脚本单独管理。</p>
+          </div>
+          <button class="btn btn-primary btn-block mt16" @click="close">知道了</button>
+        </template>
+
+        <template v-else-if="sheetType === 'storage'">
+          <div class="sheet-title">图片空间与回收</div>
+          <div v-if="!imageSpace" class="sheet-sub">正在读取空间用量…</div>
+          <div v-else class="about-body">
+            <p>已用 {{ fmtBytes(imageSpace.used_bytes) }} / {{ fmtBytes(imageSpace.quota_bytes) }}</p>
+            <p>可安全回收：{{ imageSpace.orphan_count }} 张，约 {{ fmtBytes(imageSpace.orphan_bytes) }}。</p>
+            <p class="about-h">回收规则</p>
+            <p>只处理上传超过 {{ imageSpace.grace_hours }} 小时、且未被错题图片、梦校相册/校徽、AI 对话、头像或励志投稿引用的本人附件；仍被使用的图片不会被删除。</p>
+            <button class="btn btn-outline btn-block" :disabled="storageBusy || !imageSpace.orphan_count" @click="reclaimImages">
+              {{ storageBusy ? '回收中…' : `回收 ${imageSpace.orphan_count} 张未引用图片` }}
+            </button>
+          </div>
+          <button class="btn btn-ghost btn-block mt8" @click="close">关闭</button>
+        </template>
+
         <template v-else-if="sheetType === 'clear'">
           <div class="sheet-title">清空本地记录？</div>
           <div class="sheet-sub">默认清除本机已同步缓存，保留未同步记录；联网后可重新拉取。勾选下方选项会删除所有设备上的学习记录，请先导出备份。</div>
@@ -661,18 +746,18 @@ onMounted(() => {
 <style scoped>
 .profile {
   position: relative;
-  background: linear-gradient(150deg, var(--night2), var(--night));
-  border-radius: 22px;
-  padding: 20px 18px 16px;
+  background: linear-gradient(150deg, #4f46e5, #312e81 70%);
+  border-radius: 20px;
+  padding: 24px 16px 16px;
   color: #fff;
   overflow: hidden;
-  box-shadow: var(--shadow);
+  box-shadow: 0 14px 32px rgba(49, 46, 129, 0.22);
 }
 .watermark { position: absolute; right: -34px; top: -26px; width: 150px; height: 150px; border-radius: 50%; opacity: 0.08; pointer-events: none; }
 .pf-main { position: relative; display: flex; align-items: center; gap: 14px; }
 .avatar-wrap { position: relative; flex-shrink: 0; cursor: pointer; }
 .pf-avatar { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid rgba(255,255,255,.8); display: block; }
-.cam { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
+.cam { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
 .figure-chip {
   position: absolute;
   left: -4px;
@@ -700,17 +785,19 @@ onMounted(() => {
 }
 .figure-cell {
   position: relative;
-  border: 1.5px solid transparent;
-  border-radius: 13px;
-  padding: 10px 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 8px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   cursor: pointer;
+  transition: border-color 0.24s ease, box-shadow 0.24s ease;
 }
 .figure-cell.on {
   border-color: var(--primary);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.16);
 }
 .figure-emoji { font-size: 22px; line-height: 1; }
 .figure-name { font-size: 10.5px; color: var(--sub); }
@@ -731,34 +818,34 @@ onMounted(() => {
   font-size: 10px;
   font-weight: 800;
   color: #3a2700;
-  background: linear-gradient(120deg, #ffd88a, #f0a830);
+  background: linear-gradient(120deg, #fcd34d, #f59e0b);
   border-radius: 999px;
-  padding: 2px 7px;
+  padding: 2px 8px;
 }
 .edit-ic { color: rgba(255,255,255,.6); }
-.pf-email { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 2px; }
-.pf-sign { font-size: 12px; color: rgba(255,255,255,.86); margin-top: 3px; font-style: italic; }
-.pf-school { font-size: 12px; color: rgba(255,255,255,.66); margin-top: 2px; }
-.pf-stats { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.14); text-align: center; }
-.ps-num { font-size: 17px; font-weight: 800; }
-.ps-label { font-size: 11.5px; color: rgba(255,255,255,.64); margin-top: 2px; }
+.pf-email { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 4px; }
+.pf-sign { font-size: 12px; color: rgba(255,255,255,.86); margin-top: 4px; font-style: italic; }
+.pf-school { font-size: 12px; color: rgba(255,255,255,.66); margin-top: 4px; }
+.pf-stats { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.14); text-align: center; }
+.ps-num { font-size: 20px; font-weight: 800; }
+.ps-label { font-size: 12px; color: rgba(255,255,255,.64); margin-top: 4px; }
 
-.group { margin-top: 18px; }
-.group-title { font-size: 13px; font-weight: 700; color: var(--faint); margin: 0 4px 9px; }
-.menu { padding: 2px 14px; }
-.row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.group { margin-top: 16px; }
+.group-title { font-size: 12px; font-weight: 700; color: var(--faint); margin: 0 4px 8px; }
+.menu { padding: 0 16px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .row:last-child { border-bottom: none; }
-.row-ic { width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.c-blue { background: #e6f0fb; color: var(--primary); }
-.c-orange { background: #fdeee4; color: var(--tomato); }
-.c-purple { background: #eef0fe; color: var(--purple); }
-.c-red { background: #fdecec; color: var(--red); }
-.c-green { background: #e7f6f0; color: var(--green); }
-.c-ink { background: #eef1f6; color: var(--ink); }
-.c-gold { background: #fff3df; color: var(--accent-deep); }
-.c-gray { background: #f1f4f8; color: var(--faint); }
-.row-label { flex: 1; font-size: 15px; font-weight: 600; }
-.row-val { font-size: 13px; color: var(--faint); }
+.row-ic { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.c-blue { background: rgba(79, 70, 229, 0.08); color: var(--primary); }
+.c-orange { background: rgba(239, 68, 68, 0.08); color: var(--tomato); }
+.c-purple { background: rgba(139, 92, 246, 0.1); color: var(--purple); }
+.c-red { background: rgba(239, 68, 68, 0.1); color: var(--red); }
+.c-green { background: rgba(16, 185, 129, 0.1); color: var(--green); }
+.c-ink { background: rgba(17, 24, 39, 0.06); color: var(--ink); }
+.c-gold { background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); }
+.c-gray { background: rgba(17, 24, 39, 0.05); color: var(--faint); }
+.row-label { flex: 1; font-size: 14px; font-weight: 600; }
+.row-val { font-size: 12px; color: var(--faint); }
 .unread-badge {
   min-width: 18px;
   height: 18px;
@@ -775,42 +862,42 @@ onMounted(() => {
 .row-arrow { color: var(--faint); flex-shrink: 0; }
 .row.danger .row-label { color: var(--red); }
 
-.switch { width: 44px; height: 26px; border-radius: 999px; background: #d7e0ec; position: relative; transition: background .2s; margin-right: 2px; }
-.switch.on { background: var(--primary); }
-.knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,.2); transition: transform .2s; }
+.switch { width: 44px; height: 26px; border-radius: 999px; background: rgba(79, 70, 229, 0.16); position: relative; transition: background 0.24s ease; margin-right: 2px; }
+.switch.on { background: var(--primary-grad); }
+.knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(79, 70, 229, 0.24); transition: transform 0.24s ease; }
 .switch.on .knob { transform: translateX(18px); }
-.version { text-align: center; color: var(--faint); font-size: 12px; margin-top: 22px; }
+.version { text-align: center; color: var(--faint); font-size: 12px; margin-top: 24px; }
 
-.mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
-.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); max-height: 80vh; overflow-y: auto; }
-.sheet-title { font-size: 17px; font-weight: 800; text-align: center; }
-.sheet-sub { text-align: center; color: var(--sub); font-size: 13px; margin: 10px 0 16px; }
-.school-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
-.school-cell { position: relative; border: 1.5px solid var(--line); border-radius: 14px; padding: 14px 8px; text-align: center; cursor: pointer; }
-.school-cell.on { border-color: var(--primary); background: #f2f7fd; }
+.mask { position: fixed; inset: 0; background: rgba(30, 27, 75, 0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
+.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 24px 24px 0 0; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); max-height: 80vh; overflow-y: auto; }
+.sheet-title { font-size: 20px; font-weight: 800; text-align: center; }
+.sheet-sub { text-align: center; color: var(--sub); font-size: 12px; margin: 8px 0 16px; }
+.school-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+.school-cell { position: relative; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 12px; padding: 16px 8px; text-align: center; cursor: pointer; transition: border-color 0.24s ease, background-color 0.24s ease, box-shadow 0.24s ease; }
+.school-cell.on { border-color: var(--primary); background: rgba(79, 70, 229, 0.06); box-shadow: 0 6px 16px rgba(79, 70, 229, 0.14); }
 .school-cell img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
-.school-cell span { display: block; font-size: 12.5px; font-weight: 600; margin-top: 6px; }
-.tick { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; }
-.goal-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
-.goal-opt { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; font-size: 15px; font-weight: 600; cursor: pointer; color: var(--ink); }
-.goal-opt.on { border-color: var(--tomato); background: #fff5f3; color: var(--tomato-deep); }
-.about-body { margin-top: 12px; font-size: 13.5px; color: var(--sub); line-height: 1.8; }
-.about-body p { margin: 0 0 10px; }
+.school-cell span { display: block; font-size: 12px; font-weight: 600; margin-top: 8px; }
+.tick { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; }
+.goal-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.goal-opt { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 12px; background: rgba(255, 255, 255, 0.8); font-size: 14px; font-weight: 600; cursor: pointer; color: var(--ink); transition: border-color 0.24s ease, background-color 0.24s ease; }
+.goal-opt.on { border-color: var(--primary); background: rgba(79, 70, 229, 0.06); color: var(--primary); }
+.about-body { margin-top: 16px; font-size: 14px; color: var(--sub); line-height: 1.8; }
+.about-body p { margin: 0 0 8px; }
 .about-h { color: var(--ink); font-weight: 700; margin-bottom: 4px !important; }
 
-.modal-mask { position: fixed; inset: 0; background: rgba(20,30,50,.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 200; }
-.modal { background: #fff; border-radius: 14px; max-width: 560px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
-.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid #eef1f6; }
+.modal-mask { position: fixed; inset: 0; background: rgba(30, 27, 75, 0.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 200; }
+.modal { background: #fff; border-radius: 12px; max-width: 560px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 24px 48px rgba(30, 27, 75, 0.24); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line); }
 .modal-head h3 { margin: 0; font-size: 16px; }
-.modal-head button { border: none; background: #f1f4fa; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-.modal-body { padding: 16px 18px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.8; color: #3a4256; margin: 0; }
+.modal-head button { border: none; background: rgba(79, 70, 229, 0.08); color: var(--sub); border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+.modal-body { padding: 16px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 14px; line-height: 1.8; color: var(--sub); margin: 0; }
 </style>
 
 <style scoped>
 button.row{width:100%;background:transparent;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
-.group-help{font-size:12px;line-height:1.6;color:var(--sub);margin:0 4px 10px}
+.group-help{font-size:12px;line-height:1.6;color:var(--sub);margin:0 4px 8px}
 .row-label{min-width:0}.row-val{max-width:48%;white-space:normal;text-align:right}
 button.row:not(:last-child){border-bottom:1px solid var(--line)}
 .switch{flex-shrink:0}
-button.row:focus-visible{outline:2px solid var(--blue,#526484);outline-offset:-2px;border-radius:8px}
+button.row:focus-visible{outline:2px solid var(--primary);outline-offset:-2px;border-radius:8px}
 </style>

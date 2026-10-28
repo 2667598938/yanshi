@@ -147,16 +147,15 @@ export const useTimerStore = defineStore('timer', {
         if (this.now - c.pausedAt >= MAX_PAUSE_MS) this.finish(false, '', 'pause_timeout')
         return
       }
-      // 恢复后台计时：按先到的边界结算；25 分钟倒计时早于 180 分钟上限。
-      if (c.mode === 'timer' && this.plannedSec < MAX_FOCUS_SEC && this.remainingSec <= 0) {
+      // 结束优先级：倒计时到计划时长先判完成（含 180 分钟边界）；正向计时才按 180 分钟上限退出。
+      if (c.mode === 'timer' && this.remainingSec <= 0) {
         this.finish(true)
         return
       }
-      if (this.elapsedSec >= MAX_FOCUS_SEC) {
+      if (c.mode !== 'timer' && this.elapsedSec >= MAX_FOCUS_SEC) {
         this.finish(false, '', 'timeout')
         return
       }
-      if (c.mode === 'timer' && this.remainingSec <= 0) this.finish(true)
     },
     stopTicker() {
       if (ticker && !this.current && (!this.rest || this.rest.finished)) {

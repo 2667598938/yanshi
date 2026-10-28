@@ -202,7 +202,8 @@ def conflicts(user=Depends(get_current_user), db=Depends(get_db)):
 class ResolveInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     group_id: str
-    keep_id: str
+    keep_id: str | None = None
+    keep_ids: list[str] | None = Field(default=None, max_length=200)
     versions: dict[str, int] = Field(max_length=20000)
     confirmed: bool = Field(strict=True)
 
@@ -216,6 +217,11 @@ def resolve(
 ):
     if not body.confirmed:
         raise ApiError(400, 40001, "请先确认保留及删除条目")
+    keep_ids = body.keep_ids or ([body.keep_id] if body.keep_id else [])
+    if not keep_ids:
+        raise ApiError(400, 40001, "请选择要保留的记录")
+    if len(set(keep_ids)) != len(keep_ids):
+        raise ApiError(400, 40001, "保留记录不能重复")
     with account_write(db, user.id):
         group = next(
             (g for g in conflict_groups(db, user.id, True) if g["id"] == body.group_id),
@@ -224,14 +230,23 @@ def resolve(
         if (
             not group
             or body.versions != {i["id"]: i["revision"] for i in group["items"]}
-            or body.keep_id not in body.versions
+            or any(i not in body.versions for i in keep_ids)
         ):
             raise ApiError(409, 40902, "冲突记录已经变化，请刷新后处理")
+        kept = [i for i in group["items"] if i["id"] in keep_ids]
+        if len(kept) != len(keep_ids):
+            raise ApiError(409, 40902, "保留记录不存在，请刷新后处理")
+        kept.sort(key=lambda i: (i["started_at"], i["id"]))
+        for prev, current in zip(kept, kept[1:]):
+            if prev["ended_at"] > current["started_at"]:
+                raise ApiError(400, 40001, "所选保留记录仍互相重叠，请放弃至少一条")
         changes = [
             {"id": i["id"], "expectedRevision": i["revision"], "record": None}
             for i in group["items"]
-            if i["id"] != body.keep_id
+            if i["id"] not in keep_ids
         ]
+        if not changes:
+            raise ApiError(400, 40001, "请至少放弃一条冲突记录")
 
         def log(_):
             audit(
@@ -240,7 +255,7 @@ def resolve(
                 "timer.resolve_overlap",
                 user_id=user.id,
                 detail=json.dumps(
-                    {"keep": body.keep_id, "deleted": [c["id"] for c in changes]}
+                    {"keep": keep_ids, "deleted": [c["id"] for c in changes]}
                 ),
             )
 
@@ -251,9 +266,11 @@ def resolve(
                 "operationId": "overlap-"
                 + body.group_id
                 + "-"
-                + str(max(body.versions.values())),
+                + str(max(body.versions.values()))
+                + "-"
+                + ",".join(sorted(keep_ids)),
                 "changes": changes,
             },
             before_commit=log,
         )
-        return ok({"deleted": len(changes), "kept": body.keep_id})
+        return ok({"deleted": len(changes), "kept": keep_ids})

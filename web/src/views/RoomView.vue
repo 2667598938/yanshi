@@ -1,12 +1,15 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Lock, Users, Send, Trash2, Flag, Trophy, Flame, ArrowLeft, Copy, LogIn, Settings, UserMinus, Check, X } from 'lucide-vue-next'
+import {
+  Lock, Users, Send, Trash2, Flag, Trophy, Flame, ArrowLeft, Copy, LogIn, Settings,
+  UserMinus, Check, X, RefreshCw, ArrowDown,
+} from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
 import { useSubjectsStore } from '../stores/subjects'
 import { useAuthStore } from '../stores/auth'
+import { useSchoolsStore } from '../stores/schools'
 import { roomApi } from '../api'
-import { SCHOOL_MAP } from '../data/schools'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
@@ -16,6 +19,7 @@ import { FIGURES, FIGURE_MAP } from '../data/figures'
 const timer = useTimerStore()
 const subjects = useSubjectsStore()
 const auth = useAuthStore()
+const schools = useSchoolsStore()
 const { toast } = useToast()
 const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 const route = useRoute()
@@ -30,7 +34,14 @@ const ranking = ref({ today: [], week: [], all: [] })
 const messages = ref([])
 const rankTab = ref('today')
 const loading = ref(false)
+const loadError = ref('')
 const msgInput = ref('')
+const msgListEl = ref(null)
+const msgSending = ref(false)
+const pendingMsgs = ref([])
+const unread = ref(0)
+const atMsgBottom = ref(true)
+const displayMessages = computed(() => [...messages.value, ...pendingMsgs.value])
 const showGoal = ref(false)
 const goalDraft = ref({ target_school: '', target_score: '', words: '' })
 const showManage = ref(false)
@@ -46,10 +57,10 @@ const joinRequired = computed(() => !!preview.value?.join_required)
 const myApply = computed(() => preview.value?.apply || null)
 
 function schoolLogo(key) {
-  return SCHOOL_MAP[key]?.logo || ''
+  return schools.logoFor(key)
 }
 function schoolName(key) {
-  return SCHOOL_MAP[key]?.short || key || '未填写'
+  return schools.shortFor(key) || '未填写'
 }
 function fmtSec(sec) {
   const m = Math.round((sec || 0) / 60)
@@ -70,12 +81,12 @@ function presenceText(m) {
   if (p.status === 'private') return { label: '隐私中', color: '#8d7fa3' }
   if (p.status === 'unshared') return { label: '仅同组可见', color: '#8d7fa3' }
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
-  if (p.status === 'resting') return { label: '休息中', color: '#8b6ccc' }
-  if (p.status === 'idle') return { label: '空闲', color: '#d49b32' }
+  if (p.status === 'resting') return { label: '休息中', color: '#8b5cf6' }
+  if (p.status === 'idle') return { label: '空闲', color: '#f59e0b' }
   if (p.status === 'focusing') {
-    return { label: `专注中 · ${p.subject_name || '学习'}${p.focus_sec ? ' ' + fmtSec(p.focus_sec) : ''}`, color: '#1f9d63' }
+    return { label: `专注中 · ${p.subject_name || '学习'}${p.focus_sec ? ' ' + fmtSec(p.focus_sec) : ''}`, color: '#10b981' }
   }
-  return { label: '在线', color: '#2f6bff' }
+  return { label: '在线', color: '#4f46e5' }
 }
 
 // 4 个座位：成员在前，空位补满 capacity
@@ -96,6 +107,11 @@ const rankList = computed(() => {
   const byId = Object.fromEntries(members.value.map((m) => [m.user_id, m]))
   return ids.map((x) => ({ ...x, member: byId[x.user_id] }))
 })
+const rankEmptyText = computed(() => ({
+  today: '今天还没有人专注，先坐下的同学加油',
+  week: '本周还没有专注记录',
+  all: '还没有累计专注记录',
+}[rankTab.value] || '还没有专注记录'))
 
 function buildHeartbeat() {
   if(document.visibilityState !== 'visible')return {status:'offline'}
@@ -116,28 +132,70 @@ function buildHeartbeat() {
   return { status: 'idle', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null }
 }
 
-async function fetchRoom() {
+// 留言增量合并：只有停留在底部才自动跟随，向上翻看时不抢滚动，改为计数提示
+async function applyMessages(list) {
+  const el = msgListEl.value
+  const stick = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 32
+  const known = new Set(messages.value.map((x) => x.id))
+  const added = list.filter((x) => !known.has(x.id)).length
+  messages.value = list
+  await nextTick()
+  if (!msgListEl.value) return
+  if (stick) {
+    msgListEl.value.scrollTop = msgListEl.value.scrollHeight
+    unread.value = 0
+  } else if (added > 0) {
+    unread.value += added
+  }
+}
+
+async function pullRoom() {
+  const data = await roomApi.get(roomId.value)
   if (!alive) return
+  room.value = data.room
+  if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
+  joined.value = data.joined !== false
+  preview.value = null
+  loadError.value = ''
+  members.value = data.members || []
+  ranking.value = data.ranking || { today: [], week: [], all: [] }
+  await applyMessages(data.messages || [])
+}
+
+// 轮询与手动刷新共用一次请求：请求期间再触发会标记后补拉一次，不会并发打接口
+let fetching = null
+let again = false
+function fetchRoom() {
+  if (!alive) return Promise.resolve()
   // 私密房间未加入：轮询预览，房主通过后自动切换到正式房间状态
   if (!joined.value && preview.value) return loadPreview()
-  try {
-    const data = await roomApi.get(roomId.value)
-    if (!alive) return
-    room.value = data.room
-    if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
-    joined.value = data.joined !== false
-    preview.value = null
-    members.value = data.members || []
-    ranking.value = data.ranking || { today: [], week: [], all: [] }
-    messages.value = data.messages || []
-  } catch (e) {
-    if (!alive) return
-    if (e.status === 403) return loadPreview()
-    if (e.status === 404) {
-      toast(e.message)
-      router.replace('/rooms')
-    }
+  if (fetching) {
+    again = true
+    return fetching
   }
+  fetching = (async () => {
+    try {
+      do {
+        again = false
+        try {
+          await pullRoom()
+        } catch (e) {
+          if (!alive) return
+          if (e.status === 403) return loadPreview()
+          if (e.status === 404) {
+            toast(e.message)
+            router.replace('/rooms')
+            return
+          }
+          loadError.value = e.message || '加载失败，请检查网络后重试'
+          break
+        }
+      } while (again && alive)
+    } finally {
+      fetching = null
+    }
+  })()
+  return fetching
 }
 
 async function loadPreview() {
@@ -244,35 +302,69 @@ async function leaveRoom() {
 
 async function beat() { window.dispatchEvent(new Event('yanshi:presence')) }
 
-async function sendMessage() {
-  const content = msgInput.value.trim()
-  if (!content) return
-  try {
-    await roomApi.postMessage(content, roomId.value)
-    msgInput.value = ''
-    await fetchRoom()
-  } catch (e) {
-    toast(e.message)
-  }
+function onMsgScroll() {
+  const el = msgListEl.value
+  if (!el) return
+  atMsgBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 32
+  if (atMsgBottom.value) unread.value = 0
 }
 
+async function scrollMsgsBottom() {
+  await nextTick()
+  if (msgListEl.value) msgListEl.value.scrollTop = msgListEl.value.scrollHeight
+  atMsgBottom.value = true
+  unread.value = 0
+}
+
+// 乐观发送：先出现在列表里，失败回滚并还原输入内容
+async function sendMessage() {
+  const content = msgInput.value.trim()
+  if (!content || msgSending.value) return
+  const tmp = { tmpId: `tmp-${Date.now()}`, content, nickname: auth.user?.nickname || '我', created_at: new Date().toISOString(), mine: true, pending: true }
+  msgInput.value = ''
+  pendingMsgs.value.push(tmp)
+  msgSending.value = true
+  await scrollMsgsBottom()
+  try {
+    await roomApi.postMessage(content, roomId.value)
+  } catch (e) {
+    pendingMsgs.value = pendingMsgs.value.filter((x) => x.tmpId !== tmp.tmpId)
+    if (!msgInput.value) msgInput.value = content
+    toast(e.message)
+    return
+  } finally {
+    msgSending.value = false
+  }
+  pendingMsgs.value = pendingMsgs.value.filter((x) => x.tmpId !== tmp.tmpId)
+  await fetchRoom()
+}
+
+// 删除也是先移除再回滚，避免等接口转圈
 async function removeMessage(id) {
+  const backup = messages.value
+  messages.value = messages.value.filter((m) => m.id !== id)
   try {
     await roomApi.deleteMessage(id, roomId.value)
-    messages.value = messages.value.filter((m) => m.id !== id)
   } catch (e) {
+    messages.value = backup
     toast(e.message)
   }
 }
 
 function openGoal() {
   const me = members.value.find((m) => m.user_id === auth.user?.id)
+  const raw = me?.goal?.target_school || auth.user?.target_school || ''
   goalDraft.value = {
-    target_school: me?.goal?.target_school || auth.user?.target_school || '',
+    target_school: schools.nameFor(raw),
     target_score: me?.goal?.target_score || '',
     words: me?.goal?.words || '',
   }
   showGoal.value = true
+  schools.load().then(() => {
+    if (showGoal.value && goalDraft.value.target_school === (raw || '')) {
+      goalDraft.value.target_school = schools.nameFor(raw)
+    }
+  })
 }
 
 async function saveGoal() {
@@ -349,6 +441,17 @@ async function kick(member) {
 }
 
 let pollTimer = null
+async function retryLoad() {
+  if (loading.value) return
+  loading.value = true
+  loadError.value = ''
+  try {
+    await fetchRoom()
+  } finally {
+    if (alive) loading.value = false
+  }
+}
+
 onMounted(async () => {
   loading.value = true
   await fetchRoom()
@@ -363,6 +466,8 @@ onMounted(async () => {
 function onVisibility() {
   if (!joined.value) return
   beat(document.visibilityState === 'visible' ? undefined : 'offline')
+  // 回到前台立刻补一次，避免手机上放很久后看到过期状态
+  if (document.visibilityState === 'visible' && alive) fetchRoom()
 }
 function onLeave() { /* App级pagehide按设备上报 */ }
 onBeforeUnmount(() => {
@@ -389,8 +494,33 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="page">
-      <!-- 房间头卡 -->
-      <div class="room-head">
+      <!-- 首次进入：骨架屏，避免白屏等待 -->
+      <div v-if="loading && !room" class="page-skeleton" role="status">
+        <span class="sr-only">正在进入自习室，请稍候…</span>
+        <div class="sk-head">
+          <i class="sk-ic"></i>
+          <div class="sk-lines"><i></i><i class="w60"></i></div>
+        </div>
+        <div class="sk-seats"><i></i><i></i></div>
+        <div class="sk-block"><i></i><i></i><i class="w40"></i></div>
+        <div class="sk-block"><i></i><i></i><i class="w60"></i></div>
+      </div>
+
+      <!-- 首次加载失败 -->
+      <div v-else-if="loadError && !room" class="card load-error">
+        <div class="le-title">没能进入这个自习室</div>
+        <div class="le-sub">{{ loadError }}</div>
+        <button class="btn btn-primary btn-sm" :disabled="loading" @click="retryLoad">
+          <RefreshCw :size="14" />{{ loading ? '重试中…' : '重新加载' }}
+        </button>
+      </div>
+      <template v-else>
+        <div v-if="loadError" class="sync-bar">
+          <span>同步失败：{{ loadError }}</span>
+          <button @click="retryLoad">重试</button>
+        </div>
+        <!-- 房间头卡 -->
+        <div class="room-head">
         <div class="room-top">
           <div class="room-icon"><Users :size="22" /></div>
           <div class="room-meta">
@@ -493,7 +623,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="seat-school">{{ schoolName(seat.target_school) }}<span v-if="seat.streak"> · 连续{{ seat.streak }}天</span></div>
               <div class="seat-state">
-                <span class="state-dot" :style="{ background: presenceText(seat).color }"></span>
+                <span class="state-dot" :class="{ live: seat.online && seat.presence?.status === 'focusing' }" :style="{ background: presenceText(seat).color }"></span>
                 {{ presenceText(seat).label }}
               </div>
             </div>
@@ -523,13 +653,16 @@ onBeforeUnmount(() => {
             <button :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">累计</button>
           </div>
         </div>
-        <div v-for="(item, i) in rankList" :key="item.user_id" class="rank-row">
+        <div v-for="(item, i) in rankList" :key="item.user_id" class="rank-row" :class="{ me: item.user_id === auth.user?.id }">
           <span class="rank-no" :class="{ top: i < 3 }">{{ i + 1 }}</span>
-          <span class="rank-name">{{ item.member?.nickname || '成员' }}</span>
+          <span class="rank-name">
+            {{ item.member?.nickname || '成员' }}
+            <em v-if="item.user_id === auth.user?.id" class="rank-me-tag">我</em>
+          </span>
           <span class="rank-bar"><i :style="{ width: Math.min(100, (item.sec / (rankList[0]?.sec || 1)) * 100) + '%' }"></i></span>
           <span class="rank-sec tnum">{{ fmtSec(item.sec) }}</span>
         </div>
-        <div v-if="!rankList.length" class="rank-empty">还没有专注记录</div>
+        <div v-if="!rankList.length" class="rank-empty">{{ rankEmptyText }}</div>
       </div>
 
       <!-- 目标墙 -->
@@ -558,28 +691,47 @@ onBeforeUnmount(() => {
       <!-- 留言板 -->
       <div v-if="joined" class="card msg-card">
         <div class="rank-title"><Flame :size="16" />互相打气留言板</div>
-        <div class="msg-list">
-          <div v-for="m in messages" :key="m.id" class="msg" :class="{ mine: m.mine }">
-            <div class="msg-bubble">
-              <div class="msg-meta">
-                <span>{{ m.nickname }}</span>
-                <i>{{ fmtTime(m.created_at) }}</i>
-                <button
-                  v-if="m.mine || auth.isAdmin"
-                  class="msg-del"
-                  @click="removeMessage(m.id)"
-                ><Trash2 :size="13" /></button>
+        <div class="msg-wrap">
+          <div ref="msgListEl" class="msg-list" @scroll.passive="onMsgScroll">
+            <div
+              v-for="m in displayMessages"
+              :key="m.id || m.tmpId"
+              class="msg"
+              :class="{ mine: m.mine, pending: m.pending }"
+            >
+              <div class="msg-bubble">
+                <div class="msg-meta">
+                  <span>{{ m.nickname }}</span>
+                  <i>{{ m.pending ? '发送中…' : fmtTime(m.created_at) }}</i>
+                  <button
+                    v-if="!m.pending && (m.mine || auth.isAdmin)"
+                    class="msg-del"
+                    title="删除这条留言"
+                    @click="removeMessage(m.id)"
+                  ><Trash2 :size="13" /></button>
+                </div>
+                <div class="msg-content">{{ m.content }}</div>
               </div>
-              <div class="msg-content">{{ m.content }}</div>
             </div>
+            <div v-if="!displayMessages.length" class="rank-empty">还没有留言，说句加油吧</div>
           </div>
-          <div v-if="!messages.length" class="rank-empty">还没有留言，说句加油吧</div>
+          <button v-if="unread" class="msg-new" @click="scrollMsgsBottom">
+            有 {{ unread }} 条新留言 <ArrowDown :size="13" />
+          </button>
         </div>
-        <div v-if="joined" class="msg-input">
-          <input v-model="msgInput" maxlength="500" placeholder="给大家留句打气的话…" @keyup.enter="sendMessage" />
-          <button @click="sendMessage"><Send :size="17" /></button>
+        <div class="msg-input">
+          <input
+            v-model="msgInput"
+            maxlength="500"
+            placeholder="给大家留句打气的话…"
+            @keyup.enter="sendMessage"
+          />
+          <button :disabled="msgSending || !msgInput.trim()" title="发送留言" @click="sendMessage">
+            <Send :size="17" />
+          </button>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- 房主管理 -->
@@ -630,7 +782,7 @@ onBeforeUnmount(() => {
         <label class="sf"><span>目标院校</span>
           <select v-model="goalDraft.target_school">
             <option value="">请选择</option>
-            <option v-for="(s, k) in SCHOOL_MAP" :key="k" :value="k">{{ s.name }}</option>
+            <option v-for="s in schools.choices" :key="s.key" :value="s.name">{{ s.name }}</option>
           </select>
         </label>
         <label class="sf"><span>目标分数</span>
@@ -649,146 +801,189 @@ onBeforeUnmount(() => {
 <style scoped>
 .seat-identity { position: relative; flex-shrink: 0; }.seat-figure { position: absolute; right: -6px; bottom: -3px; border-radius: 50%; width: 25px; height: 25px; display: grid; place-items: center; font-size: 16px; border: 2px solid #fff; }
 .room-head {
-  background: linear-gradient(150deg, var(--night2), var(--night));
+  background: linear-gradient(150deg, #4f46e5, #312e81 65%);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 16px;
   color: #fff;
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 24px rgba(49, 46, 129, 0.22);
 }
-.room-top { display: flex; align-items: center; gap: 12px; }
+.room-top { display: flex; align-items: center; gap: 8px; }
 .room-icon {
-  width: 44px; height: 44px; border-radius: 13px;
+  width: 44px; height: 44px; border-radius: 12px;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.2);
   display: flex; align-items: center; justify-content: center;
 }
-.room-name { font-size: 17px; font-weight: 800; }
+.room-name { font-size: 20px; font-weight: 800; }
 .full-banner {
-  margin-top: 12px;
+  margin-top: 8px;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--radius-sm);
-  background: #fff3df;
-  color: #8a5a00;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #92400e;
 }
 .fb-title { font-size: 14px; font-weight: 800; }
-.fb-sub { font-size: 11.5px; line-height: 1.65; margin-top: 3px; }
-.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 9px; background: #b06000; color: #fff; font-size: 12.5px; font-weight: 600; padding: 8px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.nav .back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.switch-btn { margin-left: auto; border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 9px; padding: 8px 11px; font-size: 12px; cursor: pointer; }
-.room-code { margin-top: 6px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 7px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.room-private { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: rgba(255,255,255,.72); margin-top: 3px; }
-.room-stat { display: flex; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.14); }
+.fb-sub { font-size: 12px; line-height: 1.6; margin-top: 4px; }
+.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 8px; background: #b45309; color: #fff; font-size: 12px; font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.nav .back { border: none; background: rgba(255, 255, 255, 0.72); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
+.switch-btn { margin-left: auto; border: 1px solid rgba(79, 70, 229, 0.14); background: rgba(255, 255, 255, 0.72); color: var(--sub); border-radius: 8px; padding: 8px 16px; font-size: 12px; cursor: pointer; }
+.room-code { margin-top: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 12px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.room-private { display: flex; align-items: center; gap: 4px; font-size: 12px; color: rgba(255,255,255,.72); margin-top: 4px; }
+.room-stat { display: flex; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.14); }
 .room-stat > div { flex: 1; text-align: center; }
-.rs-num { font-size: 18px; font-weight: 800; }
-.rs-label { font-size: 11.5px; color: rgba(255,255,255,.68); margin-top: 2px; }
+.rs-num { font-size: 20px; font-weight: 800; }
+.rs-label { font-size: 12px; color: rgba(255,255,255,.68); margin-top: 4px; }
 .rs-line { flex: 0 0 1px; width: 1px; height: 30px; align-self: center; background: rgba(255,255,255,.2); }
 
-.seat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
-.seat-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow-soft); min-height: 132px; }
-.seat-card.me { padding: 14px; grid-column: span 2; display: flex; align-items: center; gap: 12px; }
-.seat-card.filled { padding: 12px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+.seat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.seat-card { background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); min-height: 132px; }
+.seat-card.me { padding: 16px; grid-column: span 2; display: flex; align-items: center; gap: 8px; }
+.seat-card.filled { padding: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
 .seat-avatar { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px var(--primary); flex-shrink: 0; }
 .seat-card.filled .seat-avatar { width: 50px; height: 50px; }
 .seat-info { flex: 1; min-width: 0; }
-.seat-name { font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.seat-name { font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .seat-card.filled .seat-name { justify-content: center; }
-.me-tag { font-size: 10px; background: var(--primary); color: #fff; border-radius: 6px; padding: 1px 6px; font-weight: 600; }
-.admin-tag { font-size: 10px; background: #fff3df; color: var(--accent-deep); border-radius: 6px; padding: 1px 6px; }
-.seat-school { font-size: 12px; color: var(--sub); margin-top: 2px; }
-.seat-state { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sub); margin-top: 4px; }
+.me-tag { font-size: 11px; background: var(--primary-grad); color: #fff; border-radius: 6px; padding: 2px 8px; font-weight: 600; }
+.admin-tag { font-size: 11px; background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); border-radius: 6px; padding: 2px 8px; }
+.seat-school { font-size: 12px; color: var(--sub); margin-top: 4px; }
+.seat-state { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--sub); margin-top: 4px; }
 .seat-card.filled .seat-state { justify-content: center; }
 .state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.seat-min { font-size: 13px; font-weight: 700; color: var(--primary); }
+.seat-min { font-size: 12px; font-weight: 700; color: var(--primary); }
 .seat-card { position: relative; }
-.kick-btn { position: absolute; right: 8px; bottom: 8px; border: 1px solid var(--line); background: #fff; color: var(--faint); width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.kick-btn { position: absolute; right: 8px; bottom: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.9); color: var(--faint); width: 24px; height: 24px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .switch-btn.gear { margin-left: auto; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
-.switch-btn.gear + .switch-btn { margin-left: 6px; }
+.switch-btn.gear + .switch-btn { margin-left: 8px; }
 .vis-row { display: flex; gap: 8px; }
-.vis-row button { flex: 1; height: 40px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; color: var(--sub); font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.vis-row button.on { border-color: transparent; background: var(--primary); color: #fff; }
-.seat-card.empty { border: 1.5px dashed #d3deea; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px; }
-.seat-empty-ic { color: #c2cfdf; margin-bottom: 8px; }
+.vis-row button { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: var(--sub); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.24s ease, color 0.24s ease; }
+.vis-row button.on { border-color: transparent; background: var(--primary-grad); color: #fff; }
+.seat-card.empty { border: 1px dashed rgba(79, 70, 229, 0.22); box-shadow: none; background: rgba(255, 255, 255, 0.5); backdrop-filter: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+.seat-empty-ic { color: #c3c8dd; margin-bottom: 8px; }
 .seat-empty-txt { font-size: 14px; font-weight: 700; color: var(--faint); }
-.seat-empty-sub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+.seat-empty-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
 
-.rank-card, .goal-wall, .msg-card { margin-top: 14px; }
-.rank-head, .wall-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.rank-title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
-.rank-tabs { display: flex; background: #f1f4fa; border-radius: 8px; padding: 3px; }
-.rank-tabs button { border: none; background: transparent; padding: 5px 12px; border-radius: 6px; font-size: 12px; color: var(--sub); cursor: pointer; }
-.rank-tabs button.on { background: #fff; color: var(--primary); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-.rank-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
-.rank-no { width: 22px; height: 22px; border-radius: 50%; background: #eef1f6; color: var(--faint); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.rank-no.top { background: var(--primary); color: #fff; }
-.rank-name { width: 56px; font-size: 13px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rank-bar { flex: 1; height: 8px; background: #f1f4fa; border-radius: 999px; overflow: hidden; }
-.rank-bar i { display: block; height: 100%; background: linear-gradient(90deg, #2f6bff, #6aa0ff); border-radius: 999px; }
-.rank-sec { font-size: 12.5px; font-weight: 700; color: var(--primary); width: 52px; text-align: right; }
-.rank-empty { text-align: center; color: var(--faint); font-size: 13px; padding: 14px 0; }
+.rank-card, .goal-wall, .msg-card { margin-top: 16px; }
+.rank-head, .wall-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.rank-title { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
+.rank-tabs { display: flex; background: rgba(79, 70, 229, 0.06); border-radius: 8px; padding: 4px; }
+.rank-tabs button { border: none; background: transparent; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: var(--sub); cursor: pointer; }
+.rank-tabs button.on { background: #fff; color: var(--primary); font-weight: 700; box-shadow: var(--shadow-soft); }
+.rank-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.rank-no { width: 24px; height: 24px; border-radius: 50%; background: rgba(79, 70, 229, 0.08); color: var(--faint); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rank-no.top { background: var(--primary-grad); color: #fff; }
+.rank-name { width: 56px; font-size: 12px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-bar { flex: 1; height: 8px; background: rgba(79, 70, 229, 0.08); border-radius: 999px; overflow: hidden; }
+.rank-bar i { display: block; height: 100%; background: var(--primary-grad); border-radius: 999px; }
+.rank-sec { font-size: 12px; font-weight: 700; color: var(--primary); width: 52px; text-align: right; }
+.rank-empty { text-align: center; color: var(--faint); font-size: 12px; padding: 16px 0; }
 
-.link-btn { border: none; background: none; color: var(--primary); font-size: 13px; cursor: pointer; }
-.goal-row { display: flex; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.link-btn { border: none; background: none; color: var(--primary); font-size: 12px; cursor: pointer; }
+.goal-row { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .goal-row:last-child { border-bottom: none; }
-.g-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #f1f4fa; flex-shrink: 0; }
+.g-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: rgba(79, 70, 229, 0.08); flex-shrink: 0; }
 .g-meta { flex: 1; min-width: 0; }
 .g-name { font-size: 14px; font-weight: 700; }
-.g-target { font-size: 12.5px; color: var(--sub); margin-top: 2px; }
+.g-target { font-size: 12px; color: var(--sub); margin-top: 2px; }
 .g-score { color: var(--faint); margin-left: 8px; }
-.g-words { font-size: 12px; color: var(--accent-deep); margin-top: 3px; }
+.g-words { font-size: 12px; color: var(--accent-deep); margin-top: 4px; }
 
-.msg-list { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 320px; overflow-y: auto; }
+.msg-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; max-height: 320px; overflow-y: auto; }
 .msg { display: flex; }
 .msg.mine { justify-content: flex-end; }
-.msg-bubble { max-width: 78%; background: #f4f6fb; border-radius: 14px; padding: 8px 12px; }
-.msg.mine .msg-bubble { background: #e8f0ff; }
-.msg-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); }
+.msg-bubble { max-width: 78%; background: rgba(79, 70, 229, 0.06); border-radius: 12px; padding: 8px 16px; }
+.msg.mine .msg-bubble { background: rgba(79, 70, 229, 0.14); }
+.msg-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--faint); }
 .msg-del { border: none; background: none; color: var(--faint); cursor: pointer; padding: 0; display: flex; }
-.msg-content { font-size: 13.5px; color: var(--ink); margin-top: 3px; line-height: 1.5; word-break: break-word; }
+.msg-content { font-size: 14px; color: var(--ink); margin-top: 4px; line-height: 1.6; word-break: break-word; }
 .msg-input { display: flex; gap: 8px; }
-.msg-input input { flex: 1; height: 42px; border: 1px solid var(--line); border-radius: 999px; padding: 0 16px; font-size: 14px; background: #fafbfe; }
-.msg-input input:focus { outline: none; border-color: var(--primary); background: #fff; }
-.msg-input button { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.msg-input input { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 999px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); transition: border-color 0.24s ease, box-shadow 0.24s ease; }
+.msg-input input:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.msg-input button { width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.24); }
 
-.mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
-.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
-.sheet-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 14px; }
-.sf { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.sf span { font-size: 13px; color: var(--sub); }
-.sf input, .sf select { height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 15px; background: #fafbfe; }
-.sf input:focus, .sf select:focus { outline: none; border-color: var(--primary); background: #fff; }
+.mask { position: fixed; inset: 0; background: rgba(30, 27, 75, 0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
+.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 24px 24px 0 0; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
+.sheet-title { font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 16px; }
+.sf { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.sf span { font-size: 12px; color: var(--sub); }
+.sf input, .sf select { height: 44px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); }
+.sf input:focus, .sf select:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
 
 /* 私密房：房间码 / 入房申请 */
-.apply-card { margin-top: 12px; padding: 16px; }
-.ac-title { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; }
-.ac-code-row { display: flex; gap: 8px; margin-top: 10px; }
-.ac-code-row input { flex: 1; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 14px; background: #fafbfe; letter-spacing: 2px; min-width: 0; }
-.ac-code-row input:focus { outline: none; border-color: var(--primary); background: #fff; }
-.cc-btn { border: none; background: var(--primary); color: #fff; border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
-.ac-divider { height: 1px; background: var(--line); margin: 14px 0; }
-.apply-card textarea { width: 100%; margin-top: 9px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical; background: #fafbfe; box-sizing: border-box; }
-.apply-card textarea:focus { outline: none; border-color: var(--primary); background: #fff; }
-.ac-pending { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 13px; color: #8a5a00; background: #fff3df; border-radius: 10px; padding: 10px 12px; }
-.ac-dot { width: 7px; height: 7px; border-radius: 50%; background: #e8a33d; flex-shrink: 0; }
-.ac-quote { margin-top: 8px; font-size: 12.5px; color: var(--sub); }
-.ac-reject { margin-top: 8px; font-size: 12px; color: #c0392b; }
+.apply-card { margin-top: 16px; padding: 16px; }
+.ac-title { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
+.ac-code-row { display: flex; gap: 8px; margin-top: 8px; }
+.ac-code-row input { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); letter-spacing: 2px; min-width: 0; }
+.ac-code-row input:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.cc-btn { border: none; background: var(--primary-grad); color: #fff; border-radius: 8px; padding: 0 16px; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.2); }
+.ac-divider { height: 1px; background: var(--line); margin: 16px 0; }
+.apply-card textarea { width: 100%; margin-top: 8px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 8px 16px; font-size: 14px; font-family: inherit; resize: vertical; background: rgba(255, 255, 255, 0.9); box-sizing: border-box; }
+.apply-card textarea:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.ac-pending { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #92400e; background: #fff7ed; border-radius: 8px; padding: 8px 16px; }
+.ac-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.ac-quote { margin-top: 8px; font-size: 12px; color: var(--sub); }
+.ac-reject { margin-top: 8px; font-size: 12px; color: var(--red); }
 
 /* 房主待审列表 */
-.am-box { background: #f7f9fd; border-radius: 12px; padding: 12px; margin-bottom: 14px; }
-.am-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
-.am-count { background: var(--primary); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; }
+.am-box { background: rgba(79, 70, 229, 0.04); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.am-head { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
+.am-count { background: var(--primary-grad); color: #fff; border-radius: 999px; font-size: 11px; padding: 2px 8px; }
 .am-empty { font-size: 12px; color: var(--faint); margin-top: 8px; }
-.am-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.am-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .am-row:last-child { border-bottom: none; }
 .am-info { flex: 1; min-width: 0; }
-.am-name { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
-.am-time { font-size: 10.5px; color: var(--faint); font-weight: 400; }
-.am-school { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
+.am-name { font-size: 14px; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
+.am-time { font-size: 12px; color: var(--faint); font-weight: 400; }
+.am-school { font-size: 12px; color: var(--sub); margin-top: 2px; }
 .am-msg { font-size: 12px; color: var(--sub); margin-top: 2px; word-break: break-word; }
-.am-btn { border: none; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 10px; cursor: pointer; flex-shrink: 0; }
-.am-btn.ok { background: var(--primary); color: #fff; }
+.am-btn { border: none; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.am-btn.ok { background: var(--primary-grad); color: #fff; }
 .am-btn.no { background: #fff; color: var(--sub); border: 1px solid var(--line); }
 .am-btn:disabled { opacity: .6; cursor: default; }
+
+/* 加载骨架 / 同步失败 */
+.page-skeleton { display: flex; flex-direction: column; gap: 16px; }
+.sk-head { background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: var(--radius); padding: 16px; display: flex; gap: 8px; align-items: center; box-shadow: var(--shadow); }
+.sk-ic { width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); flex-shrink: 0; }
+.sk-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.sk-lines i, .sk-block i { display: block; height: 12px; border-radius: 6px; background: rgba(79, 70, 229, 0.08); width: 100%; }
+.sk-lines i.w60, .sk-block i.w60 { width: 60%; height: 8px; }
+.sk-block i.w40 { width: 40%; }
+.sk-seats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sk-seats i { height: 132px; border-radius: var(--radius); background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(255, 255, 255, 0.85); }
+.sk-block { background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.page-skeleton i { animation: sk-breathe 1.6s ease-in-out infinite; }
+@keyframes sk-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .page-skeleton i { animation: none; } }
+
+.load-error { margin-top: 8px; padding: 24px 16px; text-align: center; }
+.le-title { font-size: 14px; font-weight: 800; }
+.le-sub { font-size: 12px; color: var(--sub); line-height: 1.6; margin: 8px 0 16px; }
+.sync-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 16px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); color: var(--accent-deep); font-size: 12px; }
+.sync-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-bar button { border: none; background: none; color: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* 留言：乐观发送、向上翻看不被抢滚动 */
+.msg-wrap { position: relative; }
+.msg.pending { opacity: .6; }
+.msg-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); border: none; border-radius: 999px; background: var(--primary-grad); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.28); transition: transform 0.2s ease; }
+.msg-new:active { transform: translateX(-50%) scale(0.96); }
+.msg-input button:disabled { opacity: .45; cursor: default; box-shadow: none; }
+
+/* 排行榜高亮自己 */
+.rank-name { width: 64px; }
+.rank-row.me { background: rgba(79, 70, 229, 0.05); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+.rank-me-tag { font-style: normal; font-size: 10px; background: rgba(79, 70, 229, 0.12); color: var(--primary); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
+
+/* 专注中的状态点轻微呼吸，表示实时同步中；关闭动画偏好时静止 */
+.state-dot.live { animation: dot-breathe 2.4s ease-in-out infinite; }
+@keyframes dot-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.32); }
+  50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .state-dot.live { animation: none; } }
 </style>

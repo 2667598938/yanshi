@@ -91,6 +91,41 @@ def view(key: str, request: Request, user: User = Depends(get_current_user), db=
     return RedirectResponse(storage.presigned_url(key), status_code=302)
 
 
+@router.get('/storage')
+def storage(request: Request, user: User = Depends(get_current_user),
+            db=Depends(get_db)):
+    settings = request.app.state.settings
+    return ok(logic.storage_summary(db, user.id, settings.storage_quota_bytes))
+
+
+@router.post('/reclaim')
+def reclaim(request: Request, user: User = Depends(get_current_user),
+            db=Depends(get_db)):
+    rows = logic.orphan_attachments(db, user.id)
+    storage = ImageStorage(request.app.state.settings)
+    freed = 0
+    deleted = []
+    failures = []
+    for row in rows:
+        try:
+            storage.delete(row.object_key)
+        except ApiError:
+            failures.append(row.object_key)
+            continue
+        logic.mark_deleted(row)
+        freed += int(row.size_bytes or 0)
+        deleted.append(row.object_key)
+    audit(db, request, 'image.reclaim', user_id=user.id,
+          detail=f'{len(deleted)} items {freed} bytes')
+    db.commit()
+    return ok({
+        'deleted': len(deleted),
+        'freed_bytes': freed,
+        'failed': len(failures),
+        'grace_hours': logic.ORPHAN_GRACE_HOURS,
+    })
+
+
 @router.delete('')
 def delete_attachment(key: str, request: Request, user: User = Depends(get_current_user),
                       db=Depends(get_db)):

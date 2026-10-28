@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import BlobImage from './BlobImage.vue'
 import { schoolApi } from '../api'
 import { db } from '../db'
@@ -31,7 +31,18 @@ function mergeSchools(rows) {
   else if (browseIndex.value >= schools.value.length) browseIndex.value = 0
 }
 const albumIndex = ref(0)
-const campusImage = computed(() => school.value.view)
+let albumTimer
+let albumManualAt = 0
+const albumPaused = ref(false)
+const albumImages = computed(() => {
+  const list = (school.value.album || []).filter((key) => key && key !== school.value.logo)
+  return list.length ? [...new Set(list)] : (school.value.view && school.value.view !== school.value.logo ? [school.value.view] : [])
+})
+const campusImage = computed(() => albumImages.value[albumIndex.value] || school.value.view || '')
+function pickAlbum(i) {
+  albumIndex.value = i
+  albumManualAt = Date.now()
+}
 onMounted(async () => {
   const cached = await db.kv.get('schools:catalog')
   if (!alive) return
@@ -40,6 +51,12 @@ onMounted(async () => {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
     if (schools.value.length) browseIndex.value = (browseIndex.value + 1) % schools.value.length
   }, 6000)
+  albumTimer = setInterval(() => {
+    if (albumPaused.value || albumImages.value.length < 2) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible') return
+    if (Date.now() - albumManualAt < 12000) return
+    albumIndex.value = (albumIndex.value + 1) % albumImages.value.length
+  }, 5000)
   try {
     const rows = await schoolApi.list()
     if (!alive) return
@@ -47,7 +64,7 @@ onMounted(async () => {
     await db.kv.put({ key: 'schools:catalog', value: rows })
   } catch { /* 保留已缓存目录和内置七校素材 */ }
 })
-onBeforeUnmount(() => { alive = false; clearInterval(carousel) })
+onBeforeUnmount(() => { alive = false; clearInterval(carousel); clearInterval(albumTimer) })
 const dreamIndex = computed(() =>
   schools.value.findIndex((s) => s.key === app.dreamSchool)
 )
@@ -55,10 +72,13 @@ const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3)
 
 const school = computed(() => schools.value[browseIndex.value] || schools.value[0] || { key:'',name:'我的梦校',color:'#526484',logo:'',view:'',motto:'自由添加你的目标院校',city:'' })
 const isDream = computed(() => school.value.key === app.dreamSchool)
+watch(() => school.value.key, () => { albumIndex.value = 0 })
+watch(() => albumImages.value.length, (n) => { if (albumIndex.value >= n) albumIndex.value = 0 })
 
 function pick(i) {
   browseIndex.value = i
   albumIndex.value = 0
+  albumManualAt = Date.now()
   lastManual = Date.now()
 }
 async function setDream() {
@@ -70,7 +90,7 @@ async function setDream() {
 </script>
 
 <template>
-  <div class="hero" :style="{ '--sc': school.color }">
+  <div class="hero" :style="{ '--sc': school.color }" @mouseenter="albumPaused = true" @mouseleave="albumPaused = false">
     <BlobImage :key="school.key + campusImage" class="hero-bg" :src="campusImage" :alt="school.name" />
     <div class="hero-veil"></div>
 
@@ -112,6 +132,18 @@ async function setDream() {
           </span>
         </div>
       </div>
+      <div v-if="albumImages.length > 1" class="album-dots">
+        <span class="album-count">校园图 {{ albumIndex + 1 }} / {{ albumImages.length }}</span>
+        <button
+          v-for="(img, i) in albumImages"
+          :key="img"
+          type="button"
+          class="album-dot"
+          :class="{ on: i === albumIndex }"
+          :aria-label="`查看第 ${i + 1} 张校园图`"
+          @click.stop="pickAlbum(i)"
+        ></button>
+      </div>
     </div>
   </div>
 </template>
@@ -119,10 +151,12 @@ async function setDream() {
 <style scoped>
 .hero {
   position: relative;
-  min-height: 408px;
+  min-height: 288px;
   color: #fff;
   overflow: hidden;
-  background: var(--night);
+  /* 与蓝紫主题同源的深靛色，避免藏青割裂 */
+  background: linear-gradient(160deg, #312e81, #1e1b4b);
+  border-radius: 0 0 24px 24px;
 }
 .hero-bg {
   position: absolute;
@@ -145,19 +179,20 @@ async function setDream() {
 .hero-veil {
   position: absolute;
   inset: 0;
+  /* 靛紫蒙层：把校园照片统一进主色系 */
   background: linear-gradient(
     180deg,
-    rgba(15, 28, 54, 0.55) 0%,
-    rgba(15, 28, 54, 0.28) 34%,
-    rgba(15, 28, 54, 0.66) 78%,
-    rgba(14, 24, 46, 0.94) 100%
+    rgba(49, 46, 129, 0.55) 0%,
+    rgba(49, 46, 129, 0.3) 34%,
+    rgba(30, 27, 75, 0.66) 78%,
+    rgba(17, 20, 50, 0.94) 100%
   );
 }
 .hero-inner {
   position: relative;
   z-index: 2;
-  padding: 20px 18px 16px;
-  min-height: 408px;
+  padding: 16px;
+  min-height: 288px;
   display: flex;
   flex-direction: column;
 }
@@ -309,5 +344,32 @@ async function setDream() {
   align-items: center;
   justify-content: center;
   border: 1.5px solid #fff;
+}
+.album-dots {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 2px 0;
+}
+.album-count {
+  margin-right: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.3px;
+}
+.album-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  transition: width 0.24s ease, background-color 0.24s ease;
+}
+.album-dot.on {
+  width: 18px;
+  background: #fff;
 }
 </style>

@@ -76,6 +76,20 @@ it('倒计时挂起 5 小时后按先到的 25 分钟完成时刻落库', async 
   expect(localStorage.getItem(currentKey())).toBeNull()
 })
 
+it('180 分钟倒计时到计划时长按正常完成结算', async () => {
+  timer.start({ subjectId: 'math', mode: 'timer', plannedMin: 180 })
+  atMinute(180)
+  timer.now = Date.now()
+  timer.checkLimits()
+  await vi.waitFor(() => expect(timer.lastFinished).not.toBeNull())
+  expect(timer.lastFinished.session).toMatchObject({
+    actualSec: 10800,
+    status: 'done',
+    plannedMin: 180,
+  })
+  expect(timer.lastFinished.session.end_reason).not.toBe('timeout')
+})
+
 it('正向计时超 180 分钟和主动放弃保留时长', async () => {
   timer.start({ subjectId: 'math', mode: 'stopwatch' })
   atMinute(181); timer.now = Date.now(); timer.checkLimits()
