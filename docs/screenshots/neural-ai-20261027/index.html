@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>研时 AI · Neural Expressive 预览</title>
+<style>
+body{margin:0;background:#070a13;color:#eef2ff;font-family:"Google Sans",Inter,"Segoe UI","Microsoft YaHei",sans-serif;padding:24px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.4px;margin:0 0 8px}
+p.lead{color:#a8b2c8;line-height:1.8;margin:0 auto 24px;max-width:900px}
+main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.card{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.1);border-radius:22px;overflow:hidden;box-shadow:0 18px 48px rgba(0,0,0,.35)}
+.cap{font-size:13px;line-height:1.7;padding:12px 14px;color:#c7d0e2}
+.cap b{color:#fff;font-weight:600}
+img{display:block;width:100%;height:auto;background:#0b1020}
+.note{max-width:1120px;margin:24px auto 0;padding:16px 18px;border:1px solid rgba(138,180,248,.2);border-radius:16px;background:rgba(66,133,244,.06);color:#a8b2c8;font-size:12px;line-height:1.8}
+code{color:#c7a6f0}
+</style>
+</head>
+<body>
+<h1>研时 AI · Neural Expressive</h1>
+<p class="lead">深色优先的 Spectrum Shift 光谱、idle / listening / thinking / delivering 状态机、四星芒、磨砂胶囊与编辑式回答卡。<br>
+“模拟生成”只演示 thinking → delivering 的完整动效，不调用模型，也不写入账号或历史对话。</p>
+<main>
+<section class="card"><a href="01-empty-dark.png" target="_blank"><img src="01-empty-dark.png" alt="深色空态"></a><div class="cap"><b>01 · idle 深色空态</b><br>四星芒 + 问候语 + 编辑式起步问题；输入框常驻底部；底部导航同步为深色。</div></section>
+<section class="card"><a href="02-listening.png" target="_blank"><img src="02-listening.png" alt="聚焦输入"></a><div class="cap"><b>02 · listening</b><br>输入框聚焦：光谱指针移到胶囊输入框，状态点与文案切换为“正在聆听”。</div></section>
+<section class="card"><a href="03-thinking.png" target="_blank"><img src="03-thinking.png" alt="思考中"></a><div class="cap"><b>03 · thinking</b><br>四星芒呼吸、径向涟漪与 6 个柔和粒子；用户问题保留，回答尚未出现。</div></section>
+<section class="card"><a href="04-delivering-start.png" target="_blank"><img src="04-delivering-start.png" alt="开始输出"></a><div class="cap"><b>04 · delivering 起点</b><br>关键结论置顶，词级 ombre 渐变；文本逐段流出，末尾有光谱光标。</div></section>
+<section class="card"><a href="05-delivering.png" target="_blank"><img src="05-delivering.png" alt="流式输出"></a><div class="cap"><b>05 · delivering 中段</b><br>回答卡保持磨砂玻璃质感，列表、时间线式分段向下展开；发送键变为停止。</div></section>
+<section class="card"><a href="06-answer-final.png" target="_blank"><img src="06-answer-final.png" alt="回答完成"></a><div class="cap"><b>06 · 回答完成</b><br>编辑式卡片收束，附复制回答、题图入口与状态回到“待提问”。</div></section>
+<section class="card"><a href="07-history-dark.png" target="_blank"><img src="07-history-dark.png" alt="历史弹层"></a><div class="cap"><b>07 · 深色历史弹层</b><br>半透明磨砂面板、标题栏与关闭按钮；弹层覆盖底部导航。</div></section>
+<section class="card"><a href="08-light.png" target="_blank"><img src="08-light.png" alt="浅色模式"></a><div class="cap"><b>08 · 浅色变量</b><br>同一套状态与结构切换为浅色变量：深色文字、浅色玻璃、弱化的光谱。</div></section>
+<section class="card"><a href="09-desktop.png" target="_blank"><img src="09-desktop.png" alt="桌面端"></a><div class="cap"><b>09 · 桌面端</b><br>840px 居中面板、760px 编辑列、返回今日入口；桌面端由 AI 面板覆盖底部导航。</div></section>
+</main>
+<div class="note">
+截图为看清界面，临时隐藏了与本次设计无关的“同步冲突 · 科目”提示；真实浏览器首次登录仍可能弹出，选择“用云端”即可。<br>
+状态机触发写在 <code>web/src/views/AiView.vue</code>：
+idle（进入/新对话/停止/完成 900ms 后）、listening（输入聚焦或非空）、
+thinking（发送后到首个 delta）、delivering（首个 delta 到 done/error）。
+</div>
+</body>
+</html>
