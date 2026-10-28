@@ -218,6 +218,18 @@ const suggestions = computed(() => ({
 }[scene.value] || []))
 
 const composerEl = ref(null)
+function resizeComposer() {
+  const el = composerEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.max(40, Math.min(el.scrollHeight, 144)) + 'px'
+}
+function onComposerKeydown(event) {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+    event.preventDefault()
+    send()
+  }
+}
 function useSuggestion(text) {
   input.value = text
   nextTick(() => composerEl.value?.focus())
@@ -340,6 +352,7 @@ async function send() {
         } else if (evt.type === 'error') {
           failed = true
           reply.failed = true
+          if (evt.message_id) reply.id = evt.message_id
           reply.content += (reply.content ? '\n\n' : '') + `出错了：${evt.message}`
         } else if (evt.type === 'done') {
           completed = true
@@ -432,6 +445,7 @@ async function openConversation(id) {
     conversationTitle.value = data.title
     scene.value = data.scene || 'general'
     messages.value = (data.messages || []).map((m) => ({
+      failed: !!m.failed, aborted: !!m.aborted,
       task_import:m.task_import || {state:'not_imported'}, id: m.id, suggested_tasks: m.suggested_tasks || [], role: m.role, content: m.content, image_keys: m.image_keys || [], tools: m.tools || [], sources: m.sources || [],
       prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens,
       latency_ms: m.latency_ms,
@@ -506,6 +520,7 @@ watch(
   }
 )
 watch(input, (value) => {
+  nextTick(resizeComposer)
   if (sending.value) return
   visualState.value = value.trim() ? 'listening' : (document.activeElement === composerEl.value ? 'listening' : 'idle')
   updateFocusPoint()
@@ -728,18 +743,19 @@ async function importTasks(){
       <span class="state-dot" :class="'dot-' + visualState"></span>
       {{ stateLabel }}
       <span class="meta-spacer"></span>
-      <span>Enter 发送</span>
+      <span>Enter 发送 · Shift+Enter 换行</span>
     </div>
     <div v-if="!blocked" class="composer">
-      <input
+      <textarea
         ref="composerEl"
         v-model="input"
         aria-label="向 AI 助教提问"
         :placeholder="enabled ? '输入你的问题…' : 'AI 未启用'"
         maxlength="4000"
+        rows="1"
         @focus="onComposerFocus"
         @blur="onComposerBlur"
-        @keyup.enter="!$event.isComposing && send()"
+        @keydown="onComposerKeydown"
       />
       <button v-if="sending" class="send-btn stop" title="停止生成" @click="stopGeneration">
         <Square :size="15" fill="currentColor" />

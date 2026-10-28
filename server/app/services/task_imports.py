@@ -34,6 +34,8 @@ def import_tasks(db,user,mid,selected):
         # Serialize with normal sync writes and use a single transaction for records+receipt.
         db.scalar(select(User).where(User.id==user.id).with_for_update())
         m=owned_message(db,user,mid)
+        if json.loads(m.tool_trace or '{}').get('interrupted'):
+            raise ApiError(400,40001,'该回答已中断，请重新生成完整任务计划后导入')
         tasks=proposals(m.content)
         if not tasks:raise ApiError(400,40001,'没有有效的结构化任务，请重新生成可导入计划')
         indexes=list(range(len(tasks))) if selected is None else selected

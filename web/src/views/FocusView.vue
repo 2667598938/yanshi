@@ -97,6 +97,7 @@ async function start() {
   toast(mode.value === 'stopwatch' ? '开始正向计时，大雪深埋' : '开始专注，大雪深埋')
 }
 function toggle() {
+  if (timer.leaseLost) { toast('本机已失去主计时权限，请结束本机记录后重新开始'); return }
   if (timer.isPaused) timer.resume()
   else timer.pause()
 }
@@ -212,9 +213,9 @@ watch(
         </div>
         <template v-else-if="phase !== 'idle'">
           <div class="active-controls">
-            <button class="ctl-main" @click="toggle">
+            <button class="ctl-main" :disabled="timer.leaseLost" @click="toggle">
               <component :is="timer.isPaused ? Play : Pause" :size="22" :stroke-width="2.4" />
-              <span>{{ timer.isPaused ? '继续' : '暂停' }}</span>
+              <span>{{ timer.leaseLost ? '主计时权限已失效' : timer.isPaused ? '继续' : '暂停' }}</span>
             </button>
             <button class="ctl-end" @click="openConfirm">结束</button>
           </div>

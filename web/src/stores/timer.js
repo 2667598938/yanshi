@@ -38,7 +38,7 @@ export const useTimerStore = defineStore('timer', {
     sessions: [],
     loaded: false,
     current: loadCurrent(),
-    remoteLease: null, claiming: false, claimGeneration:0, startError: '', leaseLost: false,
+    remoteLease: null, claiming: false, claimGeneration:0, startError: '', leaseLost: !!loadCurrent()?.leaseLost,
     now: clockNow(),
     lastFinished: null, // { session, at, auto }
     ...loadCycle(),
@@ -194,6 +194,7 @@ export const useTimerStore = defineStore('timer', {
     },
     resumeOnLoad() {
       this.current = loadCurrent()
+      this.leaseLost = !!this.current?.leaseLost
       Object.assign(this, loadCycle())
       this.now = clockNow()
       if (this.current) {
@@ -213,6 +214,7 @@ export const useTimerStore = defineStore('timer', {
       this.loaded = false
       this.lastFinished = null
       this.current = loadCurrent()
+      this.leaseLost = !!this.current?.leaseLost
       Object.assign(this, loadCycle())
       this.now = clockNow()
       if (this.current) this.ensureTicker()
@@ -264,6 +266,10 @@ export const useTimerStore = defineStore('timer', {
       }
     },
     resume() {
+      if (this.leaseLost || this.current?.leaseLost) {
+        this.startError = '本机已失去主计时权限，请结束本机记录后重新开始'
+        return false
+      }
       if (this.current && this.current.paused) {
         const pauseMs = Math.max(0, clockNow() - this.current.pausedAt)
         if (pauseMs >= MAX_PAUSE_MS) return this.finish(false, '', 'pause_timeout')

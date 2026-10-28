@@ -39,9 +39,11 @@ const msgInput = ref('')
 const msgListEl = ref(null)
 const msgSending = ref(false)
 const pendingMsgs = ref([])
+const pendingDeletes = ref(new Set())
+const removedMessageIds = ref(new Set())
 const unread = ref(0)
 const atMsgBottom = ref(true)
-const displayMessages = computed(() => [...messages.value, ...pendingMsgs.value])
+const displayMessages = computed(() => [...messages.value.filter(m => !pendingDeletes.value.has(m.id) && !removedMessageIds.value.has(m.id)), ...pendingMsgs.value])
 const showGoal = ref(false)
 const goalDraft = ref({ target_school: '', target_score: '', words: '' })
 const showManage = ref(false)
@@ -134,6 +136,7 @@ function buildHeartbeat() {
 
 // 留言增量合并：只有停留在底部才自动跟随，向上翻看时不抢滚动，改为计数提示
 async function applyMessages(list) {
+  list = list.filter(m => !removedMessageIds.value.has(m.id))
   const el = msgListEl.value
   const stick = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 32
   const known = new Set(messages.value.map((x) => x.id))
@@ -341,13 +344,16 @@ async function sendMessage() {
 
 // 删除也是先移除再回滚，避免等接口转圈
 async function removeMessage(id) {
-  const backup = messages.value
-  messages.value = messages.value.filter((m) => m.id !== id)
+  if (pendingDeletes.value.has(id)) return
+  pendingDeletes.value.add(id)
   try {
     await roomApi.deleteMessage(id, roomId.value)
+    removedMessageIds.value.add(id)
+    messages.value = messages.value.filter((m) => m.id !== id)
   } catch (e) {
-    messages.value = backup
     toast(e.message)
+  } finally {
+    pendingDeletes.value.delete(id)
   }
 }
 

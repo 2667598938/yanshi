@@ -36,3 +36,23 @@ it('留言先本地出现，发送失败回滚并还原输入',async()=>{
  expect(input.element.value).toBe('今晚一起冲')
  wrapper.unmount()
 })
+
+it('删除留言失败时不能覆盖轮询期间新到的其他留言', async () => {
+ vi.useFakeTimers()
+ const first={id:1,user_id:1,mine:true,nickname:'我',content:'旧留言',created_at:'2026-10-29T01:00:00Z'}
+ const newer={id:2,user_id:2,mine:false,nickname:'研友',content:'轮询新到的留言',created_at:'2026-10-29T01:01:00Z'}
+ const data={room:{id:1,capacity:4,my_role:'member'},joined:true,members:[],ranking:{today:[],week:[],all:[]}}
+ roomApi.get.mockResolvedValueOnce({...data,messages:[first]}).mockResolvedValue({...data,messages:[first,newer]})
+ let reject
+ roomApi.deleteMessage.mockImplementationOnce(()=>new Promise((_,fail)=>{reject=fail}))
+ const wrapper=mount(RoomView,{global:{stubs:{BlobImage:true}}})
+ try {
+  await flushPromises()
+  await wrapper.get('.msg-del').trigger('click')
+  await vi.advanceTimersByTimeAsync(15000); await flushPromises()
+  expect(wrapper.text()).toContain('轮询新到的留言')
+  reject(new Error('删除失败'));await flushPromises()
+  expect(wrapper.text()).toContain('旧留言')
+  expect(wrapper.text()).toContain('轮询新到的留言')
+ } finally {wrapper.unmount();vi.useRealTimers()}
+})

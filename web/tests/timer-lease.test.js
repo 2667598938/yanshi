@@ -26,3 +26,22 @@ it('纯网络故障仍支持离线计时，后续重叠由同步冲突处理',as
  expect(await timer.start({subjectId:'math'})).toBe(true)
  expect(timer.current.onlineLease).not.toBe(true)
 })
+
+it('已经失去主计时权的设备不能通过继续按钮恢复计时', async () => {
+ timerApi.start.mockResolvedValue({})
+ await timer.start({subjectId:'math'})
+ timer.pause()
+ timer.leaseLost=true
+ timer.resume()
+ expect(timer.current.paused).toBe(true)
+ expect(timer.startError).toContain('主计时')
+})
+
+it('失去主计时权刷新后仍保留状态，不能通过刷新再点继续绕过', async () => {
+ timerApi.start.mockResolvedValue({})
+ await timer.start({subjectId:'math'})
+ timer.pause();timer.current.leaseLost=true;timer.saveCurrent()
+ timer.leaseLost=false;timer.resumeOnLoad();timer.resume()
+ expect(timer.leaseLost).toBe(true)
+ expect(timer.current.paused).toBe(true)
+})

@@ -44,7 +44,7 @@ class AIKeyInput(BaseModel):
     provider: Provider = 'deepseek'
     base_url: str = Field(default='', max_length=200)
     model: str = Field(default='', max_length=120)
-    api_key: str = Field(min_length=8, max_length=400)
+    api_key: Optional[str] = Field(default=None, min_length=8, max_length=400)
 
 
 class AIModelsInput(BaseModel):

@@ -11,7 +11,7 @@ export function useTimerOwnership(){
   busy=true;const uid=auth.user?.id,seq=generation
   try{
    const c=timer.current
-   if(c){
+   if(c && !timer.leaseLost && !c.leaseLost){
     c.deviceId ||= presenceDeviceId()
     const body={session_id:c.id,device_id:c.deviceId,started_at:Math.trunc(c.startedAt),label:c.learningContent||''}
     try{await timerApi.heartbeat(body)}catch(e){
@@ -20,7 +20,9 @@ export function useTimerOwnership(){
       try{await timerApi.start(body)}catch(claim){
        if(alive&&seq===generation&&uid===auth.user?.id&&claim.status===409&&timer.current?.id===c.id){
         timer.leaseLost=true
-        if(!c.paused){c.paused=true;c.pausedAt=Math.trunc(clockNow());timer.saveCurrent()}
+        c.leaseLost=true
+        if(!c.paused){c.paused=true;c.pausedAt=Math.trunc(clockNow())}
+        timer.saveCurrent()
        }
       }
      }
@@ -30,7 +32,7 @@ export function useTimerOwnership(){
    if(alive&&seq===generation&&uid===auth.user?.id)timer.remoteLease=remote
   }catch{}finally{busy=false}
  }
- watch(()=>auth.user?.id,()=>{generation++;timer.remoteLease=null;timer.leaseLost=false;beat()},{immediate:true})
+ watch(()=>auth.user?.id,()=>{generation++;timer.remoteLease=null;timer.leaseLost=!!timer.current?.leaseLost;beat()},{immediate:true})
  watch(()=>timer.current?.id,()=>{generation++;beat()})
  const interval=setInterval(beat,30000)
  window.addEventListener('online',beat)

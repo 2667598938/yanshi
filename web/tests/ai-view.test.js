@@ -33,9 +33,9 @@ it('输入、真实等待、首个delta、停止后，四种视觉状态与业�
   })
   await render()
   expect(wrapper.classes()).toContain('state-idle')
-  await wrapper.get('.composer input').trigger('focus')
+  await wrapper.get('.composer textarea').trigger('focus')
   expect(wrapper.classes()).toContain('state-listening')
-  await wrapper.get('.composer input').setValue('复盘今天')
+  await wrapper.get('.composer textarea').setValue('复盘今天')
   await wrapper.get('.send-btn').trigger('click'); await flushPromises()
   expect(wrapper.classes()).toContain('state-thinking')
   expect(wrapper.find('.thinking-row').exists()).toBe(true)
@@ -66,12 +66,12 @@ it('图标按钮有可访问名称，空态提供文字动效入口且不伪造�
 
 it('中文输入法组合回车不误发，普通回车才提交；视觉演示独立于真实对话', async () => {
   aiApi.chatStream.mockResolvedValueOnce(undefined)
-  await render(); await wrapper.get('.composer input').setValue('考研问题')
-  await wrapper.get('.composer input').trigger('keyup', { key: 'Enter', isComposing: true }); await flushPromises()
+  await render(); await wrapper.get('.composer textarea').setValue('考研问题')
+  await wrapper.get('.composer textarea').trigger('keydown', { key: 'Enter', isComposing: true }); await flushPromises()
   expect(aiApi.chatStream).not.toHaveBeenCalled()
   expect(wrapper.get('a[title="视觉动效演示"]').attributes('href')).toBe('/previews/ai-neural.html')
   expect(wrapper.text()).not.toContain('模拟生成')
-  await wrapper.get('.composer input').trigger('keyup', { key: 'Enter', isComposing: false }); await flushPromises()
+  await wrapper.get('.composer textarea').trigger('keydown', { key: 'Enter', isComposing: false }); await flushPromises()
   expect(aiApi.chatStream).toHaveBeenCalledTimes(1)
 })
 
@@ -91,6 +91,19 @@ it('软键盘缩小可见视口时收起底栏预留，卸载移除视口监听'
     if (original) Object.defineProperty(window, 'visualViewport', original)
     else delete window.visualViewport
   }
+})
+
+it('作文/代码多行输入保留换行，Shift+Enter不会提交，普通Enter才发送', async () => {
+  aiApi.chatStream.mockResolvedValueOnce(undefined)
+  await render()
+  const input = wrapper.get('.composer textarea')
+  await input.setValue('第一段作文\n\n第二段作文')
+  await input.trigger('keydown', { key: 'Enter', shiftKey: true })
+  await flushPromises()
+  expect(aiApi.chatStream).not.toHaveBeenCalled()
+  expect(input.element.value).toBe('第一段作文\n\n第二段作文')
+  await input.trigger('keydown', { key: 'Enter' }); await flushPromises()
+  expect(aiApi.chatStream.mock.calls[0][0].content).toBe('第一段作文\n\n第二段作文')
 })
 
 it('减少动态效果和系统主题改变可即时响应，卸载清理监听', async () => {
@@ -118,7 +131,7 @@ it('首次发送创建会话，真实逐段回调会立即更新文字，后续�
     return new Promise((resolve) => { finish = resolve })
   })
   await render()
-  await wrapper.get('.composer input').setValue('第一题')
+  await wrapper.get('.composer textarea').setValue('第一题')
   await wrapper.get('.send-btn').trigger('click')
   await flushPromises()
   expect(aiApi.createConversation).toHaveBeenCalledTimes(1)
@@ -129,7 +142,7 @@ it('首次发送创建会话，真实逐段回调会立即更新文字，后续�
   callback({ type: 'done', conversation_id: 41, title: '第一题' })
   finish(); await flushPromises()
   aiApi.chatStream.mockResolvedValueOnce(undefined)
-  await wrapper.get('.composer input').setValue('继续')
+  await wrapper.get('.composer textarea').setValue('继续')
   await wrapper.get('.send-btn').trigger('click'); await flushPromises()
   expect(aiApi.createConversation).toHaveBeenCalledTimes(1)
 })
@@ -146,7 +159,7 @@ it('部分图片上传失败保留所有选择，重试后按原顺序发送；�
     new File(['a'], 'first.jpg', { type: 'image/jpeg' }), new File(['b'], 'second.jpg', { type: 'image/jpeg' })] })
   await picker.trigger('change'); await flushPromises()
   expect(wrapper.findAll('.ai-images > div')).toHaveLength(2)
-  await wrapper.get('.composer input').setValue('分析这两题')
+  await wrapper.get('.composer textarea').setValue('分析这两题')
   await wrapper.get('.send-btn').trigger('click'); await flushPromises()
   expect(aiApi.chatStream).not.toHaveBeenCalled()
   await wrapper.findAll('button').find((button) => button.text() === '上传/重试').trigger('click')
@@ -154,7 +167,7 @@ it('部分图片上传失败保留所有选择，重试后按原顺序发送；�
   aiApi.chatStream.mockImplementationOnce(async (_body, cb) => cb({ type: 'error', message: 'upstream failed' }))
   await wrapper.get('.send-btn').trigger('click'); await flushPromises()
   expect(aiApi.chatStream.mock.calls[0][0].image_keys).toEqual(['ai/first.jpg', 'ai/second.jpg'])
-  expect(wrapper.get('.composer input').element.value).toBe('分析这两题')
+  expect(wrapper.get('.composer textarea').element.value).toBe('分析这两题')
   expect(wrapper.findAll('.ai-options .ai-images > div')).toHaveLength(2)
 })
 
@@ -168,7 +181,7 @@ it('任务建议必须预览并再次确认；取消不会写入，隐藏通用�
   aiApi.importTasks.mockResolvedValue({})
   await render()
   expect(wrapper.text()).not.toContain('只读学习工具')
-  await wrapper.get('.composer input').setValue('生成明天计划')
+  await wrapper.get('.composer textarea').setValue('生成明天计划')
   await wrapper.get('.send-btn').trigger('click');await flushPromises()
   const click=async(text)=>{await wrapper.findAll('button').find(b=>b.text()===text).trigger('click');await flushPromises()}
   await click('一键导入为系统任务')
@@ -182,7 +195,7 @@ it('任务建议必须预览并再次确认；取消不会写入，隐藏通用�
 
 it('无有效结构化建议时保持普通文本回复且不出现导入按钮', async () => {
   aiApi.chatStream.mockImplementationOnce(async(_body,cb)=>{cb({type:'delta',text:'```json broken```'});cb({type:'done',message_id:73,suggested_tasks:[]})})
-  await render();await wrapper.get('.composer input').setValue('复盘');await wrapper.get('.send-btn').trigger('click');await flushPromises()
+  await render();await wrapper.get('.composer textarea').setValue('复盘');await wrapper.get('.send-btn').trigger('click');await flushPromises()
   expect(wrapper.text()).toContain('broken')
   expect(wrapper.text()).not.toContain('一键导入为系统任务')
 })
@@ -191,7 +204,7 @@ it('可选部分任务导入，撤销必须确认并展示保留成果', async()
  aiApi.chatStream.mockImplementationOnce(async(_body,cb)=>cb({type:'done',message_id:80,suggested_tasks:[{title:'数学',estimated_min:30},{title:'英语',estimated_min:20}]}))
  aiApi.importTasks.mockResolvedValue({state:'imported',imported_count:1})
  aiApi.undoTasks.mockResolvedValue({state:'undone',imported_count:1,undo:{deleted:0,kept:[{reason:'已完成'}]}})
- await render();await wrapper.get('.composer input').setValue('安排计划');await wrapper.get('.send-btn').trigger('click');await flushPromises()
+ await render();await wrapper.get('.composer textarea').setValue('安排计划');await wrapper.get('.send-btn').trigger('click');await flushPromises()
  const click=async(text)=>{await wrapper.findAll('button').find(b=>b.text()===text).trigger('click');await flushPromises()}
  await click('一键导入为系统任务');await wrapper.findAll('.sheet input[type="checkbox"]')[1].setValue(false);await click('确认批量导入')
  expect(aiApi.importTasks).toHaveBeenCalledExactlyOnceWith(80,[0]);expect(wrapper.text()).toContain('已导入 1 项任务')
@@ -211,6 +224,19 @@ it('权限到期或未配Key仍可打开并阅读本人历史，不能发送新�
  expect(wrapper.get('.chat-scroll').text()).toContain('这是我保存的学习复盘')
  expect(wrapper.find('.composer').exists()).toBe(false)
  expect(aiApi.chatStream).not.toHaveBeenCalled()
+})
+
+it('重开历史保留中断回答状态和重试入口', async () => {
+ aiApi.conversations.mockResolvedValue([{id:191,title:'中断的对话'}])
+ aiApi.conversation.mockResolvedValue({id:191,messages:[
+  {role:'user',content:'讲解这道题'},
+  {id:192,role:'assistant',content:'已保存的部分推导',failed:true,interrupted:true,suggested_tasks:[]}]})
+ await render()
+ await wrapper.get('button[aria-label="历史对话"]').trigger('click');await flushPromises()
+ await wrapper.get('.hist-row').trigger('click');await flushPromises()
+ expect(wrapper.text()).toContain('已保存的部分推导')
+ expect(wrapper.text()).toContain('回复中断，可重试')
+ expect(wrapper.text()).not.toContain('一键导入为系统任务')
 })
 
 
@@ -244,7 +270,7 @@ it('先选A再选B，迟到的A历史响应不能覆盖B', async () => {
 it('确认任务导入后切到新对话，导入成功仍正常同步和提示',async()=>{
  aiApi.chatStream.mockImplementationOnce(async(_body,cb)=>cb({type:'done',message_id:101,suggested_tasks:[{title:'复习数学',estimated_min:30}]}))
  let resolve;aiApi.importTasks.mockImplementationOnce(()=>new Promise(r=>{resolve=r}))
- await render();await wrapper.get('.composer input').setValue('安排任务');await wrapper.get('.send-btn').trigger('click');await flushPromises()
+ await render();await wrapper.get('.composer textarea').setValue('安排任务');await wrapper.get('.send-btn').trigger('click');await flushPromises()
  await wrapper.findAll('button').find(b=>b.text()==='一键导入为系统任务').trigger('click')
  await wrapper.findAll('button').find(b=>b.text()==='确认批量导入').trigger('click');await flushPromises()
  await wrapper.findAll('.nav-actions button')[1].trigger('click')
@@ -272,7 +298,7 @@ it('空态起步问题点一下填入输入框',async()=>{
  expect(starter.exists()).toBe(true)
  const text=starter.text().trim()
  await starter.trigger('click')
- expect(wrapper.get('.composer input').element.value).toBe(text)
+ expect(wrapper.get('.composer textarea').element.value).toBe(text)
 })
 
 it('生成结束不抢历史滚动位置，也不删除用户已经输入的下一条草稿', async () => {
@@ -282,19 +308,19 @@ it('生成结束不抢历史滚动位置，也不删除用户已经输入的下�
     return new Promise(resolve => { finish = resolve })
   })
   await render()
-  await wrapper.get('.composer input').setValue('第一题')
+  await wrapper.get('.composer textarea').setValue('第一题')
   await wrapper.get('.send-btn').trigger('click'); await flushPromises()
   const scroll = wrapper.get('.chat-scroll')
   Object.defineProperties(scroll.element, { scrollHeight: { configurable: true, value: 1500 }, clientHeight: { configurable: true, value: 400 } })
   scroll.element.scrollTop = 100
   await scroll.trigger('scroll')
-  await wrapper.get('.composer input').setValue('我正在写下一题')
+  await wrapper.get('.composer textarea').setValue('我正在写下一题')
   await db.kv.put({ key: 'ai:draft', value: { content: '我正在写下一题', images: [] } })
   callback({ type: 'done', message_id: 125 })
   finish(); await flushPromises()
   expect(scroll.element.scrollTop).toBe(100)
   expect((await db.kv.get('ai:draft'))?.value.content).toBe('我正在写下一题')
-  expect(wrapper.get('.composer input').element.value).toBe('我正在写下一题')
+  expect(wrapper.get('.composer textarea').element.value).toBe('我正在写下一题')
 })
 
 it('打开历史对话立即显示加载骨架，返回后渲染列表',async()=>{

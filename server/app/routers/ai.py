@@ -67,7 +67,7 @@ def msg_dict(row, db=None, uid=None):
         "completion_tokens": row.completion_tokens,
         "latency_ms": row.latency_ms,
         "image_keys": json.loads(row.image_keys or "[]"),
-        "suggested_tasks": proposals(row.content) if row.role == "assistant" else [],
+        "suggested_tasks": proposals(row.content) if row.role == "assistant" and not json.loads(row.tool_trace or "{}").get("interrupted") else [],
         "task_import": task_imports.status(db, uid, row.id)
         if db is not None and row.role == "assistant"
         else {"state": "not_imported"},
@@ -152,10 +152,13 @@ def save_key(
         ai_service.resolve_base_url(body.provider, body.base_url),
     )
     model = body.model.strip() or ai_service.default_model(body.provider)
-    cipher_text = crypto.encrypt(
-        enc_secret(request), body.api_key.strip(), str(user.id)
-    )
     row = db.get(UserAIKey, user.id)
+    # 只改模型/图片能力时可复用本人密文，变更服务商或地址必须提供新Key。
+    if body.api_key is None:
+        if not row or row.provider != body.provider or row.base_url != base_url:
+            raise ApiError(400, 40001, "首次配置或切换服务商/地址时请填写API Key")
+    else:
+        cipher_text = crypto.encrypt(enc_secret(request), body.api_key.strip(), str(user.id))
     if row is None:
         row = UserAIKey(user_id=user.id)
         db.add(row)
@@ -164,8 +167,9 @@ def save_key(
     row.provider = body.provider
     row.base_url = base_url
     row.model = model
-    row.key_cipher = cipher_text
-    row.key_mask = crypto.mask(body.api_key)
+    if body.api_key is not None:
+        row.key_cipher = cipher_text
+        row.key_mask = crypto.mask(body.api_key)
     row.updated_at = utcnow()
     audit(db, request, "ai.save_key", user_id=user.id, detail=body.provider)
     db.commit()
@@ -348,6 +352,8 @@ def prepare_chat(body, request, user, db):
             if total > 32000:
                 break
             text = row.content
+            if json.loads(row.tool_trace or "{}").get("interrupted"):
+                text += "\n[此回答已中断，内容不完整，不能视为已完成的计划]"
             images = json.loads(row.image_keys or "[]") if row.role == "user" else []
             if images and vision:
                 text = user_content(db, settings, user.id, text, images, strict=False)
@@ -429,7 +435,9 @@ def save_answer(db, convo, result):
         completion_tokens=result.get("completion_tokens"),
         latency_ms=result.get("latency_ms"),
         tool_trace=json.dumps(
-            {"tools": result.get("tools", []), "sources": result.get("sources", [])},
+            {"tools": result.get("tools", []), "sources": result.get("sources", []),
+             **({"interrupted": True, "aborted": bool(result.get("aborted")),
+                 "failed": not result.get("aborted")} if result.get("interrupted") else {})},
             ensure_ascii=False,
         ),
     )
@@ -501,6 +509,7 @@ async def chat_stream(
         return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
 
     async def gen():
+        reply, usage, latency = "", {}, None
         try:
             try:
                 if key_row:
@@ -515,7 +524,6 @@ async def chat_stream(
                     )
                 else:
                     raise ApiError(400, 40011, "请先配置本人AI服务商密钥")
-                reply, usage, latency = "", {}, None
                 async for chunk in stream:
                     if chunk.get("delta"):
                         reply += chunk["delta"]
@@ -533,15 +541,21 @@ async def chat_stream(
                 }
             except asyncio.CancelledError:
                 ai_usage.finish(db, user.id, day)
+                if reply:
+                    save_answer(db, convo, {"content": reply, "interrupted": True, "aborted": True})
                 raise
             except Exception as error:
                 ai_usage.finish(db, user.id, day)
+                partial = {"content": reply, "interrupted": True}
+                if reply:
+                    save_answer(db, convo, partial)
                 yield sse(
                     {
                         "type": "error",
                         "message": error.message
                         if isinstance(error, ApiError)
                         else "AI服务异常，请稍后重试",
+                        "message_id": partial.get("message_id"),
                     }
                 )
                 return

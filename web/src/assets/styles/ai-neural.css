@@ -130,6 +130,8 @@
 .neural .composer:focus-within { border-color:#9b72cf60; background:var(--n-panel-strong); }
 .neural .composer input { flex:1; min-width:0; height:40px; padding:0; border:0; border-radius:0; background:transparent; color:var(--n-text); font:inherit; font-size:16px; outline:none; box-shadow:none; }
 .neural .composer input::placeholder { color:var(--n-faint); }
+.neural .composer textarea { flex:1; min-width:0; height:40px; min-height:40px; max-height:144px; padding:7px 0; border:0; border-radius:0; background:transparent; color:var(--n-text); font:inherit; font-size:16px; line-height:26px; outline:none; box-shadow:none; resize:none; overflow-y:auto; }
+.neural .composer textarea::placeholder { color:var(--n-faint); }
 .neural .send-btn { display:grid; place-items:center; flex-shrink:0; width:42px; height:42px; border:0; border-radius:50%; background:var(--n-panel-strong); color:var(--n-text); box-shadow:none; transition:transform 200ms var(--n-ease),filter 200ms var(--n-ease); }
 .neural .send-btn:not(:disabled):hover { transform:scale(1.02); filter:brightness(1.15); }
 .neural .send-btn:not(:disabled) { background:linear-gradient(135deg,#9abefa,#c5ade2); color:#202531; }

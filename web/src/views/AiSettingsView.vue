@@ -38,6 +38,7 @@ const fetching = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
 const loading = ref(true)
+const loadError = ref('')
 const usage = ref(null)
 const contextTurns = ref(10)
 let catalogGeneration=0
@@ -53,6 +54,8 @@ async function saveContext() {
 const isVip = computed(() => auth.isVip)
 const canUse = ref(false)
 const configured = computed(() => !!status.value?.configured)
+const canReuseKey = computed(() => configured.value && provider.value === status.value.provider
+  && baseUrl.value.trim().replace(/\/+$/, '') === status.value.base_url?.replace(/\/+$/, ''))
 const currentProvider = computed(() => PROVIDERS.find((p) => p.id === provider.value))
 
 function pickProvider(p) {
@@ -67,9 +70,11 @@ function pickProvider(p) {
 }
 
 async function load() {
+  loading.value = true
+  loadError.value = ''
   try {
-    const cfg = await aiApi.enabled().catch(() => null)
-    canUse.value = cfg ? !!cfg.access : isVip.value
+    const cfg = await aiApi.enabled()
+    canUse.value = !!cfg.access
     status.value = await aiApi.key()
     if (!canUse.value) return
     if (status.value.configured) {
@@ -85,7 +90,7 @@ async function load() {
       contextTurns.value = usage.value.context_turns
     } catch (e) { toast(e.message || '用量暂时无法读取') }
   } catch (e) {
-    if (e.status !== 403) toast(e.message)
+    loadError.value = e.message || '配置读取失败，请重试'
   } finally {
     loading.value = false
   }
@@ -93,7 +98,7 @@ async function load() {
 
 async function fetchModels() {
   if (fetching.value || saving.value || deleting.value) return
-  if (!apiKey.value.trim() && !configured.value) return toast('请先填写 API Key')
+  if (!apiKey.value.trim() && !canReuseKey.value) return toast('请先填写当前服务商的 API Key')
   fetching.value = true
   const generation=catalogGeneration
   const requestedProvider=provider.value, requestedBase=baseUrl.value, requestedKey=apiKey.value
@@ -121,10 +126,12 @@ async function fetchModels() {
 
 async function save() {
   if (saving.value || deleting.value) return
-  if (!apiKey.value.trim()) return toast(configured.value ? '修改请重新输入完整 Key' : '请填写 API Key')
+  if (!apiKey.value.trim() && !canReuseKey.value) return toast('请填写当前服务商的 API Key')
   if (!baseUrl.value.trim()) return toast('请填写服务商地址')
   if (!model.value.trim()) return toast('请选择或填写模型名')
   saving.value = true
+  catalogGeneration++
+  fetching.value = false
   try {
     status.value = await aiApi.saveKey({
       provider: provider.value,
@@ -132,9 +139,11 @@ async function save() {
       model: model.value.trim(),
       supports_images: supportsImages.value,
       supports_tools: false,
-      api_key: apiKey.value.trim(),
+      ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}),
     })
     apiKey.value = ''
+    models.value = []
+    modelSearch.value = ''
     toast('已保存，Key 已加密')
   } catch (e) {
     toast(e.message)
@@ -175,6 +184,7 @@ onMounted(load)
 
     <div class="page">
       <div v-if="loading" class="empty">读取中…</div>
+      <div v-else-if="loadError" class="card" role="alert"><p>AI 配置未能读取：{{loadError}}</p><button class="btn btn-outline" @click="load">重新读取</button></div>
 
       <div v-else-if="!canUse" class="card guide">
         <div class="guide-badge"><Crown :size="24" /></div>
@@ -185,9 +195,9 @@ onMounted(load)
         </button>
       </div>
 
-      <div v-if="!loading && !canUse && configured" class="card mt16"><p>已保存的Key：{{status.key_mask}} · {{status.model}}</p><p class="field-hint">调用权限到期不影响你删除自己的Key，历史会话仍保留。</p><button class="btn btn-outline" :disabled="deleting" @click="removeKey">删除我的Key</button></div>
+      <div v-if="!loading && !loadError && !canUse && configured" class="card mt16"><p>已保存的Key：{{status.key_mask}} · {{status.model}}</p><p class="field-hint">调用权限到期不影响你删除自己的Key，历史会话仍保留。</p><button class="btn btn-outline" :disabled="deleting" @click="removeKey">删除我的Key</button></div>
 
-      <template v-if="!loading && canUse">
+      <template v-if="!loading && !loadError && canUse">
         <div v-if="usage" class="card">
           <div>今日 AI 请求 {{ usage.requests }} / {{ usage.daily_limit }} · 剩余 {{ usage.remaining }}</div>
           <div class="field-hint">北京时间零点重置，失败尝试计入请求预算。成功 {{ usage.succeeded }} 次，失败 {{ usage.failed }} 次。</div>
@@ -237,7 +247,7 @@ onMounted(load)
             class="input"
             type="password"
             autocomplete="off"
-            :placeholder="configured ? `已保存 ${status.key_mask}，修改请重新输入` : 'sk-...'"
+            :placeholder="canReuseKey ? `已保存 ${status.key_mask}，留空继续使用` : 'sk-...'"
           />
           <div class="field-hint">Key 使用 AES-256-GCM 加密存储，页面不回显明文。</div>
 

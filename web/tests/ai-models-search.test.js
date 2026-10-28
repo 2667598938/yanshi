@@ -14,6 +14,7 @@ vi.mock('../src/api', () => ({
     usage: vi.fn(),
     models: vi.fn(),
     deleteKey: vi.fn(),
+    saveKey: vi.fn(),
   },
 }))
 
@@ -45,6 +46,31 @@ it('模型目录可展示第13项以后并支持搜索，手填模型 ID 保留'
   expect(wrapper.findAll('.model-chip')).toHaveLength(1)
   expect(wrapper.find('.model-chip').text()).toContain('model-19')
   expect(wrapper.find('.model-row input').exists()).toBe(true)
+  wrapper.unmount()
+})
+
+it('只修改模型时可复用已保存Key，无需重新输入明文', async () => {
+  aiApi.enabled.mockResolvedValue({ access: true })
+  aiApi.key.mockResolvedValue({ configured: true, provider: 'deepseek', base_url: 'https://api.deepseek.com/v1', model: 'model-a' })
+  aiApi.usage.mockResolvedValue({ context_turns: 10 })
+  aiApi.saveKey.mockResolvedValue({ configured: true, provider: 'deepseek', base_url: 'https://api.deepseek.com/v1', model: 'model-b' })
+  const wrapper = mount(AiSettingsView)
+  await flushPromises()
+  await wrapper.get('.model-row input').setValue('model-b')
+  await wrapper.findAll('button').find(b => b.text().includes('保存设置')).trigger('click')
+  await flushPromises()
+  expect(aiApi.saveKey).toHaveBeenCalledWith(expect.objectContaining({ model: 'model-b' }))
+  expect(aiApi.saveKey.mock.calls.at(-1)[0].api_key).toBeUndefined()
+  wrapper.unmount()
+})
+
+it('读取已保存配置失败时展示持久重试，不能把故障显示成空白新配置', async () => {
+  aiApi.enabled.mockResolvedValue({ access: true })
+  aiApi.key.mockRejectedValueOnce(new Error('网络暂时不可用'))
+  const wrapper = mount(AiSettingsView)
+  await flushPromises()
+  expect(wrapper.text()).toContain('重新读取')
+  expect(wrapper.find('.form-card').exists()).toBe(false)
   wrapper.unmount()
 })
 
