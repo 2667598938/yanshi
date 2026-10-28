@@ -25,7 +25,10 @@ it('未开放的第三方渠道不显示占位按钮，关闭注册时不承诺�
   await render()
   expect(wrapper.findAll('.tp-btn')).toHaveLength(0)
   expect(wrapper.text()).not.toContain('暂不开放')
-  expect(wrapper.get('.login-hint').text()).toContain('不开放自动注册')
+  expect(wrapper.get('.admission-note').text()).toContain('注册暂未开放')
+  expect(wrapper.find('.tabs').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('先看看今日')
+  expect(wrapper.find('.browse-link').exists()).toBe(false)
   expect(wrapper.get('button[type="submit"]').text()).toBe('验证并登录')
 })
 it('密码登录复用真实账号动作并返回原目标页面，可切换密码可见性', async () => {
@@ -49,6 +52,7 @@ it('验证码登录必须手动同意协议，确认后传给原账号接口', a
   expect(state.auth.emailLogin).toHaveBeenCalledExactlyOnceWith({ email: 'user@example.com', code: '123456', accepted_terms: true })
 })
 it('注册校验确认密码，保留昵称、邀请码与邮箱验证参数', async () => {
+  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email'], registration_open: true })
   await render(); await click('注册')
   await wrapper.get('#auth-email').setValue('new@example.com'); await wrapper.get('#auth-email-code').setValue('123456')
   await wrapper.get('#auth-nickname').setValue('新研友'); await wrapper.get('#auth-invite').setValue('invite001')
@@ -97,6 +101,22 @@ it('验证码发送进行中禁止重复请求，失败后可以重试', async (
   expect(wrapper.get('.ghost-btn').attributes('disabled')).toBeUndefined()
   expect(wrapper.get('[role="alert"]').text()).toContain('邮件暂时不可用')
 })
+it('关闭注册时，地址栏mode=register也不出现注册表单或邀请码绕过提示', async () => {
+  state.route.query.mode = 'register'
+  await render()
+  expect(wrapper.find('#auth-nickname').exists()).toBe(false)
+  expect(wrapper.find('.tabs').exists()).toBe(false)
+  expect(wrapper.get('.admission-note').text()).toContain('联系管理员创建')
+  expect(wrapper.text()).not.toContain('或使用注册邀请码')
+})
+it('公共配置失败时不开放注册，重试成功后才显示真实入口', async () => {
+  publicApi.config.mockRejectedValueOnce(new Error('offline'))
+  await render(); expect(wrapper.find('.tabs').exists()).toBe(false)
+  publicApi.config.mockResolvedValueOnce({ enabled_auth_channels: ['email'], registration_open: true })
+  await click('重试')
+  expect(wrapper.find('.tabs').exists()).toBe(true)
+  await click('注册'); expect(wrapper.find('#auth-nickname').exists()).toBe(true)
+})
 it('协议使用可键盘操作的按钮，并实际打开对应条款', async () => {
   await render(); await click('隐私政策')
   expect(wrapper.get('[role="dialog"]').text()).toContain('隐私政策内容')
@@ -112,6 +132,7 @@ it('切到密码登录后仍能同意已开放第三方渠道所需的协议', a
   expect(authApi.oauthAuthorize).toHaveBeenCalledExactlyOnceWith('qq', true)
 })
 it('登录进行中不能重复提交或切换注册', async () => {
+  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email'], registration_open: true })
   let resolve
   state.auth.login.mockImplementationOnce(() => new Promise(done => { resolve = done }))
   await render(); await click('账号密码')

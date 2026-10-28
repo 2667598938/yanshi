@@ -98,6 +98,13 @@ button {
 }
 
 /* ---------- 页面骨架 ---------- */
+/* 开场与已预载页面交叉淡化；覆盖层结束后恢复正常文档布局。 */
+html.brand-opening-active #app { opacity: 0; transition: opacity var(--brand-crossfade-ms,700ms) ease; }
+html.brand-opening-active.brand-opening-leaving #app { opacity: 1; }
+html.brand-opening-active body { background: var(--brand-background,#F7F8FA); }
+@media (prefers-reduced-motion: reduce) {
+  html.brand-opening-active #app { transition-duration: 160ms !important; }
+}
 .page {
   padding: 16px 16px calc(var(--tabbar-h) + 26px);
 }

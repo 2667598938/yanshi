@@ -1,6 +1,7 @@
 <script setup>
 import { watch, ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { PUBLIC_PAGES } from './router/access'
 import TabBar from './components/TabBar.vue'
 import DesktopNav from './components/DesktopNav.vue'
 import ToastLayer from './components/ToastLayer.vue'
@@ -21,10 +22,17 @@ const timer = useTimerStore()
 const app = useAppStore()
 const subjects = useSubjectsStore()
 const route = useRoute()
-const showDesktopNav = computed(() => !['login', 'disclaimer'].includes(route.name))
+const router = useRouter()
+const showDesktopNav = computed(() => auth.isLoggedIn !== false && !['login', 'disclaimer'].includes(route.name))
 const auth = useAuthStore()
+const mayRenderRoute = computed(() => PUBLIC_PAGES.has(route.path) || auth.isLoggedIn !== false)
 const notifications = useNotificationsStore()
 const clock = useClockStore()
+watch(() => auth.isLoggedIn, (loggedIn) => {
+  if (loggedIn === false && !PUBLIC_PAGES.has(route.path)) {
+    router.replace({ path: '/login', query: { redirect: route.fullPath } })
+  }
+})
 const noticeStack = ref(null)
 const noticeH = ref(0)
 let noticeObserver = null
@@ -104,18 +112,18 @@ watch(
     <DesktopNav v-if="showDesktopNav" />
     <div ref="noticeStack" class="notice-stack">
       <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
-      <div v-if="timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
-      <div v-if="timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
+      <div v-if="auth.isLoggedIn !== false && timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
+      <div v-if="auth.isLoggedIn !== false && timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
       <OfflineBanner />
     </div>
-    <SessionIssues />
-    <CommunityIssues />
+    <SessionIssues v-if="auth.isLoggedIn !== false" />
+    <CommunityIssues v-if="auth.isLoggedIn !== false" />
     <main id="main-content" class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }" :data-view="route.path.split('/')[1] || 'home'" :data-page="route.name" tabindex="-1">
-      <router-view :key="route.path" />
+      <router-view v-if="mayRenderRoute" :key="route.path" />
     </main>
-    <TabBar v-if="!route.meta.hideTabbar" />
+    <TabBar v-if="mayRenderRoute && !route.meta.hideTabbar" />
     <ToastLayer />
-    <ConflictDialog />
+    <ConflictDialog v-if="auth.isLoggedIn !== false" />
   </div>
 </template>
 

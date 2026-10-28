@@ -84,8 +84,10 @@ export const useAuthStore = defineStore('auth', {
         if (data.user) this.user = data.user
         this.persist()
         return true
-      } catch {
+      } catch (error) {
         this.accessToken = ''
+        // 明确失效不能把缓存昵称当登录凭证；断网才保留已有账号的离线入口。
+        if (error.status && error.status < 500) this.clear()
         return false
       }
     },

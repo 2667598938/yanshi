@@ -13,7 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const mode = ref(route.query.mode === 'register' ? 'register' : route.query.mode === 'forgot' ? 'forgot' : 'login')
+const mode = ref(route.query.mode === 'forgot' ? 'forgot' : 'login')
 const loginMode = ref('code') // code | password
 const loading = ref(false)
 const error = ref('')
@@ -21,6 +21,8 @@ const info = ref('')
 const codeSending = ref(false)
 const passwordVisible = ref(false)
 const registrationOpen = ref(null)
+const configError = ref(false)
+let alive = true
 const redirectTarget = computed(() => typeof route.query.redirect === 'string'
   && route.query.redirect.startsWith('/') && !route.query.redirect.startsWith('//') ? route.query.redirect : '/')
 const form = reactive({
@@ -132,11 +134,15 @@ function startCountdown() {
     if (countdown.value <= 0) clearInterval(timer)
   }, 1000)
 }
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => { alive = false; clearInterval(timer) })
 
 async function sendCode(scene) {
   error.value = ''
   info.value = ''
+  if (scene === 'register' && registrationOpen.value !== true) {
+    error.value = '注册暂未开放，请联系管理员创建账号'
+    return
+  }
   if (!/^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(form.email)) {
     error.value = '请先输入正确的邮箱'
     return
@@ -185,6 +191,7 @@ async function submit() {
         await auth.login(form.email.trim().toLowerCase(), form.password)
       }
     } else if (mode.value === 'register') {
+      if (registrationOpen.value !== true) { error.value = '注册暂未开放，请联系管理员创建账号'; return }
       if (!form.accepted) {
         error.value = '请先阅读并同意用户协议与隐私政策'
         loading.value = false
@@ -220,6 +227,10 @@ async function submit() {
 
 function switchMode(m) {
   if (loading.value) return
+  if (m === 'register' && registrationOpen.value !== true) {
+    error.value = '注册暂未开放，请联系管理员创建账号'
+    return
+  }
   mode.value = m
   error.value = ''
   info.value = ''
@@ -240,7 +251,7 @@ const heading = computed(() => ({ login: '欢迎回来', register: '开始你的
 const description = computed(() => ({ login: '继续你的计划，积累每一点进步。', register: '创建账号，把学习计划和每次进步留下来。', forgot: '使用账号邮箱验证身份，设置新的密码。', phone: '使用已开通的手机号渠道验证身份。' })[mode.value])
 const codeLoginHint = computed(() => registrationOpen.value === true
   ? '未注册邮箱验证后可创建账号。' : registrationOpen.value === false
-    ? '当前不开放自动注册，新账号请联系管理员或使用注册邀请码。' : '使用你的账号邮箱接收验证码。')
+    ? '仅限已有账号登录。' : '使用已有账号的邮箱接收验证码。')
 // 协议弹层
 const showLegal = ref(false)
 const legal = ref(null)
@@ -257,14 +268,21 @@ async function openLegal(tab) {
   showLegal.value = true
 }
 
-onMounted(async () => {
+async function loadPublicConfig() {
+  configError.value = false
   try {
     const cfg = await publicApi.config()
+    if (!alive) return
     if (Array.isArray(cfg.enabled_auth_channels)) channels.value = cfg.enabled_auth_channels
-    if (typeof cfg.registration_open === 'boolean') registrationOpen.value = cfg.registration_open
+    registrationOpen.value = cfg.registration_open === true
+    if (registrationOpen.value && route.query.mode === 'register' && mode.value === 'login') mode.value = 'register'
+    if (!registrationOpen.value && mode.value === 'register') switchMode('login')
   } catch {
-    /* 配置拉取失败时保持仅邮箱登录 */
+    if (alive) { configError.value = true; registrationOpen.value = null }
   }
+}
+onMounted(async () => {
+  await loadPublicConfig()
   if (route.query.oauth_ticket) {
     await finishOAuth(String(route.query.oauth_ticket))
   }
@@ -276,10 +294,10 @@ onMounted(async () => {
   <div class="auth-page">
     <div class="auth-layout">
       <aside class="auth-intro" aria-label="关于研时">
-        <router-link class="intro-brand" to="/" aria-label="研时，返回今日">
+        <div class="intro-brand" aria-label="研时">
           <span class="brand-logo" aria-hidden="true">研</span>
           <span class="brand-name">研时<small>你的学习工作台</small></span>
-        </router-link>
+        </div>
         <div class="intro-copy">
           <span class="intro-kicker">计划 · 专注 · 复盘 · 同行</span>
           <h2>把每一天，<br /><span>学成自己的答案。</span></h2>
@@ -304,10 +322,12 @@ onMounted(async () => {
             <h1 id="auth-heading">{{ heading }}</h1>
             <p>{{ description }}</p>
           </header>
-          <div class="tabs" aria-label="账号入口">
+          <div v-if="registrationOpen === true" class="tabs" aria-label="账号入口">
             <button type="button" :disabled="loading" :aria-pressed="mode === 'login' || mode === 'forgot' || mode === 'phone'" :class="{ active: mode !== 'register' }" @click="switchMode('login')">登录</button>
             <button type="button" :disabled="loading" :aria-pressed="mode === 'register'" :class="{ active: mode === 'register' }" @click="switchMode('register')">注册</button>
           </div>
+          <p v-if="registrationOpen === false" class="admission-note">注册暂未开放，已有账号可直接登录；新账号请联系管理员创建。</p>
+          <p v-else-if="configError" class="admission-note">暂时无法确认注册状态。已有账号仍可登录。<button type="button" class="text-button" @click="loadPublicConfig">重试</button></p>
 
           <div v-if="mode === 'login'" class="mode-switch" aria-label="登录方式">
             <button type="button" :disabled="loading" :aria-pressed="loginMode === 'code'" :class="{ on: loginMode === 'code' }" @click="loginMode = 'code'; error = ''; info = ''">邮箱验证码</button>
@@ -343,7 +363,7 @@ onMounted(async () => {
             <p v-if="error" class="error" role="alert">{{ error }}</p>
             <p v-if="info" class="info" role="status">{{ info }}</p>
             <button class="primary-btn" type="submit" :disabled="loading">{{ loading ? '请稍候…' : submitLabel }}<ArrowUpRight v-if="!loading" :size="18" /></button>
-            <p v-if="isCodeLogin" class="login-hint">{{ codeLoginHint }}</p>
+            <p v-if="isCodeLogin && registrationOpen !== false" class="login-hint">{{ codeLoginHint }}</p>
             <div v-if="mode === 'forgot' || mode === 'phone'" class="bottom-links"><button type="button" class="text-button" :disabled="loading" @click="switchMode('login')"><ArrowLeft :size="14" />返回邮箱登录</button></div>
           </form>
 
@@ -356,7 +376,6 @@ onMounted(async () => {
             </div>
           </div>
         </div>
-        <router-link class="browse-link" to="/"><ArrowLeft :size="14" />先看看今日学习工作台</router-link>
       </section>
     </div>
 
@@ -371,17 +390,19 @@ onMounted(async () => {
 
 <style scoped>
 .auth-page {
+  --primary: var(--brand-primary,#647D9D);
+  --primary-grad: linear-gradient(135deg,#647D9D,#7890AA);
   min-height: calc(100dvh - var(--notice-h, 0px));
   padding: clamp(24px, 4vw, 64px) 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at 10% 15%, #e8e8ff 0, transparent 48%), radial-gradient(ellipse at 95% 90%, #e9efff 0, transparent 45%), #f8faff;
+  background: radial-gradient(ellipse at 10% 15%, #e8eef5 0, transparent 48%), radial-gradient(ellipse at 95% 90%, #edf1f6 0, transparent 45%), var(--brand-background,#F7F8FA);
 }
 .auth-layout { width: 100%; max-width: 1120px; display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 88px); align-items: center; }
 .auth-intro { display: block; min-width: 0; padding: 12px 0; }
 .intro-brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
-.brand-logo { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; background: var(--primary-grad); box-shadow: 0 8px 20px #4f46e51a; color: #fff; font-size: 25px; font-weight: 700; }
+.brand-logo { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; background: var(--primary-grad); box-shadow: 0 8px 20px #647d9d20; color: #fff; font-size: 25px; font-weight: 700; }
 .brand-name { font-size: 24px; line-height: 1.3; font-weight: 800; letter-spacing: 2px; }
 .brand-name small { display: block; margin-top: 3px; font-size: 11px; font-weight: 400; letter-spacing: 1px; color: #667085; }
 .intro-copy { margin: 54px 0 32px; }
@@ -420,10 +441,10 @@ onMounted(async () => {
 .field > span small { color: #9299ac; font-size: 11px; margin-left: 4px; font-weight: 400; }
 .field input { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid #dfe4f0; border-radius: 10px; background: #fbfcff; color: #252943; font-size: 14px; font-family: inherit; transition: border-color .18s, box-shadow .18s; }
 .field input::placeholder { color: #a0a6b8; }
-.field input:focus { outline: none; border-color: #928aef; background: #fff; box-shadow: 0 0 0 3px #4f46e50d; }
+.field input:focus { outline: none; border-color: #8da2bd; background: #fff; box-shadow: 0 0 0 3px #647d9d14; }
 .field input:disabled { opacity: .6; }
 .code-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
-.ghost-btn { border: 1px solid #e1dfff; border-radius: 10px; background: #f8f7ff; padding: 0 12px; color: var(--primary); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.ghost-btn { border: 1px solid #d5dfeb; border-radius: 10px; background: #f0f4f8; padding: 0 12px; color: var(--primary); font-size: 12px; cursor: pointer; white-space: nowrap; }
 .ghost-btn:disabled { border-color: #e8eaf2; color: #9ca3b5; background: #f6f7fb; cursor: not-allowed; }
 .field-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .text-button, .legal-link { padding: 0; border: 0; background: none; color: var(--primary); font-family: inherit; font-size: inherit; cursor: pointer; }
@@ -434,8 +455,8 @@ onMounted(async () => {
 .agree { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; line-height: 1.8; color: #8a90a2; }
 .agree > input { width: 15px; height: 15px; flex-shrink: 0; margin: 3px 0 0; accent-color: var(--primary); }
 .agree label { cursor: pointer; margin-right: 3px; }
-.legal-link { color: #6d65cf; }
-.primary-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; border: 0; border-radius: 10px; padding: 12px; background: var(--primary-grad); box-shadow: 0 6px 16px #4f46e51a; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+.legal-link { color: #647D9D; }
+.primary-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; border: 0; border-radius: 10px; padding: 12px; background: var(--primary-grad); box-shadow: 0 6px 16px #647d9d20; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
 .primary-btn:disabled { opacity: .6; cursor: not-allowed; }
 .error, .info { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .error { color: #c33746; background: #fff0f2; border: 1px solid #fde2e7; }
@@ -451,7 +472,7 @@ onMounted(async () => {
 .tp-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border: 1px solid #e8ecf4; border-radius: 10px; background: #fff; color: #69748b; font-size: 12px; cursor: pointer; }
 .tp-ic { display: inline-flex; align-items: center; }
 .brand-svg { width: 17px; height: 17px; fill: currentColor; }
-.browse-link { display: flex; justify-content: center; align-items: center; gap: 6px; margin: 18px 0 0; color: #9299ad; font-size: 11px; text-decoration: none; }
+.admission-note { margin: 0 0 20px; padding: 10px 12px; border: 1px solid #e2e8ef; background: #f4f7fa; border-radius: 10px; color: #7d8793; font-size: 11px; line-height: 1.8; }
 .modal-mask { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: #1d254c66; z-index: 500; }
 .modal { width: min(100%, 620px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; background: #fff; border-radius: 18px; box-shadow: 0 24px 80px #11182f30; overflow: hidden; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #edf0f6; }

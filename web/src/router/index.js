@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { authorizeRoute } from './access'
 
-const routes = [
+export const routes = [
   {path:'/group/admission',component:()=>import('../views/GroupAdmissionView.vue'),meta:{requiresAuth:true,hideTabbar:true}},
   {path:'/admin/group',component:()=>import('../views/GroupReviewView.vue'),meta:{requiresAuth:true,requiresAdmin:true,hideTabbar:true}},
   { path: '/group', component: () => import('../views/GroupLearningView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
@@ -53,6 +54,7 @@ const routes = [
   { path: '/mistake/edit', name: 'mistake-edit', component: () => import('../views/MistakeEditView.vue'), meta: { title: '记一道错题', hideTabbar: true } },
   { path: '/subjects', name: 'subjects', component: () => import('../views/SubjectManageView.vue'), meta: { title: '科目管理', hideTabbar: true } },
   { path: '/settings/learning', name: 'learning-settings', component: () => import('../views/LearningSettingsView.vue'), meta: { title: '专注与休息设置', hideTabbar: true } },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
@@ -63,14 +65,7 @@ const router = createRouter({
   },
 })
 
-// 云功能（自习室/AI/我的）需要登录；核心学习页可离线
-router.beforeEach((to) => {
-  const auth = useAuthStore()
-  if (to.meta.requiresAuth && !auth.isLoggedIn) {
-    return { path: '/login', query: { redirect: to.fullPath } }
-  }
-  if (to.meta.requiresAdmin && !auth.isAdmin) return '/me'
-  return true
-})
+// 默认所有业务页均需登录。已经登录的账号仍可使用自己的离线学习数据。
+router.beforeEach((to) => authorizeRoute(to, useAuthStore()))
 
 export default router
