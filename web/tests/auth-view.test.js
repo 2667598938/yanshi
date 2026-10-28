@@ -1,0 +1,124 @@
+// @vitest-environment happy-dom
+import { mount, flushPromises } from '@vue/test-utils'
+import { beforeEach, afterEach, it, expect, vi } from 'vitest'
+import AuthView from '../src/views/auth/AuthView.vue'
+import { authApi, publicApi } from '../src/api'
+const state = vi.hoisted(() => ({ route: { query: {} }, replace: vi.fn(), push: vi.fn(),
+  auth: { login: vi.fn(), emailLogin: vi.fn(), register: vi.fn(), phoneLogin: vi.fn(), exchangeOAuth: vi.fn() } }))
+vi.mock('vue-router', () => ({ useRoute: () => state.route, useRouter: () => ({ replace: state.replace, push: state.push }) }))
+vi.mock('../src/stores/auth', () => ({ useAuthStore: () => state.auth }))
+vi.mock('../src/sync/engine', () => ({ initSyncForUser: vi.fn() }))
+vi.mock('../src/api', () => ({ authApi: { sendCode: vi.fn(), resetPassword: vi.fn(), phoneSendCode: vi.fn(), oauthAuthorize: vi.fn() }, publicApi: { config: vi.fn(), legal: vi.fn() } }))
+let wrapper
+beforeEach(() => {
+  vi.resetAllMocks()
+  state.route.query = { redirect: '/rooms/1' }
+  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email'], registration_open: false })
+  publicApi.legal.mockResolvedValue({ terms: '用户协议内容', privacy: '隐私政策内容', disclaimer: '免责声明内容' })
+})
+afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
+async function render() { wrapper = mount(AuthView, { global: { stubs: { RouterLink: true } } }); await flushPromises() }
+async function click(text) { await wrapper.findAll('button').find(button => button.text() === text).trigger('click'); await flushPromises() }
+async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
+
+it('未开放的第三方渠道不显示占位按钮，关闭注册时不承诺自动创建账号', async () => {
+  await render()
+  expect(wrapper.findAll('.tp-btn')).toHaveLength(0)
+  expect(wrapper.text()).not.toContain('暂不开放')
+  expect(wrapper.get('.login-hint').text()).toContain('不开放自动注册')
+  expect(wrapper.get('button[type="submit"]').text()).toBe('验证并登录')
+})
+it('密码登录复用真实账号动作并返回原目标页面，可切换密码可见性', async () => {
+  await render(); await click('账号密码')
+  await wrapper.get('#auth-email').setValue('USER@EXAMPLE.COM')
+  await wrapper.get('#auth-password').setValue('Password2026')
+  expect(wrapper.find('#auth-agree').exists()).toBe(false)
+  await wrapper.get('button[aria-label="显示密码"]').trigger('click')
+  expect(wrapper.get('#auth-password').attributes('type')).toBe('text')
+  await submit()
+  expect(state.auth.login).toHaveBeenCalledExactlyOnceWith('user@example.com', 'Password2026')
+  expect(state.replace).toHaveBeenCalledWith('/rooms/1')
+})
+it('验证码登录必须手动同意协议，确认后传给原账号接口', async () => {
+  await render()
+  await wrapper.get('#auth-email').setValue('user@example.com'); await wrapper.get('#auth-email-code').setValue('123456')
+  await submit()
+  expect(state.auth.emailLogin).not.toHaveBeenCalled()
+  expect(wrapper.get('[role="alert"]').text()).toContain('同意')
+  await wrapper.get('#auth-agree').setValue(true); await submit()
+  expect(state.auth.emailLogin).toHaveBeenCalledExactlyOnceWith({ email: 'user@example.com', code: '123456', accepted_terms: true })
+})
+it('注册校验确认密码，保留昵称、邀请码与邮箱验证参数', async () => {
+  await render(); await click('注册')
+  await wrapper.get('#auth-email').setValue('new@example.com'); await wrapper.get('#auth-email-code').setValue('123456')
+  await wrapper.get('#auth-nickname').setValue('新研友'); await wrapper.get('#auth-invite').setValue('invite001')
+  await wrapper.get('#auth-password').setValue('Password2026'); await wrapper.get('#auth-confirm').setValue('different')
+  await wrapper.get('#auth-agree').setValue(true); await submit()
+  expect(state.auth.register).not.toHaveBeenCalled()
+  expect(wrapper.get('[role="alert"]').text()).toContain('不一致')
+  await wrapper.get('#auth-confirm').setValue('Password2026'); await submit()
+  expect(state.auth.register).toHaveBeenCalledExactlyOnceWith({ email: 'new@example.com', code: '123456', password: 'Password2026', nickname: '新研友', invite_code: 'INVITE001', accepted_terms: true })
+})
+it('找回密码的两次输入不一致时禁止请求，相同时重置并返回登录', async () => {
+  await render(); await click('账号密码'); await click('忘记密码？')
+  await wrapper.get('#auth-email').setValue('user@example.com'); await wrapper.get('#auth-email-code').setValue('123456')
+  await wrapper.get('#auth-password').setValue('NewPassword2026'); await wrapper.get('#auth-confirm').setValue('mismatch')
+  await submit()
+  expect(authApi.resetPassword).not.toHaveBeenCalled()
+  expect(wrapper.get('[role="alert"]').text()).toContain('不一致')
+  await wrapper.get('#auth-confirm').setValue('NewPassword2026'); await submit()
+  expect(authApi.resetPassword).toHaveBeenCalledExactlyOnceWith({ email: 'user@example.com', code: '123456', password: 'NewPassword2026' })
+  expect(wrapper.get('#auth-heading').text()).toBe('欢迎回来')
+  expect(wrapper.get('[role="status"]').text()).toContain('密码已重置')
+})
+it('手机号入口有独立协议、成功与失败提示，不依赖先去邮箱页勾选', async () => {
+  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email', 'phone'] })
+  await render(); await click('手机号')
+  await wrapper.get('#auth-phone').setValue('13800138000'); await wrapper.get('#auth-phone-code').setValue('123456')
+  await submit()
+  expect(state.auth.phoneLogin).not.toHaveBeenCalled()
+  expect(wrapper.get('[role="alert"]').text()).toContain('同意')
+  await wrapper.get('#auth-agree').setValue(true)
+  state.auth.phoneLogin.mockRejectedValueOnce(new Error('验证码已过期'))
+  await submit()
+  expect(wrapper.get('[role="alert"]').text()).toContain('验证码已过期')
+  await submit()
+  expect(state.auth.phoneLogin).toHaveBeenLastCalledWith('13800138000', '123456', true)
+  expect(state.replace).toHaveBeenCalledWith('/rooms/1')
+})
+it('验证码发送进行中禁止重复请求，失败后可以重试', async () => {
+  let reject
+  authApi.sendCode.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+  await render(); await wrapper.get('#auth-email').setValue('user@example.com')
+  await wrapper.get('.ghost-btn').trigger('click'); await wrapper.get('.ghost-btn').trigger('click')
+  expect(authApi.sendCode).toHaveBeenCalledTimes(1)
+  expect(wrapper.get('.ghost-btn').attributes('disabled')).toBeDefined()
+  reject(new Error('邮件暂时不可用')); await flushPromises()
+  expect(wrapper.get('.ghost-btn').attributes('disabled')).toBeUndefined()
+  expect(wrapper.get('[role="alert"]').text()).toContain('邮件暂时不可用')
+})
+it('协议使用可键盘操作的按钮，并实际打开对应条款', async () => {
+  await render(); await click('隐私政策')
+  expect(wrapper.get('[role="dialog"]').text()).toContain('隐私政策内容')
+  await click('关闭'); expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+})
+it('切到密码登录后仍能同意已开放第三方渠道所需的协议', async () => {
+  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email', 'qq'] })
+  authApi.oauthAuthorize.mockResolvedValue({})
+  await render(); await click('账号密码'); await click('QQ')
+  expect(authApi.oauthAuthorize).not.toHaveBeenCalled()
+  expect(wrapper.find('#auth-agree').exists()).toBe(true)
+  await wrapper.get('#auth-agree').setValue(true); await click('QQ')
+  expect(authApi.oauthAuthorize).toHaveBeenCalledExactlyOnceWith('qq', true)
+})
+it('登录进行中不能重复提交或切换注册', async () => {
+  let resolve
+  state.auth.login.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  await render(); await click('账号密码')
+  await wrapper.get('#auth-email').setValue('user@example.com'); await wrapper.get('#auth-password').setValue('Password2026')
+  await wrapper.get('form').trigger('submit'); await wrapper.get('form').trigger('submit')
+  await click('注册')
+  expect(state.auth.login).toHaveBeenCalledTimes(1)
+  expect(wrapper.get('#auth-heading').text()).toBe('欢迎回来')
+  resolve(); await flushPromises()
+})

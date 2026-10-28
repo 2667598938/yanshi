@@ -99,7 +99,7 @@ watch(
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'with-desktop-nav': showDesktopNav, 'auth-shell': !showDesktopNav }" :style="{ '--notice-h': noticeH + 'px' }">
+  <div class="app-shell" :class="{ 'with-desktop-nav': showDesktopNav, 'auth-shell': !showDesktopNav, 'login-shell': route.name === 'login' }" :style="{ '--notice-h': noticeH + 'px' }">
     <a href="#main-content" class="skip-link">跳到主要内容</a>
     <DesktopNav v-if="showDesktopNav" />
     <div ref="noticeStack" class="notice-stack">
