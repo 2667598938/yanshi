@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowLeft, Copy, Plus, UserPlus, Megaphone, Users, Trash2, Ban, KeyRound,
@@ -32,6 +32,20 @@ const inspNote = ref('')
 const takedownTarget = ref(null)
 const takedownNote = ref('')
 const tab = ref('invite')
+const listSearch = ref(''), listPage = ref(1)
+const pageSize = 20
+const matchingRows = computed(() => {
+  const rows = { invite: invites.value, member: members.value, request: requests.value,
+    content: inspirations.value, announce: announcements.value }[tab.value] || []
+  const term = listSearch.value.trim().toLocaleLowerCase()
+  return term ? rows.filter(row => [row.code, row.remark, row.nickname, row.email,
+    row.status, row.reason, row.content, row.user?.nickname, row.user?.email].some(value =>
+      String(value || '').toLocaleLowerCase().includes(term))) : rows
+})
+const pageCount = computed(() => Math.max(1, Math.ceil(matchingRows.value.length / pageSize)))
+const pageRows = computed(() => matchingRows.value.slice((listPage.value - 1) * pageSize, listPage.value * pageSize))
+watch([tab, listSearch, requestFilter, inspFilter], () => { listPage.value = 1 })
+watch(pageCount, count => { listPage.value = Math.min(listPage.value, count) })
 
 const sheet = ref(null)
 const inviteForm = ref({ remark: '', expires_days: '', vip_days: '' })
@@ -324,14 +338,13 @@ async function toggleAnnouncement(row){
 <template>
   <div class="admin-page">
     <CopyFallback v-model="manualCopy" />
-    <div class="page"><button class="btn btn-ghost btn-sm" @click="router.push('/admin/email-jobs')">通知邮件任务与重试</button><button class="btn btn-ghost btn-sm" @click="router.push('/admin/resources')">资料审核</button><button class="btn btn-ghost btn-sm" @click="router.push('/admin/operations')">设置、日志与运行状态</button></div>
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>
     </div>
+    <nav class="admin-subnav" aria-label="后台功能"><router-link class="btn btn-ghost btn-sm" to="/admin/group">小组邀请与审批</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/resources">资料审核</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/email-jobs">通知邮件任务与重试</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/operations">设置、日志与运行状态</router-link></nav>
 
     <div class="page">
-      <router-link class="btn btn-outline" to="/admin/group">小组邀请与入组申请审批</router-link>
       <!-- 概览 -->
       <div v-if="overview" class="ov-grid">
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>
@@ -353,10 +366,13 @@ async function toggleAnnouncement(row){
         <button :class="{ on: tab === 'announce' }" @click="switchTab('announce')">公告</button>
       </div>
 
+      <div class="admin-list-tools"><input v-model="listSearch" class="input" type="search" aria-label="搜索当前管理列表" placeholder="搜索当前列表的昵称、邮箱、内容或备注" /><span class="sub">当前已加载列表匹配 {{ matchingRows.length }} 条 · 每页 {{ pageSize }} 条</span></div>
+      <p v-if="listSearch && !matchingRows.length" class="empty">没有匹配结果，请调整关键词。</p>
+
       <!-- 邀请码 -->
       <div v-if="tab === 'invite'" class="card">
         <button class="btn btn-primary btn-block" @click="sheet = 'invite'"><Plus :size="16" />生成邀请码</button>
-        <div v-for="c in invites" :key="c.id" class="invite-row">
+        <div v-for="c in pageRows" :key="c.id" class="invite-row">
           <div class="invite-main">
             <div class="invite-code tnum">{{ c.code }}</div>
             <div class="invite-sub">
@@ -376,7 +392,8 @@ async function toggleAnnouncement(row){
       <!-- 成员 -->
       <div v-if="tab === 'member'" class="card">
         <button class="btn btn-primary btn-block" @click="sheet = 'member'"><UserPlus :size="16" />直接创建账号</button>
-        <div v-for="m in members" :key="m.id" class="member-row">
+        <div class="desktop-table"><table><thead><tr><th>成员</th><th>邮箱</th><th>角色 / 状态</th><th>会员</th><th>账号管理</th></tr></thead><tbody><tr v-for="m in pageRows" :key="m.id"><td>{{ m.nickname }}</td><td>{{ m.email }}</td><td>{{ m.role === 'admin' ? '管理员' : '成员' }} · {{ m.status === 'banned' ? '已封禁' : m.status === 'deleted' ? '已注销' : '正常' }}</td><td>{{ m.vip_permanent ? '永久 VIP' : m.is_vip ? 'VIP' : '普通成员' }}</td><td><div class="table-actions"><button class="mini" title="会员调整" @click="openVip(m)"><Crown :size="15" /></button><button class="mini" title="重置密码" @click="sheet = 'reset'; resetTarget = m; newPwd = ''"><KeyRound :size="15" /></button><button v-if="m.role !== 'admin'" class="mini" title="封禁/恢复" @click="toggleBan(m)"><Ban :size="15" /></button></div></td></tr></tbody></table></div>
+        <div v-for="m in pageRows" :key="m.id" class="member-row mobile-admin-row">
           <div class="member-main">
             <div class="member-name">
               {{ m.nickname }}
@@ -408,7 +425,7 @@ async function toggleAnnouncement(row){
           <button :class="{ on: requestFilter === 'revoked' }" @click="loadRequests('revoked')">已撤销</button>
         </div>
         <div v-if="!requests.length" class="empty">暂无记录</div>
-        <div v-for="r in requests" :key="r.id" class="req-card">
+        <div v-for="r in pageRows" :key="r.id" class="req-card">
           <div class="req-top">
             <span class="req-avatar">{{ r.user.nickname.slice(0, 1) }}</span>
             <div class="req-user">
@@ -440,7 +457,7 @@ async function toggleAnnouncement(row){
           <button :class="{ on: inspFilter === 'withdrawn' }" @click="loadInspirations('withdrawn')">作者撤回</button>
         </div>
         <div v-if="!inspirations.length" class="empty">暂无投稿</div>
-        <div v-for="it in inspirations" :key="it.id" class="req-card">
+        <div v-for="it in pageRows" :key="it.id" class="req-card">
           <div class="req-top">
             <span class="req-avatar"><Sparkles :size="14" /></span>
             <div class="req-user">
@@ -467,7 +484,7 @@ async function toggleAnnouncement(row){
       <!-- 公告 -->
       <div v-if="tab === 'announce'" class="card">
         <button class="btn btn-primary btn-block" @click="sheet = 'announce'"><Megaphone :size="16" />发布公告</button>
-        <div v-for="a in announcements" :key="a.id" class="ann-row">
+        <div v-for="a in pageRows" :key="a.id" class="ann-row">
           <div class="ann-content">{{ a.content }}</div>
           <div class="ann-foot">
             <span>{{ fmtDateTime(a.created_at) }}</span>
@@ -479,6 +496,8 @@ async function toggleAnnouncement(row){
         <div v-if="!announcements.length" class="empty">还没有公告</div>
       </div>
     </div>
+
+    <div class="admin-pagination page"><button class="btn btn-outline btn-sm" :disabled="listPage <= 1" @click="listPage--">上一页</button><span>第 {{ listPage }} / {{ pageCount }} 页</span><button class="btn btn-outline btn-sm" :disabled="listPage >= pageCount" @click="listPage++">下一页</button></div>
 
     <!-- 弹层 -->
     <div v-if="sheet" class="mask" @click.self="sheet = null">

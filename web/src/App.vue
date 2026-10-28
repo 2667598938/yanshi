@@ -1,7 +1,8 @@
 <script setup>
-import { watch, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { watch, ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import TabBar from './components/TabBar.vue'
+import DesktopNav from './components/DesktopNav.vue'
 import ToastLayer from './components/ToastLayer.vue'
 import ConflictDialog from './components/ConflictDialog.vue'
 import CommunityIssues from './components/CommunityIssues.vue'
@@ -20,6 +21,7 @@ const timer = useTimerStore()
 const app = useAppStore()
 const subjects = useSubjectsStore()
 const route = useRoute()
+const showDesktopNav = computed(() => !['login', 'disclaimer'].includes(route.name))
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
 const clock = useClockStore()
@@ -97,7 +99,9 @@ watch(
 </script>
 
 <template>
-  <div class="app-shell" :style="{ '--notice-h': noticeH + 'px' }">
+  <div class="app-shell" :class="{ 'with-desktop-nav': showDesktopNav, 'auth-shell': !showDesktopNav }" :style="{ '--notice-h': noticeH + 'px' }">
+    <a href="#main-content" class="skip-link">跳到主要内容</a>
+    <DesktopNav v-if="showDesktopNav" />
     <div ref="noticeStack" class="notice-stack">
       <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
       <div v-if="timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
@@ -106,7 +110,7 @@ watch(
     </div>
     <SessionIssues />
     <CommunityIssues />
-    <main class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }">
+    <main id="main-content" class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }" :data-view="route.path.split('/')[1] || 'home'" :data-page="route.name" tabindex="-1">
       <router-view :key="route.path" />
     </main>
     <TabBar v-if="!route.meta.hideTabbar" />

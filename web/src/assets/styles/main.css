@@ -66,7 +66,7 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/* 移动端铺满；桌面端呈现为居中的「手机」外壳 */
+/* 手机全宽；平板与电脑布局由 responsive.css 统一扩展。 */
 .app-shell {
   max-width: 520px;
   margin: 0 auto;

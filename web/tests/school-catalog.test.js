@@ -2,7 +2,10 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 vi.mock('../src/api', () => ({ schoolApi: { list: vi.fn() } }))
-vi.mock('../src/db', () => ({ db: { kv: { get: vi.fn(), put: vi.fn() } } }))
+vi.mock('../src/db', () => {
+  const db = { kv: { get: vi.fn(), put: vi.fn() } }
+  return { db, activeAccountId: () => null, localAccountScope: () => ({ db, isCurrent: () => true, assertCurrent() {} }) }
+})
 import { schoolApi } from '../src/api'
 import { db } from '../src/db'
 import { useSchoolsStore } from '../src/stores/schools'

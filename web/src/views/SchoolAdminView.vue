@@ -1,16 +1,18 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { schoolApi, attachmentApi, aiApi } from '../api'
+import { schoolApi, attachmentApi } from '../api'
+import { useSchoolsStore } from '../stores/schools'
 import { useToast } from '../composables/useToast'
 import { useProfileStore } from '../stores/profile'
 import BlobImage from '../components/BlobImage.vue'
-import { db, uid } from '../db'
-import { toPlain } from '../utils/plain'
+import { db, uid, localAccountScope } from '../db'
 const router = useRouter()
 const { toast } = useToast()
 const profile = useProfileStore()
-const rows = ref([]), selected = ref(''), busy = ref(false)
+const catalog = useSchoolsStore()
+const rows = computed(() => catalog.rows)
+const selected = ref(''), busy = ref(true)
 const logoInput = ref(null), albumInput = ref(null)
 const form = ref({ key: '', name: '', short: '', logo_key: '', album_keys: [], info: {} })
 function choose(key) {
@@ -26,7 +28,7 @@ function makeCover(i) {
   const [key] = form.value.album_keys.splice(i, 1)
   form.value.album_keys.unshift(key)
 }
-onMounted(async () => { try { rows.value = await schoolApi.list(); choose(rows.value[0]?.key || '') } catch (e) { toast(e.message) } })
+onMounted(async () => { await catalog.load(true); choose(rows.value[0]?.key || ''); busy.value = false })
 async function upload(event, logo = false) {
   const files = Array.from(event.target.files || []); event.target.value = ''; busy.value = true
   try {
@@ -42,6 +44,7 @@ async function upload(event, logo = false) {
   finally { busy.value = false }
 }
 async function save() {
+  const scope = localAccountScope()
   if (!form.value.name.trim()) { toast('请填写院校名'); return null }
   busy.value = true
   try {
@@ -49,8 +52,7 @@ async function save() {
       album_keys: form.value.album_keys, info: form.value.info, sort_order: Number(form.value.sort_order || 0) }
     const row = selected.value ? await schoolApi.update(selected.value, body)
       : await schoolApi.create({ ...body, key: form.value.key.trim() || uid('school-') })
-    rows.value = [...rows.value.filter(r => r.key !== row.key), row]
-    await db.kv.put({key:'schools:catalog',value:toPlain(rows.value)})
+    await catalog.updateCatalog([...rows.value.filter(r => r.key !== row.key), row], scope)
     choose(row.key); toast('已保存，返回首页即可看到新校徽与校园图轮播')
     return row
   } catch (e) { toast(e.message); return null }
@@ -66,7 +68,10 @@ async function saveAsDream() {
 }
 async function removeSchool(){
  if(!selected.value||!confirm('删除自己的这所梦校？其他成员的梦校不受影响。'))return
- try{await schoolApi.remove(selected.value);rows.value=await schoolApi.list();await db.kv.put({key:'schools:catalog',value:toPlain(rows.value)});choose(rows.value[0]?.key||'')}catch(e){toast(e.message)}
+ const scope=localAccountScope(), key=selected.value
+ busy.value=true
+ try{await schoolApi.remove(key);await catalog.updateCatalog(rows.value.filter(row=>row.key!==key),scope);choose(rows.value[0]?.key||'')}catch(e){toast(e.message)}
+ finally{busy.value=false}
 }
 async function research(){
  if(!form.value.name.trim())return toast('请先填写学校名称')
@@ -84,6 +89,7 @@ async function research(){
       <label>院校标识<input v-model="form.key" class="input" :disabled="!!selected || busy" maxlength="32" placeholder="英文字母、数字、下划线或连字符" /></label>
       <label>院校名<input v-model="form.name" class="input" maxlength="80" /></label>
       <button class="btn btn-outline" @click="research">AI辅助整理信息（手动核实录入）</button>
+      <p class="upload-hint">将学校名称带入 AI 对话，请使用自己的 Key。此入口提供文字建议，不自动联网核实或回填；录入前请核对学校官网。</p>
       <button v-if="selected" class="btn btn-outline" :disabled="busy" @click="removeSchool">删除本校</button>
       <label>简称<input v-model="form.short" class="input" maxlength="40" /></label>
       <label>简介<textarea v-model="form.info.description" class="input" maxlength="2000"></textarea></label>

@@ -23,6 +23,8 @@ class SyncCommand(BaseModel):
 class LearningPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
     bulletEnabled: bool = True
+    # 本人偏好，随账号同步；不进入公共励志投稿池。
+    bulletText: str = Field(default="", max_length=80)
     focusMin: int = Field(default=25, ge=5, le=180)
     shortBreakMin: int = Field(default=5, ge=1, le=60)
     longBreakMin: int = Field(default=15, ge=1, le=180)

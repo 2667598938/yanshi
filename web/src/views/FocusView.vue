@@ -221,6 +221,7 @@ watch(
         </template>
       </div>
 
+      <section class="focus-configuration" aria-label="专注配置与状态">
       <!-- idle 配置 -->
       <template v-if="phase === 'idle'">
         <!-- 模式切换 -->
@@ -350,6 +351,7 @@ watch(
         </span>
         <span v-else>已暂停，随时继续。</span>
       </div>
+      </section>
     </div>
 
     <!-- 结束确认 -->

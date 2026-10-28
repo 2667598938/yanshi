@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ChevronLeft, Plus, Check, Trash2, Pencil, AlertTriangle, Play,
+  ChevronLeft, Plus, Check, Trash2, Pencil, AlertTriangle, Play, ListChecks,
 } from 'lucide-vue-next'
 import SubjectIcon from '../components/SubjectIcon.vue'
 import { useTasksStore } from '../stores/tasks'
@@ -121,6 +121,7 @@ async function remove(id) {
     </div>
   </div>
 
+  <div class="task-workspace">
   <div class="page">
     <!-- 今日完成率 -->
     <div class="rate-card">
@@ -231,7 +232,7 @@ async function remove(id) {
   </div>
 
   <!-- 新建/编辑 -->
-  <div v-if="sheet" class="mask" @click.self="sheet = false">
+  <div v-if="sheet" class="mask task-editor-mask" @click.self="sheet = false">
     <div class="sheet">
       <div class="sheet-title">{{ editingId ? '编辑任务' : '新建任务' }}</div>
 
@@ -272,6 +273,8 @@ async function remove(id) {
       </button>
       <button class="btn btn-ghost btn-block mt8" @click="sheet = false">取消</button>
     </div>
+  </div>
+  <aside v-if="!sheet" class="workspace-placeholder"><ListChecks :size="32" /><h3>把目标拆成今天能完成的事</h3><p>点击任务编辑，或新增一个带验收标准的任务。</p><button class="btn btn-primary" @click="openAdd">新建任务</button></aside>
   </div>
 </template>
 

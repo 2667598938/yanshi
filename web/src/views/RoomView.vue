@@ -493,7 +493,7 @@ onBeforeUnmount(() => {
       <button class="switch-btn" @click="router.push('/rooms')">换房间</button>
     </div>
 
-    <div class="page">
+    <div class="page room-layout">
       <!-- 首次进入：骨架屏，避免白屏等待 -->
       <div v-if="loading && !room" class="page-skeleton" role="status">
         <span class="sr-only">正在进入自习室，请稍候…</span>

@@ -49,6 +49,7 @@ def test_learning_preferences_defaults_and_long_break_boundary(client):
     saved = response.json()["data"]["changed"][0]["record"]["value"]
     assert saved == {
         "bulletEnabled": True,
+        "bulletText": "",
         "focusMin": 25,
         "shortBreakMin": 5,
         "longBreakMin": 15,

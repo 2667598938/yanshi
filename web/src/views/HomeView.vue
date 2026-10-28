@@ -72,7 +72,7 @@ const encourage = computed(() => {
 </script>
 
 <template>
-  <div>
+  <div class="home-layout" :class="{ 'hero-collapsed': app.heroCollapsed }">
     <SchoolHero v-if="!app.heroCollapsed" />
 
     <div class="page">

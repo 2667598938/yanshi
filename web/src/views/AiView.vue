@@ -41,6 +41,8 @@ const showHistory = ref(false)
 const historyList = ref([])
 const historyLoading = ref(false)
 const historyError = ref('')
+const historyFetched = ref(false)
+let historyGeneration = 0
 const scrollEl = ref(null)
 const fileInput = ref(null)
 const attachments = ref([])
@@ -69,9 +71,6 @@ const savedTheme = (() => {
   try { return localStorage.getItem('yanshi:ai-theme') || 'dark' } catch { return 'dark' }
 })()
 const theme = ref(['dark', 'light', 'auto'].includes(savedTheme) ? savedTheme : 'dark')
-const demoRunning = ref(false)
-let demoTypingTimer = null
-let demoThinkingTimer = null
 let idleTimer = null
 let focusFrame = 0
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
@@ -146,97 +145,14 @@ function scheduleIdle() {
     updateFocusPoint()
   }, 900)
 }
-function clearDemo(stopped = false) {
-  clearTimeout(demoThinkingTimer)
-  clearInterval(demoTypingTimer)
-  demoThinkingTimer = null
-  demoTypingTimer = null
-  demoRunning.value = false
-  if (stopped) {
-    const last = messages.value[messages.value.length - 1]
-    if (last?.streaming) {
-      last.streaming = false
-      last.aborted = true
-      if (!last.content) last.content = '已停止生成。'
-    }
-    sending.value = false
-    visualState.value = 'idle'
-  }
-}
-// “模拟生成”只演示交互动效，不调用模型、不写入账号/历史
-function simulateGeneration() {
-  if (sending.value) return
-  clearDemo()
-  conversationGeneration++
-  loadingConversation.value = false
-  taskPreview.value = null
-  conversationId.value = null
-  conversationTitle.value = ''
-  messages.value = []
-  showHistory.value = false
-  input.value = ''
-  attachments.value = []
-  visualState.value = 'thinking'
-  sending.value = true
-  demoRunning.value = true
-  const question = '我 10 月才开始复习，帮我排一个 30 天冲刺计划，并指出最该先补的科目。'
-  const reply = reactive({ role: 'assistant', content: '', streaming: true, demo: true, tools: [], sources: [], failed: false, aborted: false })
-  messages.value.push({ role: 'user', content: question })
-  messages.value.push(reply)
-  scrollBottom()
-  updateFocusPoint()
-  demoThinkingTimer = setTimeout(() => {
-    if (!alive || !demoRunning.value) return
-    visualState.value = 'delivering'
-    const full = [
-      '**结论：先把数学和 408 的基础补稳，英语保持每天 40 分钟，政治放到最后 10 天。**',
-      '',
-      '30 天可以拆成三个阶段，每个阶段只盯一个主目标：',
-      '',
-      '- **第 1–10 天｜补基础**：数学回归高频题型，408 按章节整理知识框架；每天各 90 分钟。',
-      '- **第 11–20 天｜刷真题**：按套卷限时训练，错题当天回看；英语阅读每天 2 篇，作文隔天 1 篇。',
-      '- **第 21–30 天｜模拟复盘**：每 3 天一次完整模拟，剩下的时间只做错题和最薄弱的两章。',
-      '',
-      '每天留 20 分钟做复盘：写下今天真正卡住的 1–2 个点，第二天先解决它们。',
-      '',
-      '> 这是演示动效，不是模型回答；真实对话会携带你的任务、自习状态和近 30 天学习摘要。',
-    ].join('\n')
-    let cursor = 0
-    if (reducedMotion) {
-      reply.content = full
-      reply.streaming = false
-      sending.value = false
-      demoRunning.value = false
-      visualState.value = 'idle'
-      scrollBottom()
-      return
-    }
-    demoTypingTimer = setInterval(() => {
-      if (!alive || !demoRunning.value || !reply.streaming) return
-      cursor = Math.min(full.length, cursor + 3)
-      reply.content = full.slice(0, cursor)
-      if (atBottom.value) scrollBottom()
-      if (cursor >= full.length) {
-        clearInterval(demoTypingTimer)
-        demoTypingTimer = null
-        reply.streaming = false
-        sending.value = false
-        demoRunning.value = false
-        scheduleIdle()
-      }
-    }, 18)
-  }, 1200)
-}
-
 onBeforeUnmount(() => {
   alive = false
   conversationGeneration++
   clearTimeout(draftTimer)
   clearTimeout(idleTimer)
-  clearTimeout(demoThinkingTimer)
-  clearInterval(demoTypingTimer)
   caf(focusFrame)
   window.removeEventListener('resize', scheduleFocus)
+  window.removeEventListener('resize', loadDesktopHistory)
   document.documentElement.classList.remove('ai-neural-dark')
   controller?.abort()
 })
@@ -306,13 +222,8 @@ function onScroll() {
   atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 64
   if (visualState.value === 'delivering') scheduleFocus()
 }
-// 停止生成：保留已输出内容，可重试；模拟生成则停掉演示计时器
+// 停止真实模型生成，保留已输出内容。
 function stopGeneration() {
-  if (demoRunning.value) {
-    clearDemo(true)
-    updateFocusPoint()
-    return
-  }
   controller?.abort()
 }
 // 重试：移除失败回复与对应问题，用同一问题重新发送
@@ -445,16 +356,17 @@ async function send() {
       if (!input.value) input.value = content
       if (!attachments.value.length) attachments.value = selected
     }
-    if (completed && alive && activeAccountId() === accountAtSend) await db.kv.delete('ai:draft')
+    if (completed && alive && activeAccountId() === accountAtSend) {
+      await db.kv.delete('ai:draft')
+      historyFetched.value = false
+      loadDesktopHistory()
+    }
     scrollBottom()
   }
 }
 
 function newChat(s) {
-  if (sending.value) {
-    if (!demoRunning.value) return
-    clearDemo(true)
-  }
+  if (sending.value) return
   clearTimeout(idleTimer)
   conversationGeneration++; loadingConversation.value = false
   taskPreview.value = null
@@ -468,21 +380,26 @@ function newChat(s) {
   updateFocusPoint()
 }
 
-async function loadHistory() {
+async function loadHistory(open = true) {
+  if (open === true) showHistory.value = true
   if (historyLoading.value) return
-  const generation = conversationGeneration
-  showHistory.value = true
+  const generation = ++historyGeneration
   historyLoading.value = true
   historyError.value = ''
   try {
     const rows = await aiApi.conversations()
-    if (!alive || generation !== conversationGeneration) return
+    if (!alive || generation !== historyGeneration) return
+    if (!Array.isArray(rows)) throw new Error('历史会话数据无效，请重试')
     historyList.value = rows
+    historyFetched.value = true
   } catch (e) {
-    if (alive && generation === conversationGeneration) historyError.value = e.message || '历史会话读取失败'
+    if (alive && generation === historyGeneration) historyError.value = e.message || '历史会话读取失败'
   } finally {
-    if (generation === conversationGeneration) historyLoading.value = false
+    if (generation === historyGeneration) historyLoading.value = false
   }
+}
+function loadDesktopHistory() {
+  if (window.matchMedia?.('(min-width: 960px)').matches && !historyFetched.value) loadHistory(false)
 }
 
 async function openConversation(id) {
@@ -530,9 +447,11 @@ function copyAnswer(m) {
 
 onMounted(async () => {
   await loadConfig()
+  loadDesktopHistory()
   await nextTick()
   updateFocusPoint()
   window.addEventListener('resize', scheduleFocus)
+  window.addEventListener('resize', loadDesktopHistory)
   try {
     const draft = await db.kv.get('ai:draft')
     if (draft?.value) {
@@ -609,6 +528,19 @@ async function importTasks(){
       <div class="spectrum-focus"></div>
     </div>
     <CopyFallback v-model="manualCopy" />
+    <aside class="ai-history-panel" aria-label="会话列表">
+      <div class="ai-history-heading"><strong>我的对话</strong><button class="icon-btn" title="刷新会话列表" @click="loadHistory(false)"><History :size="16" /></button></div>
+      <button class="btn btn-outline btn-block" :disabled="sending" @click="newChat()"><Plus :size="16" />新建对话</button>
+      <p v-if="historyLoading" role="status">正在读取…</p>
+      <div v-else-if="historyError"><p>{{ historyError }}</p><button class="btn btn-outline btn-sm" @click="loadHistory(false)">重试</button></div>
+      <p v-else-if="!historyList.length" class="msg-usage">还没有历史对话</p>
+      <div v-for="c in historyList" :key="c.id" class="ai-history-entry" :class="{ on: c.id === conversationId }">
+        <button :disabled="sending" class="ai-history-select" @click="openConversation(c.id)">{{ c.title || '未命名对话' }}</button>
+        <button class="hist-del" :disabled="sending" :aria-label="'删除对话：' + (c.title || '未命名对话')" @click="removeConversation(c.id)">×</button>
+      </div>
+      <p class="msg-usage">聊天记录仅本人可见</p>
+    </aside>
+
     <div class="nav ai-nav">
       <div class="nav-brand">
         <button type="button" class="nav-back" title="返回今日" @click="router.push('/')"><ArrowLeft :size="18" /></button>
@@ -621,8 +553,7 @@ async function importTasks(){
       <div class="nav-actions">
         <button class="icon-btn" title="AI 设置" @click="router.push('/ai/settings')"><Settings2 :size="18" /></button>
         <button class="icon-btn" title="新建对话" @click="newChat()"><Plus :size="18" /></button>
-        <button class="icon-btn" title="历史对话" @click="loadHistory"><History :size="18" /></button>
-        <button class="icon-btn icon-sim" title="模拟生成演示（thinking → delivering）" :disabled="sending" @click="simulateGeneration"><Sparkles :size="17" /></button>
+        <button class="icon-btn history-trigger" title="历史对话" @click="loadHistory()"><History :size="18" /></button>
         <button class="icon-btn" :title="`主题：${themeLabel}（点击切换）`" @click="cycleTheme"><component :is="themeIcon" :size="17" /></button>
       </div>
     </div>
@@ -637,9 +568,6 @@ async function importTasks(){
         @click="newChat(s.key)"
       >
         <component :is="s.icon" :size="13" />{{ s.label }}
-      </button>
-      <button type="button" class="scene-demo" :disabled="sending" @click="simulateGeneration">
-        <Sparkles :size="12" />模拟生成
       </button>
     </div>
 
@@ -701,7 +629,7 @@ async function importTasks(){
           </button>
         </div>
       </div>
-      <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="[m.role, { 'demo-answer': m.demo }]">
+      <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
         <div v-if="m.role === 'assistant'" class="msg-ava"><span class="brand-spark sm" aria-hidden="true"></span></div>
         <div class="msg-main">
           <div v-if="m.image_keys?.length" class="ai-images"><BlobImage v-for="key in m.image_keys" :key="key" :src="key" alt="题目图片" /></div>
@@ -767,7 +695,6 @@ async function importTasks(){
     <div v-if="!blocked" class="composer-meta">
       <span class="state-dot" :class="'dot-' + visualState"></span>
       {{ stateLabel }}
-      <span v-if="demoRunning" class="demo-flag">· 模拟演示</span>
       <span class="meta-spacer"></span>
       <span>Enter 发送</span>
     </div>

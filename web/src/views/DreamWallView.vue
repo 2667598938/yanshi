@@ -1,7 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { schoolApi } from '../api'
-import { db } from '../db'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useSchoolsStore } from '../stores/schools'
 import SchoolBullets from '../components/SchoolBullets.vue'
 import BlobImage from '../components/BlobImage.vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -11,6 +10,7 @@ import { SCHOOL_MAP } from '../data/schools'
 const router = useRouter()
 const route = useRoute()
 const schools = ref([])
+const catalog = useSchoolsStore()
 const active = ref(null)
 const albumIndex = ref(0)
 const image = computed(() => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view)
@@ -28,18 +28,19 @@ function merge(rows) {
       album: row.album_keys?.length ? row.album_keys : [local.view] }
   })
 }
+watch(() => catalog.rows, (rows) => {
+  merge(rows)
+  if (active.value) active.value = schools.value.find(row => row.key === active.value.key) || null
+})
 onMounted(async () => {
   interval = setInterval(() => {
     if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && active.value && document.visibilityState === 'visible' && Date.now() - lastManual >= 10000) albumIndex.value += 1
   }, 5000)
-  try {
-    const cached = await db.kv.get('schools:catalog')
-    if (alive) merge(cached?.value)
-    const rows = await schoolApi.list()
-    if (!alive) return
-    merge(rows); const requested=schools.value.find(row=>row.key===route.query.school); if(requested)pickSchool(requested)
-    await db.kv.put({ key: 'schools:catalog', value: rows })
-  } catch { /* 断网使用本机目录与七校素材 */ }
+  await catalog.load()
+  if (!alive) return
+  merge(catalog.rows)
+  const requested=schools.value.find(row=>row.key===route.query.school)
+  if(requested)pickSchool(requested)
 })
 onBeforeUnmount(() => { alive = false; clearInterval(interval) })
 </script>

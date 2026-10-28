@@ -4,7 +4,10 @@ import { createPinia } from 'pinia'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 vi.mock('../src/api', () => ({ schoolApi: { list: vi.fn() } }))
-vi.mock('../src/db', () => ({ db: { kv: { get: vi.fn(), put: vi.fn() } } }))
+vi.mock('../src/db', () => {
+  const db = { kv: { get: vi.fn(), put: vi.fn() } }
+  return { db, activeAccountId: () => null, localAccountScope: () => ({ db, isCurrent: () => true, assertCurrent() {} }) }
+})
 vi.mock('../src/composables/useToast', () => ({ useToast: () => ({ toast: vi.fn() }) }))
 vi.mock('../src/stores/profile', () => ({ useProfileStore: () => ({ save: vi.fn() }) }))
 vi.mock('../src/components/TimeNodesHome.vue', () => ({ default: { template: '<div />' } }))

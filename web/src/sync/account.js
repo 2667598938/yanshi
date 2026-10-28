@@ -2,6 +2,8 @@
 import { activateAccount, initDb, db } from '../db'
 
 export async function afterLogin(userId) {
+  const { useSchoolsStore } = await import('../stores/schools')
+  useSchoolsStore().resetForAccount()
   await activateAccount(userId, { migrateGuest: true })
   await initDb()
   await reloadLocal()
@@ -11,6 +13,8 @@ export async function afterLogin(userId) {
 }
 
 export async function afterLogout() {
+  const { useSchoolsStore } = await import('../stores/schools')
+  useSchoolsStore().resetForAccount()
   await activateAccount(null)
   await initDb()
   await reloadLocal()

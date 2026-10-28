@@ -17,6 +17,7 @@ it('个人梦校保存后缓存可被克隆，回到我的页面即可选择新�
  schoolApi.update.mockResolvedValue({key:'custom',name:'新的梦校',short:'自选',info:{},album_keys:[]})
  wrapper=mount(SchoolAdminView,{global:{stubs:{BlobImage:true}}})
  await flushPromises()
+ await vi.waitFor(()=>expect(wrapper.get('input[maxlength="80"]').element.value).toBe('原名称'))
  await wrapper.get('input[maxlength="80"]').setValue('新的梦校')
  await wrapper.findAll('button').find(b=>b.text()==='保存院校').trigger('click')
  await vi.waitFor(async()=>expect((await db.kv.get('schools:catalog'))?.value[0].name).toBe('新的梦校'))

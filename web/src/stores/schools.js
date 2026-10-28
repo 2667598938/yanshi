@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
 import { schoolApi } from '../api'
-import { db } from '../db'
+import { activeAccountId, localAccountScope } from '../db'
+import { toPlain } from '../utils/plain'
 import { SCHOOL_MAP, SCHOOLS } from '../data/schools'
+const pendingLoads = new WeakMap()
 
 function mergeRows(rows) {
   const map = new Map(SCHOOLS.map((row) => [row.key, { ...row }]))
@@ -22,7 +24,7 @@ function mergeRows(rows) {
 
 // 本人梦校目录：只读取自己的院校展示信息（名称/简称/校徽），不把相册或资料库带进房间。
 export const useSchoolsStore = defineStore('schools', {
-  state: () => ({ rows: [], loaded: false, loading: false }),
+  state: () => ({ rows: [], loaded: false, loading: false, ownerId: null, generation: 0 }),
   getters: {
     choices: (state) => mergeRows(state.rows),
     nameFor() {
@@ -51,25 +53,55 @@ export const useSchoolsStore = defineStore('schools', {
     },
   },
   actions: {
+    resetForAccount() {
+      this.generation++
+      this.rows = []
+      this.loaded = false
+      this.loading = false
+      this.ownerId = activeAccountId()
+      pendingLoads.delete(this)
+    },
     setRows(rows) {
       this.rows = Array.isArray(rows) ? rows : []
     },
+    async updateCatalog(rows, scope = localAccountScope()) {
+      scope.assertCurrent()
+      this.generation++ // 不允许更新前发出的旧请求覆盖刚保存的目录。
+      this.ownerId = activeAccountId()
+      this.setRows(rows)
+      this.loaded = true
+      this.loading = false
+      await scope.db.kv.put({ key: 'schools:catalog', value: toPlain(rows) })
+    },
     async load(force = false) {
+      if (this.ownerId !== activeAccountId()) this.resetForAccount()
       if (this.loaded && !force) return
-      if (this.loading) return
+      if (this.loading) return pendingLoads.get(this)
+      const scope = localAccountScope()
+      const generation = ++this.generation
+      const current = () => scope.isCurrent() && generation === this.generation
       this.loading = true
-      try {
-        const cached = await db.kv.get('schools:catalog')
-        if (cached?.value) this.setRows(cached.value)
-        const rows = await schoolApi.list()
-        this.setRows(rows)
-        await db.kv.put({ key: 'schools:catalog', value: rows })
-      } catch {
-        // 断网时使用本机缓存与内置院校
-      } finally {
-        this.loaded = true
-        this.loading = false
-      }
+      const pending = (async () => {
+        try {
+          const cached = await scope.db.kv.get('schools:catalog')
+          if (!current()) return
+          if (cached?.value) this.setRows(cached.value)
+          const rows = await schoolApi.list()
+          if (!current()) return
+          this.setRows(rows)
+          await scope.db.kv.put({ key: 'schools:catalog', value: toPlain(rows) })
+          if (current()) this.loaded = true
+        } catch {
+          // 断网保留本账号缓存，下次进入页面仍可重试。
+        } finally {
+          if (current()) {
+            this.loading = false
+            pendingLoads.delete(this)
+          }
+        }
+      })()
+      pendingLoads.set(this, pending)
+      return pending
     },
   },
 })

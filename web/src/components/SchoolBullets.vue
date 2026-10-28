@@ -28,7 +28,7 @@ async function saveBullet(){
  try{
   await settings.save({...settings.value,bulletText:draft.value})
   showEditor.value=false
-  toast(draft.value.trim()?'已保存我的梦校弹幕':'已恢复公共励志弹幕')
+  toast(draft.value.trim()?'弹幕已保存到本机，联网后自动同步':'已在本机恢复公共弹幕，联网后自动同步')
  }catch(e){toast(e.message||'弹幕保存失败，请重试')}
  finally{saving.value=false}
 }
@@ -39,7 +39,7 @@ async function clearBullet(){
   await settings.save({...settings.value,bulletText:''})
   draft.value=''
   showEditor.value=false
-  toast('已恢复公共励志弹幕')
+  toast('已在本机恢复公共弹幕，联网后自动同步')
  }catch(e){toast(e.message||'弹幕保存失败，请重试')}
  finally{saving.value=false}
 }

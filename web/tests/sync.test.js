@@ -4,6 +4,7 @@ import { db } from '../src/db'
 import { syncApi, attachmentApi } from '../src/api'
 import { enqueueRecord, syncNow, resetSyncRuntime, syncState, waitForSync } from '../src/sync/engine'
 import { useMistakesStore } from '../src/stores/mistakes'
+import { useLearningSettingsStore, DEFAULT_LEARNING_SETTINGS } from '../src/stores/learningSettings'
 
 vi.mock('../src/api', () => ({
   syncApi: { commands: vi.fn(), records: vi.fn() },
@@ -21,6 +22,26 @@ afterEach(async () => {
   resetSyncRuntime()
   vi.clearAllTimers()
   await db.delete()
+})
+
+it('已失败的完整偏好批次可原样重试，保留任务并继续后续同步', async () => {
+  const task = { id: 'prefs-mixed-task', title: '保留待同步任务' }
+  await db.tasks.put(task); await enqueueRecord('tasks', task)
+  await useLearningSettingsStore().save({ ...DEFAULT_LEARNING_SETTINGS, bulletText: '本人寄语' })
+  syncApi.commands.mockRejectedValueOnce({ status: 400, code: 40004, message: '个人设置内容无效' })
+  expect(await syncNow()).toBe(false)
+  const first = syncApi.commands.mock.calls[0]
+  expect(first[1].find(c => c.id === 'learning-settings').record.value.bulletText).toBe('本人寄语')
+  expect(await db.outbox.count()).toBe(2)
+  syncApi.commands.mockImplementation(async (_op, changes) => ({ changed: changes.map(c => ({ ...c, revision: 1 })) }))
+  expect(await syncNow()).toBe(true)
+  expect(syncApi.commands.mock.calls[1]).toEqual(first)
+  expect((await db.tasks.get(task.id))._rev).toBe(1)
+  expect(await db.outbox.count()).toBe(0)
+  await db.tasks.put({ id: 'after-recovery', title: '后续任务' })
+  await enqueueRecord('tasks', { id: 'after-recovery', title: '后续任务' })
+  expect(await syncNow()).toBe(true)
+  expect((await db.tasks.get('after-recovery'))._rev).toBe(1)
 })
 
 it('图片失败时保留队列并阻止不完整记录推送/回拉覆盖；重试后整条同步', async () => {

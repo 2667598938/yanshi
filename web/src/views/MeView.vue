@@ -21,7 +21,8 @@ import { syncNow, enqueueDelete, pauseSyncForAccountSwitch, resumeSyncAfterAccou
 import { buildBackup } from '../utils/backup'
 import { inspectBackup, restoreBackup } from '../utils/restore'
 import { fmtMinutes, todayKey } from '../utils/date'
-import { authApi, publicApi, attachmentApi, messageApi, schoolApi } from '../api'
+import { authApi, publicApi, attachmentApi, messageApi } from '../api'
+import { useSchoolsStore } from '../stores/schools'
 import BlobImage from '../components/BlobImage.vue'
 import { useLearningSettingsStore } from '../stores/learningSettings'
 import { useToast } from '../composables/useToast'
@@ -114,7 +115,8 @@ async function manualSync() {
   }
 }
 
-const schoolCatalog = ref([])
+const catalog = useSchoolsStore()
+const schoolCatalog = computed(() => catalog.rows)
 const imageSpace = ref(null)
 const storageBusy = ref(false)
 function fmtBytes(n) {
@@ -345,8 +347,7 @@ async function togglePrivacy() {
 
 onMounted(() => {
   auth.fetchMe().then(() => profile.load(true)).catch(() => {})
-  db.kv.get('schools:catalog').then(row => { schoolCatalog.value = row?.value || [] }).catch(() => {})
-  schoolApi.list().then(rows=>{schoolCatalog.value=rows;return db.kv.put({key:'schools:catalog',value:rows})}).catch(()=>{})
+  catalog.load()
   notifications.refresh()
   db.syncMeta.get('lastSyncAt').then((m) => { lastSyncAt.value = m?.value || 0 }).catch(() => {})
   if (auth.user) {
@@ -372,7 +373,7 @@ onMounted(() => {
     </div>
     <div class="nav"><div class="nav-title">我的</div></div>
 
-    <div class="page">
+    <div class="page settings-layout">
       <!-- 个人卡 -->
       <div class="profile">
         <img class="watermark" :src="school.logo" alt="" />

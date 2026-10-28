@@ -99,6 +99,7 @@ async function remove() {
     </div>
   </div>
 
+  <div class="mistake-workspace">
   <div class="page">
     <!-- 待复习提醒 -->
     <div class="due-card" :class="{ hot: dueList.length }">
@@ -175,7 +176,7 @@ async function remove() {
   </div>
 
   <!-- 详情 -->
-  <div v-if="detail" class="mask" @click.self="detail = null">
+  <div v-if="detail" class="mask mistake-detail-mask" @click.self="detail = null">
     <div class="sheet">
       <div class="detail-head">
         <span class="mk-subj" :style="{ color: subjOf(detail.subjectId)?.color }">
@@ -183,7 +184,7 @@ async function remove() {
           {{ subjOf(detail.subjectId)?.name }}
         </span>
         <span v-if="detail.chapter" class="dk-chap">{{ detail.chapter }}</span>
-        <button class="x-btn" @click="detail = null"><ChevronLeft :size="20" /></button>
+        <button class="x-btn" aria-label="关闭错题详情" @click="detail = null"><ChevronLeft :size="20" /></button>
       </div>
 
       <div class="stage-row">
@@ -247,6 +248,8 @@ async function remove() {
         </button>
       </div>
     </div>
+  </div>
+  <aside v-if="!detail" class="workspace-placeholder"><BookOpenCheck :size="32" /><h3>选择一道错题，开始复习</h3><p>在左侧选择题目，在这里查看题图、思路与解析。</p></aside>
   </div>
 </template>
 

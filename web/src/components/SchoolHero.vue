@@ -1,8 +1,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import BlobImage from './BlobImage.vue'
-import { schoolApi } from '../api'
-import { db } from '../db'
+import { useSchoolsStore } from '../stores/schools'
 import { Check, Target, MapPin } from 'lucide-vue-next'
 import { SCHOOL_MAP } from '../data/schools'
 import { useAppStore } from '../stores/app'
@@ -12,11 +11,11 @@ import TimeNodesHome from './TimeNodesHome.vue'
 import SchoolBullets from './SchoolBullets.vue'
 
 const schools = ref([])
+const catalog = useSchoolsStore()
 const app = useAppStore()
 const profile = useProfileStore()
 const { toast } = useToast()
 let carousel
-let alive = true
 let lastManual = 0
 function mergeSchools(rows) {
   if (!Array.isArray(rows)) return
@@ -44,9 +43,6 @@ function pickAlbum(i) {
   albumManualAt = Date.now()
 }
 onMounted(async () => {
-  const cached = await db.kv.get('schools:catalog')
-  if (!alive) return
-  mergeSchools(cached?.value)
   carousel = setInterval(() => {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
     if (schools.value.length) browseIndex.value = (browseIndex.value + 1) % schools.value.length
@@ -57,18 +53,14 @@ onMounted(async () => {
     if (Date.now() - albumManualAt < 12000) return
     albumIndex.value = (albumIndex.value + 1) % albumImages.value.length
   }, 5000)
-  try {
-    const rows = await schoolApi.list()
-    if (!alive) return
-    mergeSchools(rows)
-    await db.kv.put({ key: 'schools:catalog', value: rows })
-  } catch { /* 保留已缓存目录和内置七校素材 */ }
+  await catalog.load()
 })
-onBeforeUnmount(() => { alive = false; clearInterval(carousel); clearInterval(albumTimer) })
+onBeforeUnmount(() => { clearInterval(carousel); clearInterval(albumTimer) })
 const dreamIndex = computed(() =>
   schools.value.findIndex((s) => s.key === app.dreamSchool)
 )
 const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3)
+watch(() => catalog.rows, mergeSchools, { immediate: true })
 
 const school = computed(() => schools.value[browseIndex.value] || schools.value[0] || { key:'',name:'我的梦校',color:'#526484',logo:'',view:'',motto:'自由添加你的目标院校',city:'' })
 const isDream = computed(() => school.value.key === app.dreamSchool)
