@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
+    "prebuild": "node scripts/build-neural-demo.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

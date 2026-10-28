@@ -23,12 +23,12 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); root?.remove(); styles?.remove(); document.body.style.overflow = ''; document.documentElement.classList.remove('brand-opening-active', 'brand-opening-leaving'); vi.useRealTimers(); window.happyDOM.setViewport({ width: 1024, height: 768 }) })
 function render(props = {}) { wrapper = mount(BrandOpening, { props, attachTo: document.body }); return wrapper }
 
-it('3秒节奏完成后移除覆盖层，恢复滚动与页面交互', async () => {
+it('3.8秒节奏完成后移除覆盖层，恢复滚动与页面交互', async () => {
   render(); await nextTick()
   expect(layer().parentElement).toBe(document.body)
   expect(root.hasAttribute('inert')).toBe(true)
   expect(document.body.style.overflow).toBe('hidden')
-  await vi.advanceTimersByTimeAsync(2299)
+  await vi.advanceTimersByTimeAsync(3099)
   expect(layer().classList.contains('is-leaving')).toBe(false)
   await vi.advanceTimersByTimeAsync(1)
   expect(layer().classList.contains('is-leaving')).toBe(true)
@@ -85,7 +85,7 @@ it('名称在字动画前完整占位，迟到的公共名称不会改变正在�
   await wrapper.setProps({ siteName: '我的研时' })
   expect(document.querySelectorAll('.opening-name span')).toHaveLength(4)
   expect(document.querySelector('.opening-name').getAttribute('aria-label')).toBe('我的研时')
-  await vi.advanceTimersByTimeAsync(700)
+  await vi.advanceTimersByTimeAsync(1000)
   await wrapper.setProps({ siteName: '迟到名称' })
   expect(document.querySelector('.opening-name').textContent).toBe('我的研时')
 })

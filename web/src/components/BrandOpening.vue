@@ -10,7 +10,7 @@ const reduced = ref(media?.matches ?? false)
 const settings = props.brand.opening
 const totalMs = Math.max(500, settings.durationMs)
 const regularFadeMs = Math.min(totalMs, settings.fadeOutMs)
-const ratio = totalMs / 3000
+const ratio = totalMs / 3800
 const exitMs = ref(reduced.value ? settings.reducedFadeMs : regularFadeMs)
 // 动画开始前冻结完整名称；所有字符从一开始占位，不改变行的居中位置。
 const name = ref(props.siteName.trim() || props.brand.name || props.brand.fallbackName)
@@ -20,12 +20,12 @@ const characters = computed(() => Array.from(name.value))
 const characterStep = computed(() => Math.min(settings.characterStepMs, 450 / Math.max(1, characters.value.length - 1)))
 const particles = Array.from({ length: settings.particleCount }, (_, index) => ({
   left: `${3 + (index * 37 + 9) % 94}%`, top: `${7 + (index * 29 + 11) % 87}%`,
-  size: `${1 + index % 5 * .4}px`, duration: `${9 + index % 5 * 2}s`, delay: `${-(index % 7) * 1.7}s`,
+  size: `${1 + index % 5 * .3}px`, duration: `${12 + index % 5 * 2}s`, delay: `${-(index % 7) * 1.7}s`,
   drift: `${index % 2 ? -4 : 5}px`, gold: index % 4 === 0, blurred: index % 3 === 0,
 }))
-const colors = computed(() => ({ ...brandColorVars(props.brand), '--opening-exit-ms': `${exitMs.value}ms`,
-  '--opening-logo-delay': `${300 * ratio}ms`, '--opening-logo-ms': `${600 * ratio}ms`,
-  '--opening-tagline-delay': `${1200 * ratio}ms`, '--opening-support-delay': `${1400 * ratio}ms`,
+const colors = computed(() => ({ ...brandColorVars({ colors: settings.colors || props.brand.colors }), '--opening-exit-ms': `${exitMs.value}ms`,
+  '--opening-logo-delay': `${400 * ratio}ms`, '--opening-logo-ms': `${700 * ratio}ms`,
+  '--opening-tagline-delay': `${1600 * ratio}ms`, '--opening-support-delay': `${1900 * ratio}ms`,
 }))
 let fadeTimer, finishTimer, completed = false, restored = false
 let previousOverflow, previousFocus, pageRoot, previousHidden, previousInert
@@ -97,7 +97,7 @@ onMounted(async () => {
   document.addEventListener('keydown', onKey)
   document.addEventListener('visibilitychange', onVisibility)
   schedule()
-  nameTimer = setTimeout(() => { nameLocked = true }, 650 * ratio)
+  nameTimer = setTimeout(() => { nameLocked = true }, 950 * ratio)
   await nextTick()
   if (!completed) skipButton.value?.focus({ preventScroll: true })
 })
@@ -121,10 +121,10 @@ onBeforeUnmount(() => {
       </svg>
       <button ref="skipButton" type="button" class="opening-skip" @click="skip">跳过<span aria-hidden="true">↗</span></button>
       <div class="opening-content">
-        <div class="logo-stage"><div class="logo-glow" aria-hidden="true"></div><span class="logo-ring ring-blue" aria-hidden="true"></span><span class="logo-ring ring-gold" aria-hidden="true"></span>
+        <div class="logo-stage"><div class="logo-glow" aria-hidden="true"></div><span class="logo-ring ring-blue" aria-hidden="true"></span><span class="logo-ring ring-gold" aria-hidden="true"></span><span class="logo-ring ring-outer" aria-hidden="true"></span>
           <div class="opening-logo"><img v-if="brand.logoSrc && !fallbackLogo" :src="brand.logoSrc" alt="" @error="fallbackLogo = true" /><svg v-else viewBox="0 0 96 96" fill="none" aria-label="书本标志"><path d="M48 26C37 19 24 19 13 23V70C25 66 37 68 48 75C59 68 71 66 83 70V23C72 19 59 19 48 26ZM48 26V75" /><path class="book-path" d="M25 36C31 35 36 36 41 39M25 47C31 46 36 47 41 50M57 39L65 32L71 36L79 28" /></svg></div>
         </div>
-        <h1 id="opening-name" class="opening-name" :aria-label="name"><span v-for="(character, index) in characters" :key="index" aria-hidden="true" :style="{ animationDelay: `${(700 + index * characterStep) * ratio}ms` }">{{ character }}</span></h1>
+        <h1 id="opening-name" class="opening-name" :aria-label="name"><span v-for="(character, index) in characters" :key="index" aria-hidden="true" :style="{ animationDelay: `${(1000 + index * characterStep) * ratio}ms` }">{{ character }}</span></h1>
         <p class="opening-tagline">{{ brand.tagline }}</p>
         <p class="opening-support">{{ brand.supportingText }}</p>
       </div>
@@ -135,39 +135,39 @@ onBeforeUnmount(() => {
 <style scoped>
 .brand-opening { position: fixed; inset: 0; z-index: 10000; isolation: isolate; display: grid; place-items: center; width: 100%; height: 100%; min-height: 100dvh; padding: max(72px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(56px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left)); overflow: hidden; background: var(--brand-background); color: var(--brand-title); opacity: 1; transition: opacity var(--opening-exit-ms) cubic-bezier(.22,.61,.36,1); }
 .brand-opening.is-leaving { opacity: 0; }
-.opening-backdrop { position: absolute; inset: 0; z-index: -2; overflow: hidden; background: radial-gradient(ellipse at 50% 40%,#ffffffed,transparent 65%),linear-gradient(135deg,var(--brand-background),var(--brand-wash)); animation: backdrop-arrive 400ms ease-out both; }
-.soft-glow { position: absolute; width: min(58vw,800px); height: min(60vh,580px); border-radius: 50%; filter: blur(64px); background: var(--brand-primary); opacity: .045; animation: quiet-light 12s ease-in-out infinite alternate; }
-.glow-a { left: -12%; top: -12%; }
-.glow-b { right: -15%; top: 24%; animation-delay: -5s; opacity: .055; }
-.glow-c { left: 30%; bottom: -35%; animation-delay: -9s; opacity: .025; }
+.opening-backdrop { position: absolute; inset: 0; z-index: -2; overflow: hidden; background: radial-gradient(ellipse at 50% 38%,var(--brand-primary) 0,transparent 64%),linear-gradient(180deg,var(--brand-wash),var(--brand-background) 95%); animation: backdrop-arrive 500ms ease-out both; }
+.soft-glow { position: absolute; width: min(24vw,420px); height: 130%; top: -15%; border-radius: 50%; filter: blur(100px); background: var(--brand-accent); opacity: .035; transform: rotate(12deg); animation: quiet-light 18s ease-in-out infinite alternate; }
+.glow-a { left: 5%; }
+.glow-b { right: 9%; animation-delay: -5s; opacity: .025; }
+.glow-c { left: 43%; animation-delay: -9s; opacity: .018; }
 .opening-particles { position: absolute; inset: 0; z-index: -1; pointer-events: none; animation: backdrop-arrive 500ms ease both; }
-.dust { position: absolute; border-radius: 50%; background: var(--brand-primary); opacity: 0; animation: floating-dust var(--dust-duration) var(--dust-delay) ease-in-out infinite; }
+.dust { position: absolute; border-radius: 50%; background: var(--brand-accent); opacity: 0; animation: floating-dust var(--dust-duration) var(--dust-delay) ease-in-out infinite; }
 .dust.gold { background: var(--brand-accent); }
 .dust.blurred { filter: blur(.6px); }
-.campus-line { position: absolute; bottom: max(8px,env(safe-area-inset-bottom)); width: 100%; height: clamp(60px,18svh,180px); z-index: -1; color: var(--brand-primary); stroke: currentColor; stroke-width: .8; opacity: .09; pointer-events: none; }
-.opening-skip { position: absolute; top: max(18px,env(safe-area-inset-top)); right: max(22px,env(safe-area-inset-right)); display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 40px; padding: 7px 15px; border: 1px solid #647d9d24; border-radius: 24px; background: #f7f8fac9; color: var(--brand-title); font-size: 12px; font-weight: 400; cursor: pointer; }
-.opening-skip:hover { background: #fff; border-color: #647d9d55; }
+.campus-line { position: absolute; bottom: max(8px,env(safe-area-inset-bottom)); width: 100%; height: clamp(60px,18svh,180px); z-index: -1; color: #200205; stroke: #d6b366; fill: currentColor; stroke-width: .6; opacity: .13; pointer-events: none; }
+.opening-skip { position: absolute; top: max(18px,env(safe-area-inset-top)); right: max(22px,env(safe-area-inset-right)); display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 7px 15px; border: 1px solid #d6b36638; border-radius: 24px; background: #30060940; color: #f3ebddc9; font-size: 12px; font-weight: 400; cursor: pointer; transition: background .2s ease; }
+.opening-skip:hover { background: #d6b36614; border-color: #d6b36670; }
 .opening-skip:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 4px; }
-.opening-content { width: 100%; max-width: 720px; min-width: 0; text-align: center; transform: translateY(-4svh); }
+.opening-content { width: 100%; max-width: 800px; min-width: 0; text-align: center; transform: translateY(-4svh); }
 .logo-stage { --logo-size: clamp(72px,20vw,88px); position: relative; width: var(--logo-size); height: var(--logo-size); margin: 0 auto 34px; }
-.logo-glow { position: absolute; inset: -24%; border-radius: 50%; background: var(--brand-primary); filter: blur(28px); opacity: .09; }
+.logo-glow { position: absolute; inset: -28%; border-radius: 50%; background: var(--brand-accent); filter: blur(36px); opacity: .12; }
 .opening-logo { position: relative; z-index: 1; width: 100%; height: 100%; opacity: 0; animation: logo-arrive var(--opening-logo-ms) var(--opening-logo-delay) cubic-bezier(.22,.61,.36,1) both; }
 .opening-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .opening-logo svg { display: block; width: 100%; height: 100%; color: var(--brand-primary); stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .opening-logo .book-path { stroke: var(--brand-accent); stroke-width: 1.6; }
-.logo-ring { position: absolute; inset: 0; border: 1px solid; border-radius: 50%; opacity: 0; pointer-events: none; animation: breathing-ring 1800ms 400ms ease-out infinite; }
-.ring-blue { border-color: var(--brand-primary); }
-.ring-gold { border-color: var(--brand-accent); animation-delay: 1200ms; }
+.logo-ring { position: absolute; inset: 0; border: 1px solid var(--brand-accent); border-radius: 50%; opacity: 0; pointer-events: none; animation: breathing-ring 2200ms 500ms ease-out infinite; }
+.ring-gold { animation-delay: 1200ms; }
+.ring-outer { animation-delay: 1900ms; }
 .opening-name { margin: 0; width: 100%; min-height: 1.55em; color: var(--brand-title); font-family: 'Noto Serif SC','Songti SC','STSong','SimSun',serif; font-size: clamp(24px,3vw,40px); font-weight: 500; line-height: 1.55; letter-spacing: .16em; overflow-wrap: anywhere; }
 .opening-name span { display: inline-block; white-space: pre-wrap; opacity: 0; animation: name-arrive 450ms cubic-bezier(.22,.61,.36,1) both; }
-.opening-tagline { margin: 17px 0 0; color: var(--brand-primary); font-size: clamp(13px,1.3vw,17px); font-weight: 400; line-height: 1.9; letter-spacing: .08em; opacity: 0; animation: text-arrive 600ms var(--opening-tagline-delay) ease-out both; }
+.opening-tagline { margin: 17px 0 0; color: var(--brand-accent); font-size: clamp(13px,1.3vw,17px); font-weight: 400; line-height: 1.9; letter-spacing: .08em; opacity: 0; animation: text-arrive 600ms var(--opening-tagline-delay) ease-out both; }
 .opening-support { margin: 14px 0 0; color: var(--brand-secondary); font-size: clamp(10px,1vw,12px); font-weight: 400; line-height: 1.8; letter-spacing: .26em; opacity: 0; animation: text-arrive 400ms var(--opening-support-delay) ease-out both; }
 @keyframes backdrop-arrive { from { opacity: 0; } to { opacity: 1; } }
-@keyframes quiet-light { from { transform: translate3d(0,0,0); } to { transform: translate3d(8px,-6px,0); } }
-@keyframes floating-dust { 0%,100% { opacity: 0; transform: translate3d(0,0,0); } 28% { opacity: .18; } 70% { opacity: .1; } 99% { opacity: 0; transform: translate3d(var(--dust-drift),-20px,0); } }
-@keyframes logo-arrive { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes quiet-light { from { transform: translate3d(0,0,0) rotate(12deg); } to { transform: translate3d(10px,-8px,0) rotate(13deg); } }
+@keyframes floating-dust { 0%,100% { opacity: 0; transform: translate3d(0,0,0); } 28% { opacity: .32; } 70% { opacity: .14; } 99% { opacity: 0; transform: translate3d(var(--dust-drift),-24px,0); } }
+@keyframes logo-arrive { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
 @keyframes breathing-ring { from { transform: scale(.98); opacity: .2; } to { transform: scale(1.6); opacity: 0; } }
-@keyframes name-arrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes name-arrive { from { opacity: 0; filter: blur(2px); transform: translateY(4px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
 @keyframes text-arrive { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (min-width: 960px) { .logo-stage { --logo-size: clamp(96px,12vmin,120px); margin-bottom: 38px; } .opening-name { font-size: clamp(32px,3vw,40px); } }
 @media (max-width: 520px) { .opening-name { font-size: 27px; } .opening-content { transform: translateY(-3svh); } .opening-tagline { letter-spacing: .02em; } .dust:nth-child(n+13) { display: none; } .soft-glow { width: 80vw; filter: blur(42px); } }

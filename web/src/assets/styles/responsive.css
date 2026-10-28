@@ -123,24 +123,7 @@ body .mask.mask { z-index: 400; }
   .admin-list-tools .input { max-width: 360px; }
   .admin-pagination { display: flex; gap: 16px; align-items: center; justify-content: flex-end; padding: 20px 0; }
 
-  /* AI 与工作台使用同一左边界，保留深浅主题和真实聊天。 */
-  .app-main[data-view="ai"] > .ai-wrap.neural { --content-pad: 24px; position: fixed; top: var(--notice-h,0px); left: var(--desktop-nav-w); right: 0; bottom: 0; width: auto; max-width: none; transform: none; border-radius: 0; z-index: 10; animation: none; }
-  .app-main[data-view="ai"] > .ai-wrap.neural.has-sheet { z-index: 400; }
-  .app-main[data-view="ai"] .ai-wrap.neural > :not(.neural-bg):not(.ai-history-panel):not(.mask):not(.jump-btn) { margin-left: 220px; }
-  .app-main[data-view="ai"] .ai-history-panel { display: block; position: absolute; inset: 0 auto 0 0; width: 220px; overflow-y: auto; padding: 22px 14px; border-right: 1px solid var(--n-line); background: var(--n-card); color: var(--n-text); z-index: 2; }
-  .ai-history-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .ai-history-entry { display: flex; align-items: center; border-radius: 10px; margin: 8px 0; }
-  .ai-history-entry.on { background: rgba(79,70,229,.15); }
-  .ai-history-select { flex: 1; min-width: 0; text-align: left; padding: 12px 8px; border: 0; background: none; color: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .app-main[data-view="ai"] .history-trigger, .app-main[data-view="ai"] .nav-back { display: none; }
-  .app-main[data-view="ai"] .ai-nav { flex-wrap: wrap; padding-top: 18px; }
-  .app-main[data-view="ai"] .scene-bar { flex-wrap: wrap; }
-  .app-main[data-view="ai"] .ai-wrap .mask { position: fixed; left: var(--desktop-nav-w); }
-  .app-main[data-view="ai"] .ai-wrap .sheet { width: min(680px,100%); }
-  .app-main[data-view="ai"] .chat-scroll { min-width: 0; }
-  .app-main[data-view="ai"] .bubble { overflow-wrap: anywhere; }
-  .app-main[data-view="ai"] .md pre { max-width: 100%; overflow-x: auto; }
-
+  /* AI工作区的阅读宽度、历史栏与输入区由ai-neural.css统一管理。 */
   /* 内容浏览扩展为卡片网格，长表单控制阅读宽度。 */
   .app-main[data-view="dream-wall"] .school-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .app-main[data-view="resources"] :where(.res-list,.resource-list) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
@@ -156,7 +139,6 @@ body .mask.mask { z-index: 400; }
   .app-main[data-view="dream-wall"] .school-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
 @media (max-width: 959px) {
-  .app-main[data-view="ai"] > .ai-wrap.neural { left: 50%; transform: translateX(-50%); width: 100%; max-width: 840px; bottom: calc(68px + env(safe-area-inset-bottom)); border-radius: 0; }
   .desktop-table { display: none; }
   .admin-list-tools { margin: 12px 0; }
   .admin-list-tools .sub { display: block; margin-top: 6px; }

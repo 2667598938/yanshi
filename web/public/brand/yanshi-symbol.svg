@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <title>研时 · 翻页成径</title>
+  <desc>展开的书页围出向上的留白路径，一点光代表新的理解。</desc>
+  <path fill="#E5C98E" d="M14 24c13-3 23 1 31 10v38c-9-7-19-10-31-8V24Zm68 0c-13-3-23 1-31 10v38c9-7 19-10 31-8V24Z"/>
+  <path stroke="#E5C98E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M8 34v37c15-3 28 0 40 9 12-9 25-12 40-9V34"/>
+  <path fill="#F3EBDD" d="m48 7 2.6 6.4L57 16l-6.4 2.6L48 25l-2.6-6.4L39 16l6.4-2.6L48 7Z"/>
+</svg>

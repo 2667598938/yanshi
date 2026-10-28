@@ -4,6 +4,7 @@ import { Home, Timer, ListChecks, NotebookPen, BarChart3, Users, Sparkles,
   BookOpen, MessageSquare, GraduationCap, User, ShieldCheck, Mail } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationsStore } from '../stores/notifications'
+import { BRAND } from '../config/brand'
 const route = useRoute()
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
@@ -33,7 +34,7 @@ function active(to) {
 </script>
 <template>
   <aside class="desktop-nav" aria-label="电脑端导航">
-    <router-link to="/" class="desktop-brand"><span class="brand-mark">研</span><span>研时<small>沉潜一日，功不唐捐</small></span></router-link>
+    <router-link to="/" class="desktop-brand"><img class="brand-mark" :src="BRAND.iconSrc" alt="" /><span>研时<small>沉潜一日，功不唐捐</small></span></router-link>
     <nav aria-label="主要功能">
       <section v-for="group in groups" :key="group.title" class="desktop-nav-group">
         <div class="desktop-nav-caption">{{ group.title }}</div>

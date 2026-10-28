@@ -25,6 +25,75 @@ async function render() {
   await flushPromises()
 }
 
+it('输入、真实等待、首个delta、停止后，四种视觉状态与业务流程对应', async () => {
+  let callback, finish
+  aiApi.chatStream.mockImplementationOnce((_body, cb, options) => {
+    callback = cb
+    return new Promise(resolve => { finish = resolve; options.signal.addEventListener('abort', resolve) })
+  })
+  await render()
+  expect(wrapper.classes()).toContain('state-idle')
+  await wrapper.get('.composer input').trigger('focus')
+  expect(wrapper.classes()).toContain('state-listening')
+  await wrapper.get('.composer input').setValue('复盘今天')
+  await wrapper.get('.send-btn').trigger('click'); await flushPromises()
+  expect(wrapper.classes()).toContain('state-thinking')
+  expect(wrapper.find('.thinking-row').exists()).toBe(true)
+  callback({ type: 'delta', text: '**先复盘完成的任务。**' }); await flushPromises()
+  expect(wrapper.classes()).toContain('state-delivering')
+  expect(wrapper.find('.thinking-row').exists()).toBe(false)
+  expect(wrapper.get('.answer strong').text()).toBe('先复盘完成的任务。')
+  await wrapper.get('.send-btn.stop').trigger('click'); finish(); await flushPromises()
+  expect(wrapper.classes()).toContain('state-idle')
+})
+
+it('中文输入法组合回车不误发，普通回车才提交；视觉演示独立于真实对话', async () => {
+  aiApi.chatStream.mockResolvedValueOnce(undefined)
+  await render(); await wrapper.get('.composer input').setValue('考研问题')
+  await wrapper.get('.composer input').trigger('keyup', { key: 'Enter', isComposing: true }); await flushPromises()
+  expect(aiApi.chatStream).not.toHaveBeenCalled()
+  expect(wrapper.get('a[title="视觉动效演示"]').attributes('href')).toBe('/previews/ai-neural.html')
+  expect(wrapper.text()).not.toContain('模拟生成')
+  await wrapper.get('.composer input').trigger('keyup', { key: 'Enter', isComposing: false }); await flushPromises()
+  expect(aiApi.chatStream).toHaveBeenCalledTimes(1)
+})
+
+it('软键盘缩小可见视口时收起底栏预留，卸载移除视口监听', async () => {
+  const original = Object.getOwnPropertyDescriptor(window, 'visualViewport')
+  const viewport = { height: window.innerHeight, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+  Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport })
+  try {
+    await render()
+    const resize = viewport.addEventListener.mock.calls[0][1]
+    viewport.height = window.innerHeight - 300; resize(); await flushPromises()
+    expect(wrapper.attributes('style')).toContain('--ai-bottom-gap: 0px')
+    expect(wrapper.attributes('style')).toContain('--ai-visible-height: ' + viewport.height + 'px')
+    wrapper.unmount(); wrapper = null
+    expect(viewport.removeEventListener).toHaveBeenCalledWith('resize', resize)
+  } finally {
+    if (original) Object.defineProperty(window, 'visualViewport', original)
+    else delete window.visualViewport
+  }
+})
+
+it('减少动态效果和系统主题改变可即时响应，卸载清理监听', async () => {
+  const listeners = new Map()
+  const createMedia = matches => ({ matches, addEventListener: vi.fn((_type, fn) => listeners.set(fn, true)), removeEventListener: vi.fn((_type, fn) => listeners.delete(fn)) })
+  const motion = createMedia(false), color = createMedia(false)
+  const media = vi.spyOn(window, 'matchMedia').mockImplementation(query => query.includes('reduced-motion') ? motion : query.includes('color-scheme') ? color : { matches: false })
+  await render()
+  motion.matches = true; motion.addEventListener.mock.calls[0][1]({ matches: true }); await flushPromises()
+  expect(wrapper.classes()).toContain('reduce-motion')
+  const themeButton = wrapper.findAll('.nav-actions button').at(-1)
+  await themeButton.trigger('click'); expect(wrapper.classes()).toContain('theme-light')
+  await themeButton.trigger('click'); expect(wrapper.classes()).toContain('theme-auto')
+  color.matches = true; color.addEventListener.mock.calls[0][1]({ matches: true })
+  expect(document.documentElement.classList.contains('ai-neural-dark')).toBe(false)
+  wrapper.unmount(); wrapper = null
+  expect(listeners.size).toBe(0)
+  media.mockRestore()
+})
+
 it('首次发送创建会话，真实逐段回调会立即更新文字，后续发送复用会话', async () => {
   let callback, finish
   aiApi.chatStream.mockImplementationOnce((_body, cb) => {
