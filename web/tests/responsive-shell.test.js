@@ -6,8 +6,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
 import TasksView from '../src/views/TasksView.vue'
 import { readFileSync } from 'node:fs'
+import { parse, compileStyle } from '@vue/compiler-sfc'
 const baseCSS = readFileSync('src/assets/styles/main.css', 'utf8')
 const responsiveCSS = readFileSync('src/assets/styles/responsive.css', 'utf8')
+const taskStyles = parse(readFileSync('src/views/TasksView.vue', 'utf8')).descriptor.styles
+const scopedTaskCSS = taskStyles.map(style => compileStyle({ source: style.content, id: TasksView.__scopeId, scoped: style.scoped }).code).join('\n')
 vi.mock('../src/composables/useGroupPresence', () => ({ useGroupPresence: vi.fn() }))
 vi.mock('../src/composables/useTimerOwnership', () => ({ useTimerOwnership: vi.fn() }))
 vi.mock('../src/stores/timer', () => ({ useTimerStore: () => ({}) }))
@@ -19,7 +22,8 @@ afterEach(() => { wrapper?.unmount(); style?.remove(); window.happyDOM.setViewpo
 async function render(width) {
   window.happyDOM.settings.disableComputedStyleRendering = false
   window.happyDOM.setViewport({ width, height: 900 })
-  style = document.createElement('style'); style.textContent = baseCSS + '\n' + responsiveCSS; document.head.append(style)
+  // 模拟路由懒加载：局部 scoped 样式晚于全局样式注入。
+  style = document.createElement('style'); style.textContent = baseCSS + '\n' + responsiveCSS + '\n' + scopedTaskCSS; document.head.append(style)
   const placeholder = { template: '<div class="page">页面内容</div>' }
   const paths = ['/', '/focus', '/tasks', '/mistakes', '/stats', '/ai', '/rooms', '/group', '/resources', '/posts', '/dream-wall', '/messages', '/me', '/admin', '/login']
   const router = createRouter({ history: createMemoryHistory(), routes: paths.map(path => ({ path,

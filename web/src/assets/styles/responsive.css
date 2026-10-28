@@ -10,7 +10,7 @@
 .app-main :where(.card, .page, .task-body, .mk-body) { min-width: 0; }
 .app-main :where(.task-title, .mk-content, .msg-content, .row-label, .req-body) { overflow-wrap: anywhere; }
 .app-main .nav { flex-wrap: wrap; }
-body .mask { z-index: 400; }
+body .mask.mask { z-index: 400; }
 @media (min-width: 600px) and (max-width: 959px) {
   .app-shell, .tabbar { max-width: 840px; }
   .app-main .page { padding-left: 28px; padding-right: 28px; }
@@ -37,11 +37,12 @@ body .mask { z-index: 400; }
   .with-desktop-nav .notice-stack { position: sticky; top: 0; }
   .with-desktop-nav .privacy-banner { padding: 9px 20px; }
   .with-desktop-nav .toast-layer { left: calc(50% + var(--desktop-nav-w) / 2); bottom: 24px; }
-  body .mask { align-items: center; padding: 24px; }
+  body .mask.mask { align-items: center; padding: 24px; }
   body .sheet.sheet { max-width: 680px; border-radius: 20px; max-height: calc(100dvh - 48px); }
   body .modal.modal { max-height: calc(100dvh - 48px); }
-  body .bullet-mask { align-items: center; padding: 24px; }
-  body .bullet-sheet { border-radius: 20px; }
+  body .bullet-mask.bullet-mask, body .session-mask.session-mask { align-items: center; padding: 24px; }
+  body .bullet-sheet.bullet-sheet, body .session-sheet.session-sheet { border-radius: 20px; }
+  body .session-mask.session-mask { z-index: 450; }
   .app-main :where(.filter-row, .scroll-x, .pill-row, .seg) { flex-wrap: wrap; }
 
   /* 今日：学习主区，梦校与节点侧区。较窄的电脑先纵向展示。 */
@@ -57,7 +58,7 @@ body .mask { z-index: 400; }
   .app-main .task-workspace > .page, .app-main .mistake-workspace > .page { padding: 0; }
   .app-main .workspace-placeholder { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 280px; padding: 32px; color: var(--sub); background: rgba(255,255,255,.65); border: 1px dashed var(--line); border-radius: 20px; }
   .workspace-placeholder h3 { margin-bottom: 0; color: var(--ink); }
-  body .task-editor-mask, body .mistake-detail-mask { position: sticky; inset: auto; top: calc(var(--notice-h, 0px) + 20px); display: block; padding: 0; background: transparent; z-index: 1; }
+  body .task-editor-mask.task-editor-mask, body .mistake-detail-mask.mistake-detail-mask { position: sticky; inset: auto; top: calc(var(--notice-h, 0px) + 20px); display: block; padding: 0; background: transparent; z-index: 1; }
   body .task-editor-mask .sheet.sheet, body .mistake-detail-mask .sheet.sheet { width: 100%; max-width: none; max-height: calc(100dvh - var(--notice-h, 0px) - 48px); border: 1px solid var(--line); box-shadow: var(--shadow-soft); }
   .app-main[data-view="mistakes"] .fab-add { right: 28px; bottom: 24px; }
   .app-main[data-view="mistakes"] .dk-img { max-height: none; object-fit: contain; }
