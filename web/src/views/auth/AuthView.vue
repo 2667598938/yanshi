@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { authApi, publicApi } from '../../api'
 import { initSyncForUser } from '../../sync/engine'
-import { BRAND } from '../../config/brand'
+import PixelBookMark from '../../components/PixelBookMark.vue'
 import { Smartphone, Timer, NotebookPen, Sparkles, Users, ArrowLeft, ArrowUpRight, Eye, EyeOff, ShieldCheck } from 'lucide-vue-next'
 
 const WECHAT_PATH = 'M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.89c-.135-.01-.27-.027-.407-.03zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z'
@@ -13,6 +13,8 @@ const QQ_PATH = 'M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.01
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const pixelArt = '/art/pixel-study-room.webp'
+const artUnavailable = ref(false)
 
 const mode = ref(route.query.mode === 'forgot' ? 'forgot' : 'login')
 const loginMode = ref('code') // code | password
@@ -45,10 +47,10 @@ const thirdProviders = [
 ]
 const availableProviders = computed(() => thirdProviders.filter(provider => hasChannel(provider.id)))
 const features = [
-  { icon: Timer, title: '任务与专注', text: '从每日计划到番茄计时，让进步有迹可循。', tone: 'indigo' },
-  { icon: NotebookPen, title: '错题与复习', text: '收录题图与解析，在该复习的时候再见一面。', tone: 'amber' },
-  { icon: Sparkles, title: 'AI 学习助教', text: '连接自己的模型，结合本人学习记录答疑与复盘。', tone: 'violet' },
-  { icon: Users, title: '小组与自习室', text: '与研友并肩学习，需要独处时开启隐私模式。', tone: 'green' },
+  { icon: Timer, title: '任务与专注' },
+  { icon: NotebookPen, title: '错题与复习' },
+  { icon: Sparkles, title: 'AI 学习助教' },
+  { icon: Users, title: '小组与自习室' },
 ]
 
 function hasChannel(id) {
@@ -249,7 +251,7 @@ const submitLabel = computed(() => {
   return mode.value === 'register' ? '创建账号' : '重置密码'
 })
 const heading = computed(() => ({ login: '欢迎回来', register: '开始你的研时', forgot: '找回密码', phone: '手机号登录' })[mode.value])
-const description = computed(() => ({ login: '继续你的计划，积累每一点进步。', register: '创建账号，把学习计划和每次进步留下来。', forgot: '使用账号邮箱验证身份，设置新的密码。', phone: '使用已开通的手机号渠道验证身份。' })[mode.value])
+const description = computed(() => ({ login: '登录你的小天地，接着积累今天的进步。', register: '创建账号，把学习计划和每次进步留下来。', forgot: '使用账号邮箱验证身份，设置新的密码。', phone: '使用已开通的手机号渠道验证身份。' })[mode.value])
 const codeLoginHint = computed(() => registrationOpen.value === true
   ? '未注册邮箱验证后可创建账号。' : registrationOpen.value === false
     ? '仅限已有账号登录。' : '使用已有账号的邮箱接收验证码。')
@@ -292,34 +294,33 @@ onMounted(async () => {
 
 
 <template>
-  <div class="auth-page">
+  <div class="auth-page pixel-auth">
+    <div class="auth-window">
+    <div class="pixel-windowbar"><span><i aria-hidden="true"></i>研时 · 学习小屋</span><span class="window-pixels" aria-hidden="true"><i></i><i></i><i></i></span></div>
     <div class="auth-layout">
       <aside class="auth-intro" aria-label="关于研时">
         <div class="intro-brand" aria-label="研时">
-          <img class="brand-logo" :src="BRAND.iconSrc" alt="" />
-          <span class="brand-name">研时<small>你的学习工作台</small></span>
+          <span class="brand-logo"><PixelBookMark /></span>
+          <span class="brand-name">研时<small>YOUR LITTLE STUDY CORNER</small></span>
         </div>
         <div class="intro-copy">
-          <span class="intro-kicker">计划 · 专注 · 复盘 · 同行</span>
-          <h2>把每一天，<br /><span>学成自己的答案。</span></h2>
-          <p>从一次专注到一道错题，让 AI 和研友陪你稳步向前。</p>
+          <h2>小小的进步，<br /><span>也会闪闪发光。</span></h2>
+          <p>收拾好书桌，和 AI、研友一起，<br />向理想再靠近一点点。</p>
         </div>
-        <div class="feature-grid">
-          <div v-for="feature in features" :key="feature.title" class="auth-feature">
-            <span class="feature-icon" :class="feature.tone"><component :is="feature.icon" :size="19" :stroke-width="1.8" /></span>
-            <h3>{{ feature.title }}</h3>
-            <p>{{ feature.text }}</p>
-          </div>
-        </div>
-        <div class="intro-privacy"><ShieldCheck :size="17" /><p>小组学习数据可一键开启隐私保护。<br />AI 对话与密钥始终仅本人可见。</p></div>
-        <p class="intro-motto">大雪深埋，静候春来。</p>
+        <figure class="pixel-scene">
+          <img v-if="!artUnavailable" :src="pixelArt" width="1448" height="1086" alt="" fetchpriority="high" @error="artUnavailable = true" />
+          <div v-else class="pixel-scene-fallback" aria-hidden="true"><PixelBookMark /><span>今天，也一起慢慢进步。</span></div>
+          <figcaption><span aria-hidden="true">✦</span> 一页一题，慢慢靠近理想。</figcaption>
+        </figure>
+        <div class="feature-trail" aria-label="学习功能"><span v-for="feature in features" :key="feature.title"><component :is="feature.icon" :size="13" />{{ feature.title }}</span></div>
       </aside>
 
       <section class="auth-form-area" aria-labelledby="auth-heading">
-        <div class="mobile-brand"><img class="brand-logo" :src="BRAND.iconSrc" alt="" /><span>研时<small>计划、专注与 AI 学习助教</small></span></div>
+        <div class="mobile-brand"><span class="brand-logo"><PixelBookMark /></span><span>研时<small>你的像素学习小屋</small></span></div>
+        <div class="pixel-mobile-scene" aria-hidden="true"><img v-if="!artUnavailable" :src="pixelArt" width="1448" height="1086" alt="" @error="artUnavailable = true" /><span v-else>今天，也一起慢慢进步。</span></div>
         <div class="auth-card">
           <header class="form-heading">
-            <div class="form-eyebrow">留一点时间，给更好的自己</div>
+            <div class="form-eyebrow"><span aria-hidden="true">✦</span> 一起开启今天的学习</div>
             <h1 id="auth-heading">{{ heading }}</h1>
             <p>{{ description }}</p>
           </header>
@@ -327,8 +328,6 @@ onMounted(async () => {
             <button type="button" :disabled="loading" :aria-pressed="mode === 'login' || mode === 'forgot' || mode === 'phone'" :class="{ active: mode !== 'register' }" @click="switchMode('login')">登录</button>
             <button type="button" :disabled="loading" :aria-pressed="mode === 'register'" :class="{ active: mode === 'register' }" @click="switchMode('register')">注册</button>
           </div>
-          <p v-if="registrationOpen === false" class="admission-note">注册暂未开放，已有账号可直接登录；新账号请联系管理员创建。</p>
-          <p v-else-if="configError" class="admission-note">暂时无法确认注册状态。已有账号仍可登录。<button type="button" class="text-button" @click="loadPublicConfig">重试</button></p>
 
           <div v-if="mode === 'login'" class="mode-switch" aria-label="登录方式">
             <button type="button" :disabled="loading" :aria-pressed="loginMode === 'code'" :class="{ on: loginMode === 'code' }" @click="loginMode = 'code'; error = ''; info = ''">邮箱验证码</button>
@@ -368,6 +367,9 @@ onMounted(async () => {
             <div v-if="mode === 'forgot' || mode === 'phone'" class="bottom-links"><button type="button" class="text-button" :disabled="loading" @click="switchMode('login')"><ArrowLeft :size="14" />返回邮箱登录</button></div>
           </form>
 
+          <p v-if="registrationOpen === false" class="admission-note">注册暂未开放，新账号请联系管理员创建。</p>
+          <p v-else-if="configError" class="admission-note">暂时无法确认注册状态。已有账号仍可登录。<button type="button" class="text-button" @click="loadPublicConfig">重试</button></p>
+
           <div v-if="availableProviders.length && mode !== 'forgot'" class="third-party">
             <div class="tp-divider"><span>其他登录方式</span></div>
             <div class="tp-buttons">
@@ -377,8 +379,11 @@ onMounted(async () => {
             </div>
           </div>
         </div>
+        <p class="pixel-private-note"><ShieldCheck :size="13" />AI 对话与密钥，仅本人可见</p>
       </section>
     </div>
+    </div>
+    <p class="pixel-page-note">不必一下子很厉害，每天前进一点就很好。</p>
 
     <div v-if="showLegal" class="modal-mask" @click.self="showLegal = false">
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="auth-legal-heading">
@@ -389,119 +394,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.auth-page {
-  --primary: var(--brand-primary,#647D9D);
-  --primary-grad: linear-gradient(135deg,#7B2632,#983F48);
-  min-height: calc(100dvh - var(--notice-h, 0px));
-  padding: clamp(24px, 4vw, 64px) 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(ellipse at 10% 15%, #e8eef5 0, transparent 48%), radial-gradient(ellipse at 95% 90%, #edf1f6 0, transparent 45%), var(--brand-background,#F7F8FA);
-}
-.auth-layout { width: 100%; max-width: 1120px; display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 88px); align-items: center; }
-.auth-intro { display: block; min-width: 0; padding: 12px 0; }
-.intro-brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
-.brand-logo { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; background: var(--primary-grad); box-shadow: 0 8px 20px #647d9d20; color: #fff; font-size: 25px; font-weight: 700; }
-.brand-name { font-size: 24px; line-height: 1.3; font-weight: 800; letter-spacing: 2px; }
-.brand-name small { display: block; margin-top: 3px; font-size: 11px; font-weight: 400; letter-spacing: 1px; color: #667085; }
-.intro-copy { margin: 54px 0 32px; }
-.intro-kicker { font-size: 12px; color: var(--primary); letter-spacing: 2px; font-weight: 600; }
-.intro-copy h2 { margin: 14px 0 18px; font-size: clamp(34px, 3.4vw, 48px); line-height: 1.35; letter-spacing: -1px; font-weight: 750; color: #202540; }
-.intro-copy h2 span { color: var(--primary); }
-.intro-copy > p { margin: 0; max-width: 400px; font-size: 15px; line-height: 1.9; color: #68708a; }
-.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 24px 26px; }
-.auth-feature { min-width: 0; }
-.feature-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 11px; margin-bottom: 8px; }
-.feature-icon.indigo { background: #e9eaff; color: #4f46e5; }
-.feature-icon.amber { background: #fff2dd; color: #a8690c; }
-.feature-icon.violet { background: #efe8ff; color: #7c3aed; }
-.feature-icon.green { background: #e2f2ef; color: #198675; }
-.auth-feature h3 { margin: 0 0 5px; font-size: 14px; color: #343954; }
-.auth-feature p { margin: 0; font-size: 12px; line-height: 1.8; color: #6b728b; }
-.intro-privacy { display: flex; align-items: flex-start; gap: 9px; margin-top: 32px; padding-top: 24px; border-top: 1px solid #dfe3f2; color: #69728b; }
-.intro-privacy svg { flex-shrink: 0; margin-top: 2px; color: #7a81a4; }
-.intro-privacy p { margin: 0; font-size: 12px; line-height: 1.8; }
-.intro-motto { margin: 20px 0 0; color: #8b91a6; font-size: 12px; letter-spacing: 2px; }
-.auth-form-area { min-width: 0; width: 100%; max-width: 440px; justify-self: end; }
-.mobile-brand { display: none; }
-.auth-card { width: 100%; background: rgba(255,255,255,.96); border: 1px solid #ffffff; border-radius: 24px; padding: 32px; box-shadow: 0 16px 60px #4145850b, 0 2px 12px #31345f05; }
-.form-eyebrow { color: #9298ac; font-size: 11px; letter-spacing: 1px; }
-.form-heading h1 { margin: 8px 0 6px; color: #252943; font-size: 27px; line-height: 1.4; font-weight: 750; }
-.form-heading p { margin: 0 0 24px; color: #7c8296; font-size: 12px; line-height: 1.7; }
-.tabs { display: flex; gap: 4px; border: 1px solid #edf0f8; background: #f4f5fb; border-radius: 11px; padding: 4px; margin-bottom: 20px; }
-.tabs button { flex: 1; min-height: 38px; border: 0; border-radius: 8px; background: transparent; color: #727a91; font-size: 13px; cursor: pointer; }
-.tabs button.active { background: #fff; color: var(--primary); box-shadow: 0 2px 6px #27326a0a; font-weight: 600; }
-.mode-switch { display: flex; gap: 22px; margin-bottom: 22px; border-bottom: 1px solid #eef0f6; }
-.mode-switch button { padding: 0 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: #8b91a5; font-size: 12px; cursor: pointer; }
-.mode-switch button.on { border-bottom-color: var(--primary); color: var(--primary); font-weight: 600; }
-.form { display: flex; flex-direction: column; gap: 17px; }
-.field { display: flex; flex-direction: column; min-width: 0; gap: 7px; }
-.field > span, .field > label, .field-top > label { color: #505a72; font-size: 12px; font-weight: 500; }
-.field > span small { color: #9299ac; font-size: 11px; margin-left: 4px; font-weight: 400; }
-.field input { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid #dfe4f0; border-radius: 10px; background: #fbfcff; color: #252943; font-size: 14px; font-family: inherit; transition: border-color .18s, box-shadow .18s; }
-.field input::placeholder { color: #a0a6b8; }
-.field input:focus { outline: none; border-color: #8da2bd; background: #fff; box-shadow: 0 0 0 3px #647d9d14; }
-.field input:disabled { opacity: .6; }
-.code-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
-.ghost-btn { border: 1px solid #d5dfeb; border-radius: 10px; background: #f0f4f8; padding: 0 12px; color: var(--primary); font-size: 12px; cursor: pointer; white-space: nowrap; }
-.ghost-btn:disabled { border-color: #e8eaf2; color: #9ca3b5; background: #f6f7fb; cursor: not-allowed; }
-.field-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.text-button, .legal-link { padding: 0; border: 0; background: none; color: var(--primary); font-family: inherit; font-size: inherit; cursor: pointer; }
-.field-top .text-button { font-size: 11px; }
-.password-row { position: relative; }
-.password-row input { padding-right: 46px; }
-.password-visibility { position: absolute; top: 3px; bottom: 3px; right: 3px; width: 38px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #8b91a5; cursor: pointer; }
-.agree { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; line-height: 1.8; color: #8a90a2; }
-.agree > input { width: 15px; height: 15px; flex-shrink: 0; margin: 3px 0 0; accent-color: var(--primary); }
-.agree label { cursor: pointer; margin-right: 3px; }
-.legal-link { color: #647D9D; }
-.primary-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; border: 0; border-radius: 10px; padding: 12px; background: var(--primary-grad); box-shadow: 0 6px 16px #647d9d20; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
-.primary-btn:disabled { opacity: .6; cursor: not-allowed; }
-.error, .info { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.error { color: #c33746; background: #fff0f2; border: 1px solid #fde2e7; }
-.info { color: #21745f; background: #eff9f4; border: 1px solid #ddf1e5; }
-.login-hint, .field-hint { margin: 0; color: #9298aa; font-size: 11px; font-weight: 400; line-height: 1.7; }
-.login-hint { text-align: center; }
-.bottom-links { display: flex; justify-content: center; font-size: 12px; }
-.bottom-links .text-button { display: inline-flex; align-items: center; gap: 4px; }
-.third-party { margin-top: 24px; }
-.tp-divider { display: flex; align-items: center; gap: 12px; color: #a1a7b8; font-size: 11px; margin-bottom: 12px; }
-.tp-divider::before, .tp-divider::after { content: ''; flex: 1; height: 1px; background: #edf0f6; }
-.tp-buttons { display: flex; gap: 10px; }
-.tp-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border: 1px solid #e8ecf4; border-radius: 10px; background: #fff; color: #69748b; font-size: 12px; cursor: pointer; }
-.tp-ic { display: inline-flex; align-items: center; }
-.brand-svg { width: 17px; height: 17px; fill: currentColor; }
-.admission-note { margin: 0 0 20px; padding: 10px 12px; border: 1px solid #e2e8ef; background: #f4f7fa; border-radius: 10px; color: #7d8793; font-size: 11px; line-height: 1.8; }
-.modal-mask { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: #1d254c66; z-index: 500; }
-.modal { width: min(100%, 620px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; background: #fff; border-radius: 18px; box-shadow: 0 24px 80px #11182f30; overflow: hidden; }
-.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #edf0f6; }
-.modal-head h2 { margin: 0; font-size: 16px; }
-.modal-head button { flex-shrink: 0; padding: 7px 12px; border: 0; border-radius: 8px; background: #f4f5fb; color: #687089; cursor: pointer; }
-.modal-body { min-height: 0; padding: 18px 22px; margin: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; color: #5a647d; line-height: 1.9; }
-@media (max-width: 959px) {
-  .auth-page { padding: 30px 24px; }
-  .auth-layout { grid-template-columns: minmax(0,1fr); max-width: 440px; gap: 0; }
-  .auth-intro { display: none; }
-  .auth-form-area { max-width: none; justify-self: stretch; }
-  .mobile-brand { display: flex; gap: 10px; align-items: center; margin: 0 0 22px 4px; font-size: 21px; font-weight: 750; color: #282d49; }
-  .mobile-brand .brand-logo { width: 38px; height: 38px; font-size: 22px; border-radius: 12px; }
-  .mobile-brand small { display: block; margin-top: 1px; color: #9298ac; font-size: 10px; font-weight: 400; }
-}
-@media (max-width: 520px) {
-  .auth-page { align-items: flex-start; padding: max(24px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom)); }
-  .auth-card { padding: 26px 22px; border-radius: 20px; }
-  .form-heading h1 { font-size: 25px; }
-  .field input { font-size: 16px; }
-  .ghost-btn { padding: 0 10px; font-size: 11px; }
-  .agree { font-size: 11px; }
-}
-@media (max-width: 359px) {
-  .auth-page { padding-left: 12px; padding-right: 12px; }
-  .auth-card { padding-left: 18px; padding-right: 18px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .field input { transition: none; }
-}
-</style>
+<style src="../../assets/styles/pixel-auth.css" scoped></style>

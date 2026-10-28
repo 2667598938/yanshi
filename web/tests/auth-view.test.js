@@ -21,6 +21,18 @@ async function render() { wrapper = mount(AuthView, { global: { stubs: { RouterL
 async function click(text) { await wrapper.findAll('button').find(button => button.text() === text).trigger('click'); await flushPromises() }
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
+it('像素插画加载失败可降级，仍能正常输入并登录', async () => {
+  await render()
+  await wrapper.get('.pixel-scene img').trigger('error')
+  expect(wrapper.find('.pixel-scene img').exists()).toBe(false)
+  expect(wrapper.get('.pixel-scene-fallback').text()).toContain('慢慢进步')
+  await click('账号密码')
+  await wrapper.get('#auth-email').setValue('user@example.com')
+  await wrapper.get('#auth-password').setValue('Password2026')
+  await submit()
+  expect(state.auth.login).toHaveBeenCalledExactlyOnceWith('user@example.com', 'Password2026')
+})
+
 it('未开放的第三方渠道不显示占位按钮，关闭注册时不承诺自动创建账号', async () => {
   await render()
   expect(wrapper.findAll('.tp-btn')).toHaveLength(0)

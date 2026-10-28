@@ -8,6 +8,8 @@
 
 ## 功能概览
 
+登录页最新改为[Q版像素学习小屋](docs/pixel-login-2026-10-28.md)：原创插画、奶油绿像素窗口、电脑双栏与手机单列，保留真实账号流程。
+
 2026-10-28 更新：[AI阅读空间、新Logo与酒红暖金开场](docs/neural-ai-and-brand-2026-10-28.md)、[登录准入](docs/brand-opening-and-admission-2026-10-28.md)、[设置同步与电脑端完善](docs/desktop-sync-repair-2026-10-28.md)。AI深色优先并支持浅色/系统主题；单文件动效演示在 `web/public/previews/ai-neural.html`。业务页要求登录，注册入口遵循后端开关；首次访问有可跳过的3.8秒开场。
 
 - **番茄钟**：倒计时 / 正向计时、暂停与超时保护、自定义长休、按学习内容统计与年度热力图

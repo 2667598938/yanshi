@@ -1,0 +1,9 @@
+<template>
+  <svg viewBox="0 0 32 32" fill="none" shape-rendering="crispEdges" aria-hidden="true">
+    <path fill="#3E5849" d="M3 10h3V7h7v2h6V7h7v3h3v16H19v2h-6v-2H3V10Z" />
+    <path fill="#F5D9A5" d="M6 10h7v2h2v12h-2v-1H6V10Z" />
+    <path fill="#91B294" d="M19 10h7v13h-7v1h-2V12h2v-2Z" />
+    <path fill="#FFF7DF" d="M8 12h4v2H8v-2Zm0 4h4v2H8v-2Zm12-3h4v2h-4v-2Zm0 4h4v2h-4v-2Z" />
+    <path fill="#CB8465" d="M15 1h2v3h3v2h-3v3h-2V6h-3V4h3V1Z" />
+  </svg>
+</template>
