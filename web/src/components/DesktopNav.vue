@@ -47,7 +47,6 @@ function active(to) {
         <router-link to="/messages" class="desktop-link" :class="{ active: active('/messages') }"><Mail :size="18" /><span>消息中心</span><span v-if="notifications.unread" class="desktop-count">{{ notifications.unread > 99 ? '99+' : notifications.unread }}</span></router-link>
         <router-link to="/me" class="desktop-link" :class="{ active: active('/me') }"><User :size="18" /><span>我的设置</span></router-link>
         <router-link v-if="auth.isAdmin" to="/admin" class="desktop-link" :class="{ active: active('/admin') }"><ShieldCheck :size="18" /><span>管理后台</span></router-link>
-        <router-link v-if="!auth.isLoggedIn" to="/login" class="desktop-link"><User :size="18" /><span>登录 / 注册</span></router-link>
       </section>
     </nav>
   </aside>

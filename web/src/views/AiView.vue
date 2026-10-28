@@ -552,7 +552,7 @@ async function importTasks(){
     </div>
     <CopyFallback v-model="manualCopy" />
     <aside class="ai-history-panel" aria-label="会话列表">
-      <div class="ai-history-heading"><strong>我的对话</strong><button class="icon-btn" title="刷新会话列表" @click="loadHistory(false)"><History :size="16" /></button></div>
+      <div class="ai-history-heading"><strong>我的对话</strong><button class="icon-btn" title="刷新会话列表" aria-label="刷新会话列表" @click="loadHistory(false)"><History :size="16" /></button></div>
       <button class="btn btn-outline btn-block" :disabled="sending" @click="newChat()"><Plus :size="16" />新建对话</button>
       <p v-if="historyLoading" role="status">正在读取…</p>
       <div v-else-if="historyError"><p>{{ historyError }}</p><button class="btn btn-outline btn-sm" @click="loadHistory(false)">重试</button></div>
@@ -575,11 +575,11 @@ async function importTasks(){
         </div>
       </div>
       <div class="nav-actions">
-        <button class="icon-btn" title="AI 设置" @click="router.push('/ai/settings')"><Settings2 :size="18" /></button>
-        <button class="icon-btn" title="新建对话" @click="newChat()"><Plus :size="18" /></button>
-        <button class="icon-btn history-trigger" title="历史对话" @click="loadHistory()"><History :size="18" /></button>
-        <button class="icon-btn" :title="`主题：${themeLabel}（点击切换）`" @click="cycleTheme"><component :is="themeIcon" :size="17" /></button>
-        <a class="icon-btn" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="视觉动效演示"><Play :size="17" /></a>
+        <button class="icon-btn" title="AI 设置" aria-label="AI 设置" @click="router.push('/ai/settings')"><Settings2 :size="18" /></button>
+        <button class="icon-btn" title="新建对话" aria-label="新建对话" @click="newChat()"><Plus :size="18" /></button>
+        <button class="icon-btn history-trigger" title="历史对话" aria-label="历史对话" @click="loadHistory()"><History :size="18" /></button>
+        <button class="icon-btn" :title="`主题：${themeLabel}（点击切换）`" :aria-label="`切换主题，当前：${themeLabel}`" @click="cycleTheme"><component :is="themeIcon" :size="17" /></button>
+        <a class="icon-btn" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="视觉动效演示" aria-label="打开视觉动效演示"><Play :size="17" /></a>
       </div>
     </div>
 
@@ -648,6 +648,9 @@ async function importTasks(){
         <div class="empty-kicker">研时 · NEURAL STUDY</div>
         <div class="empty-title">{{ greeting }}</div>
         <div class="empty-desc"><strong>{{ scenes.find((x) => x.key === scene)?.label }}</strong> · {{ welcome }}</div>
+        <a class="empty-demo" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="打开独立动效演示">
+          <Play :size="13" />看动效演示 <span>thinking → delivering</span>
+        </a>
         <div v-if="suggestions.length" class="starter-list">
           <button v-for="text in suggestions" :key="text" class="starter" @click="useSuggestion(text)">
             {{ text }}<ChevronRight :size="13" />

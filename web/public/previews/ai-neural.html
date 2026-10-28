@@ -73,6 +73,9 @@
 .neural .starter-list { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin:26px 0 0; }
 .neural .starter { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; max-width:290px; border:1px solid var(--n-line); border-radius:22px; background:var(--n-panel); color:var(--n-sub); font-size:12px; line-height:1.6; text-align:left; transition:background 200ms var(--n-ease),transform 200ms var(--n-ease); backdrop-filter:blur(28px); }
 .neural .starter:hover { background:var(--n-panel-strong); transform:scale(1.01); }
+.neural .empty-demo { display:inline-flex; align-items:center; gap:6px; margin-top:16px; padding:9px 14px; border:1px solid var(--n-line); border-radius:24px; background:var(--n-panel); color:var(--n-sub); font-size:12px; text-decoration:none; }
+.neural .empty-demo span { color:var(--n-faint); font-size:10px; }
+.neural .empty-demo:hover { background:var(--n-panel-strong); color:var(--n-text); }
 /* 回答按文章排版，提问作为章节题目，不使用左右聊天气泡。 */
 .neural .chat-msg { display:flex; gap:14px; max-width:820px; margin:0 auto 26px; }
 .neural .chat-msg.user { padding:14px 0 6px; margin-bottom:16px; justify-content:flex-start; }
@@ -207,8 +210,11 @@
   .neural .nav-sub { max-width:145px; font-size:10px; }
   .neural .nav-title { font-size:15px; }
   .neural :is(.icon-btn,.nav-back) { width:34px; height:38px; }
-  .neural .scene-bar { flex-wrap:nowrap; justify-content:flex-start; overflow-x:auto; padding:6px 16px 10px; scrollbar-width:none; }
+  .neural .scene-bar { flex-wrap:wrap; justify-content:flex-start; overflow:visible; padding:6px 12px 8px; }
   .neural .scene-chip { flex-shrink:0; font-size:11px; padding:6px 10px; }
+  /* 移动端降低大面积磨砂成本；桌面仍保留更厚的玻璃质感。 */
+  .neural .answer { backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); }
+  .neural .composer { backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); }
   .neural .chat-scroll { padding:20px 16px; }
   .neural .chat-empty { padding:28px 6px; }
   .neural .empty-title { font-size:26px; }

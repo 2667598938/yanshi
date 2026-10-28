@@ -47,6 +47,23 @@ it('输入、真实等待、首个delta、停止后，四种视觉状态与业�
   expect(wrapper.classes()).toContain('state-idle')
 })
 
+it('图标按钮有可访问名称，空态提供文字动效入口且不伪造真实对话', async () => {
+  await render()
+  expect(wrapper.get('button[title="AI 设置"]').attributes('aria-label')).toBe('AI 设置')
+  expect(wrapper.get('button[title="新建对话"]').attributes('aria-label')).toBe('新建对话')
+  expect(wrapper.get('button[title="历史对话"]').attributes('aria-label')).toBe('历史对话')
+  expect(wrapper.get('button[title="刷新会话列表"]').attributes('aria-label')).toBe('刷新会话列表')
+  const themeButton = wrapper.findAll('.nav-actions button').find(b => b.attributes('title')?.startsWith('主题'))
+  expect(themeButton.attributes('aria-label')).toContain('切换主题')
+  const navDemo = wrapper.get('a[title="视觉动效演示"]')
+  expect(navDemo.attributes('aria-label')).toBe('打开视觉动效演示')
+  expect(navDemo.attributes('href')).toBe('/previews/ai-neural.html')
+  const emptyDemo = wrapper.get('a[title="打开独立动效演示"]')
+  expect(emptyDemo.attributes('href')).toBe('/previews/ai-neural.html')
+  expect(emptyDemo.text()).toContain('看动效演示')
+  expect(wrapper.text()).not.toContain('模拟生成')
+})
+
 it('中文输入法组合回车不误发，普通回车才提交；视觉演示独立于真实对话', async () => {
   aiApi.chatStream.mockResolvedValueOnce(undefined)
   await render(); await wrapper.get('.composer input').setValue('考研问题')
