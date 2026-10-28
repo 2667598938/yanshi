@@ -14,7 +14,7 @@ vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: null }) }))
 vi.mock('../src/stores/notifications', () => ({ useNotificationsStore: () => ({ unread: 0, start: vi.fn(), stop: vi.fn() }) }))
 vi.mock('../src/stores/subjects', () => ({ useSubjectsStore: () => ({ byId: {} }) }))
 vi.mock('../src/sync/engine', () => ({ initSyncForUser: vi.fn() }))
-vi.mock('../src/api', () => ({ authApi: {}, publicApi: { config: vi.fn(async () => ({ enabled_auth_channels: ['email'], registration_open: true })) } }))
+vi.mock('../src/api', () => ({ authApi: {}, publicApi: { config: vi.fn(async () => ({ auth_password_only: false, enabled_auth_channels: ['email'], registration_open: true })) } }))
 const globalCSS = readFileSync('src/assets/styles/main.css', 'utf8') + '\n' + readFileSync('src/assets/styles/responsive.css', 'utf8')
 const authStyles = parse(readFileSync('src/views/auth/AuthView.vue', 'utf8')).descriptor.styles
 const authCSS = authStyles.map(style => compileStyle({ source: style.src ? readFileSync(resolve('src/views/auth', style.src), 'utf8') : style.content, id: AuthView.__scopeId, scoped: style.scoped }).code).join('\n')

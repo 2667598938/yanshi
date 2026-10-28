@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
-  <title>研时</title>
-  <rect width="96" height="96" rx="25" fill="#541019"/>
-  <g transform="translate(12 10) scale(.75)">
-    <path fill="#E5C98E" d="M14 24c13-3 23 1 31 10v38c-9-7-19-10-31-8V24Zm68 0c-13-3-23 1-31 10v38c9-7 19-10 31-8V24Z"/>
-    <path stroke="#E5C98E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M8 34v37c15-3 28 0 40 9 12-9 25-12 40-9V34"/>
-    <path fill="#F3EBDD" d="m48 7 2.6 6.4L57 16l-6.4 2.6L48 25l-2.6-6.4L39 16l6.4-2.6L48 7Z"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>研时像素书本</title>
+  <rect width="32" height="32" rx="6" fill="#E7EFDC"/>
+  <path fill="#3E5849" d="M3 10h3V7h7v2h6V7h7v3h3v16H19v2h-6v-2H3V10Z"/>
+  <path fill="#F5D9A5" d="M6 10h7v2h2v12h-2v-1H6V10Z"/>
+  <path fill="#91B294" d="M19 10h7v13h-7v1h-2V12h2v-2Z"/>
+  <path fill="#FFF7DF" d="M8 12h4v2H8v-2Zm0 4h4v2H8v-2Zm12-3h4v2h-4v-2Zm0 4h4v2h-4v-2Z"/>
+  <path fill="#CB8465" d="M15 1h2v3h3v2h-3v3h-2V6h-3V4h3V1Z"/>
 </svg>

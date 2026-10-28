@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     public_origin: str = "http://localhost:27341"
     cors_origins: str = "http://localhost:27341,http://127.0.0.1:27341,http://localhost:5173,http://127.0.0.1:5173"
 
-    # 登录渠道：一期只开 email；wechat / qq / phone 代码完整但开关关闭
+    # 内测统一账号密码；关闭此部署开关后才允许配置其他登录方式。
+    auth_password_only: bool = True
+    # email 表示邮箱账号，验证码登录另受 auth_password_only 控制。
     auth_channels: str = "email"  # 逗号分隔：email,wechat,qq,phone
     # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，测试环境用空值）
     auth_email_domains: str = "qq.com"
@@ -96,6 +98,8 @@ class Settings(BaseSettings):
 
     @property
     def enabled_auth_channels(self) -> list:
+        if self.auth_password_only:
+            return ["email"]
         return [x.strip() for x in self.auth_channels.split(",") if x.strip()]
 
     @property

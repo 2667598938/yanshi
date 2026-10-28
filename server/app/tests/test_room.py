@@ -165,6 +165,7 @@ def test_room_state_heartbeat_and_stats(client):
 
     # 通过同步写一条今天的学习记录 1500 秒，房间聚合应反映
     op = uuid.uuid4().hex
+    record = session_record("sess1", 1500)
     r = client.post(
         "/api/v1/sync/commands",
         headers=fh,
@@ -174,7 +175,7 @@ def test_room_state_heartbeat_and_stats(client):
                 {
                     "id": "sess1",
                     "expectedRevision": 0,
-                    "record": session_record("sess1", 1500),
+                    "record": record,
                 }
             ],
         },
@@ -182,11 +183,14 @@ def test_room_state_heartbeat_and_stats(client):
     assert r.status_code == 200, r.text
     state = client.get("/api/v1/room", headers=ah).json()["data"]
     me = find_member(state, "研友一号")
-    assert me["today_sec"] == 1500
-    assert me["week_sec"] == 1500
+    # 统计按开始日归属。午夜前25分钟内生成的记录起始于昨天，不能假定今天必有1500秒。
+    start_day = datetime.fromtimestamp(record["startedAt"] / 1000, CN).date()
+    current_day = datetime.now(CN).date()
+    assert me["today_sec"] == (1500 if start_day == current_day else 0)
+    assert me["week_sec"] == (1500 if start_day >= current_day - timedelta(days=current_day.weekday()) else 0)
     assert me["total_sec"] == 1500
     assert me["streak"] == 1
-    assert state["ranking"]["today"][0]["user_id"] == me["user_id"]
+    assert next(row for row in state["ranking"]["today"] if row["user_id"] == me["user_id"])["sec"] == me["today_sec"]
 
 
 def test_room_messages_and_goal(client):

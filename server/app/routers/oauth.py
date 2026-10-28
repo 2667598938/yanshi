@@ -219,6 +219,8 @@ async def callback(
 
 @router.post("/oauth/exchange")
 def exchange_ticket(body: OAuthTicketInput, request: Request):
+    if request.app.state.settings.auth_password_only:
+        raise ApiError(403, 40301, "内测期间仅支持账号密码登录")
     key = "oauth-ticket:" + digest(body.ticket)
     store = request.app.state.transient
     raw = store.consume(key)

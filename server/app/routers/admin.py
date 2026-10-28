@@ -223,7 +223,7 @@ def overview(request: Request, db=Depends(get_db), admin=Depends(get_admin)):
             "conversation_count": conversation_count,
             "message_count": message_count,
             "attachment_bytes": attachment_bytes or 0,
-            "registration_open": config_get(db, "registration_open", False),
+            "registration_open": not request.app.state.settings.auth_password_only and config_get(db, "registration_open", False),
             "site_name": config_get(db, "site_name", "研时"),
             "exam_date": config_get(db, "exam_date", "2027-12-25"),
             "exam_year": config_get(db, "exam_year", 2028),
@@ -800,14 +800,16 @@ def config_payload(db):
 
 
 @router.get("/config")
-def get_config(db=Depends(get_db)):
-    return ok(config_payload(db))
+def get_config(request: Request, db=Depends(get_db)):
+    return ok({**config_payload(db), "auth_password_only": request.app.state.settings.auth_password_only})
 
 
 @router.put("/config")
 def update_config(
     body: ConfigInput, request: Request, db=Depends(get_db), admin=Depends(get_admin)
 ):
+    if request.app.state.settings.auth_password_only and body.registration_open is True:
+        raise ApiError(403, 40301, "内测期间仅支持账号密码登录，账号请由管理员创建")
     with sync_write_lock:
         db.scalar(select(User).where(User.id == admin.id).with_for_update())
         current = config_payload(db)

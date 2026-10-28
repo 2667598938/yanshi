@@ -56,6 +56,7 @@ const configured = computed(() => !!status.value?.configured)
 const currentProvider = computed(() => PROVIDERS.find((p) => p.id === provider.value))
 
 function pickProvider(p) {
+  if (saving.value || deleting.value) return
   provider.value = p.id
   baseUrl.value = p.base || ''
   model.value = ''
@@ -71,8 +72,6 @@ async function load() {
     canUse.value = cfg ? !!cfg.access : isVip.value
     status.value = await aiApi.key()
     if (!canUse.value) return
-    usage.value = await aiApi.usage()
-    contextTurns.value = usage.value.context_turns
     if (status.value.configured) {
       provider.value = status.value.provider || 'deepseek'
       baseUrl.value = status.value.base_url || ''
@@ -80,6 +79,11 @@ async function load() {
       supportsImages.value = !!status.value.supports_images
       supportsTools.value = !!status.value.supports_tools
     }
+    // 用量故障不应阻止本人已保存配置回填。
+    try {
+      usage.value = await aiApi.usage()
+      contextTurns.value = usage.value.context_turns
+    } catch (e) { toast(e.message || '用量暂时无法读取') }
   } catch (e) {
     if (e.status !== 403) toast(e.message)
   } finally {
@@ -88,6 +92,7 @@ async function load() {
 }
 
 async function fetchModels() {
+  if (fetching.value || saving.value || deleting.value) return
   if (!apiKey.value.trim() && !configured.value) return toast('请先填写 API Key')
   fetching.value = true
   const generation=catalogGeneration
@@ -115,6 +120,7 @@ async function fetchModels() {
 }
 
 async function save() {
+  if (saving.value || deleting.value) return
   if (!apiKey.value.trim()) return toast(configured.value ? '修改请重新输入完整 Key' : '请填写 API Key')
   if (!baseUrl.value.trim()) return toast('请填写服务商地址')
   if (!model.value.trim()) return toast('请选择或填写模型名')
@@ -138,10 +144,17 @@ async function save() {
 }
 
 async function removeKey() {
+  if (saving.value || deleting.value) return
   if (!confirm('删除已保存的 AI Key？历史对话仍会保留。')) return
+  catalogGeneration++
+  fetching.value = false
   deleting.value = true
   try {
     status.value = await aiApi.deleteKey()
+    models.value = []
+    model.value = ''
+    modelSearch.value = ''
+    apiKey.value = ''
     toast('已删除')
   } catch (e) {
     toast(e.message)
@@ -203,6 +216,7 @@ onMounted(load)
             :key="p.id"
             class="provider-pill"
             :class="{ on: provider === p.id }"
+            :disabled="saving || deleting"
             @click="pickProvider(p)"
           >
             {{ p.label }}
@@ -211,7 +225,7 @@ onMounted(load)
 
         <div class="card form-card">
           <label class="field-label">服务地址</label>
-          <input v-model="baseUrl" class="input" placeholder="https://api.deepseek.com/v1" />
+          <input v-model="baseUrl" :disabled="saving || deleting" class="input" placeholder="https://api.deepseek.com/v1" />
           <div v-if="currentProvider?.id === 'custom'" class="field-hint">
             兼容 OpenAI 协议的服务地址，如 OneAPI、Ollama、vLLM
           </div>
@@ -219,6 +233,7 @@ onMounted(load)
           <label class="field-label">API Key</label>
           <input
             v-model="apiKey"
+            :disabled="saving || deleting"
             class="input"
             type="password"
             autocomplete="off"
@@ -228,8 +243,8 @@ onMounted(load)
 
           <label class="field-label">模型</label>
           <div class="model-row">
-            <input v-model="model" class="input" placeholder="模型名" />
-            <button class="btn btn-outline btn-sm" :disabled="fetching" @click="fetchModels">
+            <input v-model="model" :disabled="saving || deleting" class="input" placeholder="模型名" />
+            <button class="btn btn-outline btn-sm" :disabled="fetching || saving || deleting" @click="fetchModels">
               <RefreshCw :size="15" />{{ fetching ? '拉取中…' : '拉取列表' }}
             </button>
           </div>
@@ -243,6 +258,7 @@ onMounted(load)
               :key="m.id"
               class="model-chip"
               :class="{ on: model === m.id }"
+              :disabled="saving || deleting"
               @click="model = m.id"
             >
               {{ m.id }}{{ m.id === currentProvider?.model ? ' · 推荐' : '' }} · {{ m.supports_images == null ? '图片能力未知' : m.supports_images ? '支持图片' : '不支持图片' }} · 上下文{{ m.context_length || '未知' }}
@@ -251,12 +267,12 @@ onMounted(load)
           </div>
 
           <div class="field-hint">模型列表不保证提供能力信息；请根据服务商说明确认当前模型能力。</div>
-          <label class="field-label"><input v-model="supportsImages" type="checkbox" /> 该模型支持图片输入</label>
+          <label class="field-label"><input v-model="supportsImages" :disabled="saving || deleting" type="checkbox" /> 该模型支持图片输入</label>
           <label v-if="false" class="field-label"><input v-model="supportsTools" type="checkbox" /> 该模型支持工具调用</label>
-          <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
+          <button class="btn btn-primary btn-block mt16" :disabled="saving || deleting" @click="save">
             <Save :size="17" />{{ saving ? '保存中…' : '保存设置' }}
           </button>
-          <button v-if="configured" class="btn btn-danger btn-block mt8" :disabled="deleting" @click="removeKey">
+          <button v-if="configured" class="btn btn-danger btn-block mt8" :disabled="deleting || saving" @click="removeKey">
             <Trash2 :size="16" />删除 Key
           </button>
         </div>

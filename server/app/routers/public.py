@@ -26,7 +26,8 @@ def public_config(request: Request, db=Depends(get_db)):
         'site_name': config_get(db, 'site_name', '研时'),
         'exam_date': config_get(db, 'exam_date', '2027-12-25'),
         'exam_year': config_get(db, 'exam_year', 2028),
-        'registration_open': config_get(db, 'registration_open', False),
+        'registration_open': not request.app.state.settings.auth_password_only and config_get(db, 'registration_open', False),
+        'auth_password_only': request.app.state.settings.auth_password_only,
         'enabled_auth_channels': request.app.state.settings.enabled_auth_channels,
         'features': request.app.state.settings.enabled_features,
     })

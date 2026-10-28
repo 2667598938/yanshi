@@ -13,7 +13,7 @@ let wrapper
 beforeEach(() => {
   vi.resetAllMocks()
   state.route.query = { redirect: '/rooms/1' }
-  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email'], registration_open: false })
+  publicApi.config.mockResolvedValue({ auth_password_only: false, enabled_auth_channels: ['email'], registration_open: false })
   publicApi.legal.mockResolvedValue({ terms: '用户协议内容', privacy: '隐私政策内容', disclaimer: '免责声明内容' })
 })
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
@@ -26,11 +26,41 @@ it('像素插画加载失败可降级，仍能正常输入并登录', async () =
   await wrapper.get('.pixel-scene img').trigger('error')
   expect(wrapper.find('.pixel-scene img').exists()).toBe(false)
   expect(wrapper.get('.pixel-scene-fallback').text()).toContain('慢慢进步')
+  expect(wrapper.find('.pixel-mobile-scene img').exists()).toBe(true)
   await click('账号密码')
   await wrapper.get('#auth-email').setValue('user@example.com')
   await wrapper.get('#auth-password').setValue('Password2026')
   await submit()
   expect(state.auth.login).toHaveBeenCalledExactlyOnceWith('user@example.com', 'Password2026')
+})
+
+it('内测只显示密码登录，忽略注册入口、第三方渠道和OAuth票据', async () => {
+  state.route.query = { redirect: '/ai', mode: 'register', oauth_ticket: 'old-ticket' }
+  publicApi.config.mockResolvedValue({ auth_password_only: true, registration_open: true, enabled_auth_channels: ['email', 'phone', 'qq'] })
+  await render()
+  expect(wrapper.find('.mode-switch').exists()).toBe(false)
+  expect(wrapper.find('.tabs').exists()).toBe(false)
+  expect(wrapper.findAll('.tp-btn')).toHaveLength(0)
+  expect(wrapper.find('#auth-email-code').exists()).toBe(false)
+  expect(state.auth.exchangeOAuth).not.toHaveBeenCalled()
+  await wrapper.get('#auth-email').setValue('admin@example.com')
+  await wrapper.get('#auth-password').setValue('Password2026')
+  await submit()
+  expect(state.auth.login).toHaveBeenCalledExactlyOnceWith('admin@example.com', 'Password2026')
+  expect(state.replace).toHaveBeenCalledWith('/ai')
+})
+
+it('配置读取失败仍可密码登录，加载提示结束且能找回密码', async () => {
+  publicApi.config.mockRejectedValueOnce(new Error('offline'))
+  await render()
+  expect(wrapper.text()).not.toContain('正在确认登录方式')
+  expect(wrapper.find('.mode-switch').exists()).toBe(false)
+  expect(wrapper.find('#auth-password').exists()).toBe(true)
+  await click('忘记密码？')
+  expect(wrapper.find('#auth-email-code').exists()).toBe(true)
+  await click('返回邮箱登录')
+  expect(wrapper.find('#auth-password').exists()).toBe(true)
+  expect(wrapper.find('#auth-email-code').exists()).toBe(false)
 })
 
 it('未开放的第三方渠道不显示占位按钮，关闭注册时不承诺自动创建账号', async () => {
@@ -64,7 +94,7 @@ it('验证码登录必须手动同意协议，确认后传给原账号接口', a
   expect(state.auth.emailLogin).toHaveBeenCalledExactlyOnceWith({ email: 'user@example.com', code: '123456', accepted_terms: true })
 })
 it('注册校验确认密码，保留昵称、邀请码与邮箱验证参数', async () => {
-  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email'], registration_open: true })
+  publicApi.config.mockResolvedValue({ auth_password_only: false, enabled_auth_channels: ['email'], registration_open: true })
   await render(); await click('注册')
   await wrapper.get('#auth-email').setValue('new@example.com'); await wrapper.get('#auth-email-code').setValue('123456')
   await wrapper.get('#auth-nickname').setValue('新研友'); await wrapper.get('#auth-invite').setValue('invite001')
@@ -88,7 +118,7 @@ it('找回密码的两次输入不一致时禁止请求，相同时重置并返�
   expect(wrapper.get('[role="status"]').text()).toContain('密码已重置')
 })
 it('手机号入口有独立协议、成功与失败提示，不依赖先去邮箱页勾选', async () => {
-  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email', 'phone'] })
+  publicApi.config.mockResolvedValue({ auth_password_only: false, enabled_auth_channels: ['email', 'phone'] })
   await render(); await click('手机号')
   await wrapper.get('#auth-phone').setValue('13800138000'); await wrapper.get('#auth-phone-code').setValue('123456')
   await submit()
@@ -124,7 +154,7 @@ it('关闭注册时，地址栏mode=register也不出现注册表单或邀请码
 it('公共配置失败时不开放注册，重试成功后才显示真实入口', async () => {
   publicApi.config.mockRejectedValueOnce(new Error('offline'))
   await render(); expect(wrapper.find('.tabs').exists()).toBe(false)
-  publicApi.config.mockResolvedValueOnce({ enabled_auth_channels: ['email'], registration_open: true })
+  publicApi.config.mockResolvedValueOnce({ auth_password_only: false, enabled_auth_channels: ['email'], registration_open: true })
   await click('重试')
   expect(wrapper.find('.tabs').exists()).toBe(true)
   await click('注册'); expect(wrapper.find('#auth-nickname').exists()).toBe(true)
@@ -135,7 +165,7 @@ it('协议使用可键盘操作的按钮，并实际打开对应条款', async (
   await click('关闭'); expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
 })
 it('切到密码登录后仍能同意已开放第三方渠道所需的协议', async () => {
-  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email', 'qq'] })
+  publicApi.config.mockResolvedValue({ auth_password_only: false, enabled_auth_channels: ['email', 'qq'] })
   authApi.oauthAuthorize.mockResolvedValue({})
   await render(); await click('账号密码'); await click('QQ')
   expect(authApi.oauthAuthorize).not.toHaveBeenCalled()
@@ -144,7 +174,7 @@ it('切到密码登录后仍能同意已开放第三方渠道所需的协议', a
   expect(authApi.oauthAuthorize).toHaveBeenCalledExactlyOnceWith('qq', true)
 })
 it('登录进行中不能重复提交或切换注册', async () => {
-  publicApi.config.mockResolvedValue({ enabled_auth_channels: ['email'], registration_open: true })
+  publicApi.config.mockResolvedValue({ auth_password_only: false, enabled_auth_channels: ['email'], registration_open: true })
   let resolve
   state.auth.login.mockImplementationOnce(() => new Promise(done => { resolve = done }))
   await render(); await click('账号密码')

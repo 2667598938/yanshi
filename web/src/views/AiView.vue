@@ -374,11 +374,12 @@ async function send() {
       if (!attachments.value.length) attachments.value = selected
     }
     if (completed && alive && activeAccountId() === accountAtSend) {
-      await db.kv.delete('ai:draft')
+      // 生成期间可以编辑下一问，完成当前回答不能把下一问的草稿一起删掉。
+      if (!input.value.trim() && !attachments.value.length) await db.kv.delete('ai:draft')
       historyFetched.value = false
       loadDesktopHistory()
     }
-    scrollBottom()
+    if (atBottom.value) scrollBottom()
   }
 }
 

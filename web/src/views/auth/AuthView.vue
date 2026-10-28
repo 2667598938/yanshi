@@ -14,10 +14,13 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const pixelArt = '/art/pixel-study-room.webp'
-const artUnavailable = ref(false)
+const desktopArtUnavailable = ref(false)
+const mobileArtUnavailable = ref(false)
 
 const mode = ref(route.query.mode === 'forgot' ? 'forgot' : 'login')
-const loginMode = ref('code') // code | password
+const passwordOnly = ref(true) // 配置未到达或读取失败时，默认只开放密码登录。
+const configLoading = ref(true)
+const loginMode = ref('password') // code | password
 const loading = ref(false)
 const error = ref('')
 const info = ref('')
@@ -45,7 +48,7 @@ const thirdProviders = [
   { id: 'qq', label: 'QQ', color: '#12B7F5' },
   { id: 'phone', label: '手机号', color: '#4f46e5' },
 ]
-const availableProviders = computed(() => thirdProviders.filter(provider => hasChannel(provider.id)))
+const availableProviders = computed(() => passwordOnly.value ? [] : thirdProviders.filter(provider => hasChannel(provider.id)))
 const features = [
   { icon: Timer, title: '任务与专注' },
   { icon: NotebookPen, title: '错题与复习' },
@@ -58,6 +61,7 @@ function hasChannel(id) {
 }
 
 async function finishOAuth(ticket) {
+  if (passwordOnly.value) { error.value = '内测期间仅支持账号密码登录'; return }
   try {
     await auth.exchangeOAuth(ticket)
     await initSyncForUser()
@@ -71,7 +75,7 @@ async function thirdParty(id) {
   if (loading.value) return
   error.value = ''
   info.value = ''
-  if (!hasChannel(id)) {
+  if (passwordOnly.value || !hasChannel(id)) {
     const name = thirdProviders.find((p) => p.id === id)?.label || '该方式'
     error.value = `${name}登录暂未开放`
     return
@@ -238,7 +242,7 @@ function switchMode(m) {
   error.value = ''
   info.value = ''
   passwordVisible.value = false
-  if (m === 'login') loginMode.value = 'code'
+  if (m === 'login') loginMode.value = passwordOnly.value ? 'password' : 'code'
 }
 
 const isCodeLogin = computed(() => mode.value === 'login' && loginMode.value === 'code')
@@ -272,16 +276,21 @@ async function openLegal(tab) {
 }
 
 async function loadPublicConfig() {
+  configLoading.value = true
   configError.value = false
   try {
     const cfg = await publicApi.config()
     if (!alive) return
+    passwordOnly.value = cfg.auth_password_only !== false
+    loginMode.value = passwordOnly.value ? 'password' : 'code'
     if (Array.isArray(cfg.enabled_auth_channels)) channels.value = cfg.enabled_auth_channels
-    registrationOpen.value = cfg.registration_open === true
+    registrationOpen.value = !passwordOnly.value && cfg.registration_open === true
     if (registrationOpen.value && route.query.mode === 'register' && mode.value === 'login') mode.value = 'register'
     if (!registrationOpen.value && mode.value === 'register') switchMode('login')
   } catch {
-    if (alive) { configError.value = true; registrationOpen.value = null }
+    if (alive) { configError.value = true; registrationOpen.value = null; passwordOnly.value = true; loginMode.value = 'password' }
+  } finally {
+    if (alive) configLoading.value = false
   }
 }
 onMounted(async () => {
@@ -308,7 +317,7 @@ onMounted(async () => {
           <p>收拾好书桌，和 AI、研友一起，<br />向理想再靠近一点点。</p>
         </div>
         <figure class="pixel-scene">
-          <img v-if="!artUnavailable" :src="pixelArt" width="1448" height="1086" alt="" fetchpriority="high" @error="artUnavailable = true" />
+          <img v-if="!desktopArtUnavailable" :src="pixelArt" width="1448" height="1086" alt="" fetchpriority="high" @error="desktopArtUnavailable = true" />
           <div v-else class="pixel-scene-fallback" aria-hidden="true"><PixelBookMark /><span>今天，也一起慢慢进步。</span></div>
           <figcaption><span aria-hidden="true">✦</span> 一页一题，慢慢靠近理想。</figcaption>
         </figure>
@@ -317,19 +326,20 @@ onMounted(async () => {
 
       <section class="auth-form-area" aria-labelledby="auth-heading">
         <div class="mobile-brand"><span class="brand-logo"><PixelBookMark /></span><span>研时<small>你的像素学习小屋</small></span></div>
-        <div class="pixel-mobile-scene" aria-hidden="true"><img v-if="!artUnavailable" :src="pixelArt" width="1448" height="1086" alt="" @error="artUnavailable = true" /><span v-else>今天，也一起慢慢进步。</span></div>
+        <div class="pixel-mobile-scene" aria-hidden="true"><img v-if="!mobileArtUnavailable" :src="pixelArt" width="1448" height="1086" alt="" @error="mobileArtUnavailable = true" /><span v-else>今天，也一起慢慢进步。</span></div>
         <div class="auth-card">
           <header class="form-heading">
             <div class="form-eyebrow"><span aria-hidden="true">✦</span> 一起开启今天的学习</div>
             <h1 id="auth-heading">{{ heading }}</h1>
             <p>{{ description }}</p>
           </header>
+          <p v-if="configLoading" class="admission-note" role="status">正在确认登录方式…</p>
           <div v-if="registrationOpen === true" class="tabs" aria-label="账号入口">
             <button type="button" :disabled="loading" :aria-pressed="mode === 'login' || mode === 'forgot' || mode === 'phone'" :class="{ active: mode !== 'register' }" @click="switchMode('login')">登录</button>
             <button type="button" :disabled="loading" :aria-pressed="mode === 'register'" :class="{ active: mode === 'register' }" @click="switchMode('register')">注册</button>
           </div>
 
-          <div v-if="mode === 'login'" class="mode-switch" aria-label="登录方式">
+          <div v-if="mode === 'login' && !passwordOnly" class="mode-switch" aria-label="登录方式">
             <button type="button" :disabled="loading" :aria-pressed="loginMode === 'code'" :class="{ on: loginMode === 'code' }" @click="loginMode = 'code'; error = ''; info = ''">邮箱验证码</button>
             <button type="button" :disabled="loading" :aria-pressed="loginMode === 'password'" :class="{ on: loginMode === 'password' }" @click="loginMode = 'password'; error = ''; info = ''">账号密码</button>
           </div>
@@ -369,6 +379,8 @@ onMounted(async () => {
 
           <p v-if="registrationOpen === false" class="admission-note">注册暂未开放，新账号请联系管理员创建。</p>
           <p v-else-if="configError" class="admission-note">暂时无法确认注册状态。已有账号仍可登录。<button type="button" class="text-button" @click="loadPublicConfig">重试</button></p>
+          <p v-if="passwordOnly" class="admission-note">内测期间仅支持账号密码登录。</p>
+          <div v-if="passwordOnly" class="agree"><button type="button" class="legal-link" @click="openLegal('terms')">用户协议</button><button type="button" class="legal-link" @click="openLegal('privacy')">隐私政策</button></div>
 
           <div v-if="availableProviders.length && mode !== 'forgot'" class="third-party">
             <div class="tp-divider"><span>其他登录方式</span></div>

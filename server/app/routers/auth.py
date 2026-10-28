@@ -61,12 +61,16 @@ def verify_code(store, key: str, code: str) -> bool:
 
 @router.post("/auth/email-code")
 def email_code(body: EmailCodeInput, request: Request):
+    if request.app.state.settings.auth_password_only and body.scene != "reset":
+        raise ApiError(403, 40301, "内测期间仅支持账号密码登录，请联系管理员创建账号")
     store = request.app.state.transient
     settings = request.app.state.settings
     db = request.app.state.session_factory()
     try:
         email = body.email
-        ensure_email_domain(request, email)
+        # 注册域名限制不应阻止管理员已创建的账号找回密码。
+        if body.scene != "reset":
+            ensure_email_domain(request, email)
         store.limit("email-minute:" + digest(email), 1, 60)
         store.limit("email-five-minute:" + digest(email), 3, 300)
         store.limit("email-day:" + digest(email), 10, 86400)
@@ -106,6 +110,8 @@ def email_code(body: EmailCodeInput, request: Request):
 def register(
     body: RegisterInput, request: Request, response: Response, db=Depends(get_db)
 ):
+    if request.app.state.settings.auth_password_only:
+        raise ApiError(403, 40301, "内测期间请联系管理员创建账号")
     if not config_get(db, "registration_open", False):
         raise ApiError(403, 40301, "注册已关闭，请联系管理员创建账号")
     if not body.accepted_terms:
@@ -189,6 +195,8 @@ def register(
 def email_login(
     body: EmailLoginInput, request: Request, response: Response, db=Depends(get_db)
 ):
+    if request.app.state.settings.auth_password_only:
+        raise ApiError(403, 40301, "内测期间仅支持账号密码登录")
     store = request.app.state.transient
     store.limit("email-login-ip:" + request.client.host, 30, 3600)
     store.limit("email-login:" + digest(body.email), 10, 900)
@@ -485,7 +493,6 @@ def reset_password(
     body: ResetVerifyInput, request: Request, response: Response, db=Depends(get_db)
 ):
     store = request.app.state.transient
-    ensure_email_domain(request, body.email)
     if not verify_code(store, "reset-code:" + digest(body.email), body.code):
         raise ApiError(400, 40001, "验证码错误或过期")
     user = db.scalar(

@@ -275,6 +275,28 @@ it('空态起步问题点一下填入输入框',async()=>{
  expect(wrapper.get('.composer input').element.value).toBe(text)
 })
 
+it('生成结束不抢历史滚动位置，也不删除用户已经输入的下一条草稿', async () => {
+  let callback, finish
+  aiApi.chatStream.mockImplementationOnce((_body, cb) => {
+    callback = cb
+    return new Promise(resolve => { finish = resolve })
+  })
+  await render()
+  await wrapper.get('.composer input').setValue('第一题')
+  await wrapper.get('.send-btn').trigger('click'); await flushPromises()
+  const scroll = wrapper.get('.chat-scroll')
+  Object.defineProperties(scroll.element, { scrollHeight: { configurable: true, value: 1500 }, clientHeight: { configurable: true, value: 400 } })
+  scroll.element.scrollTop = 100
+  await scroll.trigger('scroll')
+  await wrapper.get('.composer input').setValue('我正在写下一题')
+  await db.kv.put({ key: 'ai:draft', value: { content: '我正在写下一题', images: [] } })
+  callback({ type: 'done', message_id: 125 })
+  finish(); await flushPromises()
+  expect(scroll.element.scrollTop).toBe(100)
+  expect((await db.kv.get('ai:draft'))?.value.content).toBe('我正在写下一题')
+  expect(wrapper.get('.composer input').element.value).toBe('我正在写下一题')
+})
+
 it('打开历史对话立即显示加载骨架，返回后渲染列表',async()=>{
  let resolve
  aiApi.conversations.mockImplementation(()=>new Promise(r=>{resolve=r}))

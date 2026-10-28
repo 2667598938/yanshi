@@ -15,6 +15,7 @@ def client(tmp_path):
     settings = Settings(
         database_url='sqlite:///' + (tmp_path / 'test.sqlite').as_posix(),
         environment='test',
+        auth_password_only=False,  # 旧渠道回归显式开放；默认内测策略有独立边界测试。
         mail_console=True,
         mail_directory=tmp_path / 'mail',
         image_directory=tmp_path / 'uploads',
