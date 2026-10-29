@@ -67,6 +67,16 @@ def test_device_presence_location_and_private_room(client, friend):
             ).status
             == "offline"
         )
+    public = client.post(
+        "/api/v1/rooms",
+        headers=friend,
+        json={"name": "公开学习房", "visibility": "public", "accept_sharing": True},
+    ).json()["data"]
+    beat(client, friend, "desktop", "focusing", public["id"])
+    row = member(client, ah, uid)
+    assert row["roomId"] == public["id"] and row["roomName"] == "公开学习房"
+    # A friend's public location does not grant room membership or reveal peers.
+    assert client.get(f"/api/v1/rooms/{public['id']}", headers=ah).status_code == 403
     beat(client, friend, "desktop")
     assert (
         member(client, ah, uid)["roomName"] is None

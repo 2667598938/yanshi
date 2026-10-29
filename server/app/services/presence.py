@@ -199,7 +199,7 @@ def member_states(db, viewer, owners):
         room = rooms.get(location.room_id) if location else None
         rid, name = None, None
         if room:
-            if room.id in valid[viewer.id]:
+            if room.visibility == "public" or room.id in valid[viewer.id]:
                 rid, name = room.id, room.name
             else:
                 name = "私密自习室" if room.visibility == "private" else "其他自习室"

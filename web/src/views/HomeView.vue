@@ -213,7 +213,7 @@ const encourage = computed(() => {
         <router-link to="/rooms" class="quick-card">
           <div class="quick-ic q2"><Users :size="20" /></div>
           <div class="quick-txt">
-            <div class="quick-name">四人自习室</div>
+            <div class="quick-name">好友自习室</div>
             <div class="quick-sub">并肩打卡监督</div>
           </div>
           <ChevronRight :size="18" class="quick-arrow" />

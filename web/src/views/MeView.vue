@@ -612,7 +612,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="version">研时 · 四人学习小组</div>
+      <div class="version">研时 · 让学习更有方向</div>
     </div>
 
     <!-- 弹层 -->
