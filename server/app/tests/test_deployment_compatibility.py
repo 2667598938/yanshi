@@ -48,7 +48,7 @@ def test_legacy_local_image_survives_qiniu_switch_and_reclaim_uses_actual_backen
     assert not local_path.exists()
 
 
-def test_qiniu_attachment_remains_cloud_backed_if_default_changes(client, monkeypatch):
+def test_qiniu_attachment_remains_cloud_backed_if_default_changes(client, monkeypatch, tmp_path):
     token = login(client, **ADMIN)
     headers = ah(token['access_token'])
     key = upload(client, '/api/v1/attachments/image', headers, biz='mistake').json()['data']['key']
@@ -61,3 +61,7 @@ def test_qiniu_attachment_remains_cloud_backed_if_default_changes(client, monkey
     response = client.get('/api/v1/attachments/view', headers=headers, params={'key': key})
     assert response.content == b'cloud-fixture'
     assert calls == [('qiniu', key)]
+    from app.services.backup import create_backup, verify_and_restore
+    manifest = verify_and_restore(create_backup(client.app.state.settings, tmp_path / 'backup'))
+    assert not manifest['objects_included']  # Local default must not claim cloud bytes were backed up.
+    assert not manifest['remote_objects_included']

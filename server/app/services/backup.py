@@ -29,6 +29,11 @@ def create_backup(settings, output):
         snapshot = Path(scratch) / 'database.sqlite'
         with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True)) as src, closing(sqlite3.connect(snapshot)) as dst:
             src.backup(dst)
+        with closing(sqlite3.connect(snapshot.as_uri() + '?mode=ro', uri=True)) as db:
+            has_attachments = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='attachments'").fetchone()
+            has_cloud_objects = bool(has_attachments and db.execute(
+                "SELECT 1 FROM attachments WHERE storage_backend='qiniu' AND deleted_at IS NULL LIMIT 1"
+            ).fetchone())
         files = {'database.sqlite': snapshot}
         uploads = Path(settings.image_directory).resolve()
         # Legacy local attachments can coexist with new Qiniu uploads after migration.
@@ -37,7 +42,8 @@ def create_backup(settings, output):
                 if path.is_file() and not path.is_symlink():
                     files['uploads/' + path.relative_to(uploads).as_posix()] = path
         manifest = {'format': 1, 'created_at': datetime.now(timezone.utc).isoformat(),
-            'storage': settings.image_storage, 'objects_included': settings.image_storage == 'local',
+            'storage': settings.image_storage, 'objects_included': settings.image_storage == 'local' and not has_cloud_objects,
+            'remote_objects_included': False,
             'local_objects_included': len(files) > 1,
             'files': {name: {'sha256': sha256(path), 'bytes': path.stat().st_size} for name, path in files.items()}}
         try:
