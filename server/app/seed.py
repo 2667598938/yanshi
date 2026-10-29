@@ -87,8 +87,12 @@ def seed(db, settings: Settings, echo=print):
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--quiet', action='store_true', help='不在自动发布日志打印初始密码')
+    args = parser.parse_args()
     settings = Settings()
     _, sessions = make_database(settings.database_url)
     with sessions() as db:
-        seed(db, settings)
+        seed(db, settings, echo=(lambda *a: None) if args.quiet else print)
     print('系统配置 / 官方节点 / 管理员已就绪；未生成任何虚构学习数据。')

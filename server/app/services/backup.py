@@ -31,12 +31,14 @@ def create_backup(settings, output):
             src.backup(dst)
         files = {'database.sqlite': snapshot}
         uploads = Path(settings.image_directory).resolve()
-        if settings.image_storage == 'local' and uploads.exists():
+        # Legacy local attachments can coexist with new Qiniu uploads after migration.
+        if uploads.exists():
             for path in uploads.rglob('*'):
                 if path.is_file() and not path.is_symlink():
                     files['uploads/' + path.relative_to(uploads).as_posix()] = path
         manifest = {'format': 1, 'created_at': datetime.now(timezone.utc).isoformat(),
             'storage': settings.image_storage, 'objects_included': settings.image_storage == 'local',
+            'local_objects_included': len(files) > 1,
             'files': {name: {'sha256': sha256(path), 'bytes': path.stat().st_size} for name, path in files.items()}}
         try:
             with zipfile.ZipFile(destination, 'x', zipfile.ZIP_DEFLATED) as archive:

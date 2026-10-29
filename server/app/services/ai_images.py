@@ -10,7 +10,6 @@ def user_content(db, settings, user_id, text, image_keys, *, strict=True):
     if not image_keys: return text
     if len(image_keys) > 4: raise ApiError(400, 40001, '每次最多4张图片')
     parts = [{'type': 'text', 'text': text}]
-    storage = ImageStorage(settings)
     for key in dict.fromkeys(image_keys):
         row = db.scalar(select(Attachment).where(Attachment.object_key == key,
             Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None),
@@ -18,7 +17,8 @@ def user_content(db, settings, user_id, text, image_keys, *, strict=True):
         if not row:
             if strict: raise ApiError(400, 40001, '图片不存在、已删除或不属于本人')
             continue
-        if settings.image_storage == 'qiniu': url = storage.presigned_url(key)
+        storage = ImageStorage.for_attachment(settings, row)
+        if row.storage_backend == 'qiniu': url = storage.presigned_url(key)
         else:
             path = storage.path(key)
             if not path.is_file():

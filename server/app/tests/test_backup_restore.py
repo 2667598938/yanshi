@@ -19,7 +19,8 @@ def test_backup_integrity_restore_and_no_overwrite(client, tmp_path):
     cloud_backup = create_backup(settings, tmp_path / 'backups')
     cloud_manifest = verify_and_restore(cloud_backup)
     assert not cloud_manifest['objects_included']
-    assert set(cloud_manifest['files']) == {'database.sqlite'}
+    assert cloud_manifest['local_objects_included']
+    assert set(cloud_manifest['files']) == {'database.sqlite', 'uploads/sample.jpg'}
 
 
 def test_restore_rejects_tampering_and_traversal_without_partial_output(client, tmp_path):

@@ -15,6 +15,12 @@ class ImageStorage:
     def __init__(self, settings):
         self.s = settings
 
+    @classmethod
+    def for_attachment(cls, settings, row):
+        if row.storage_backend not in {'local', 'qiniu'}:
+            raise ApiError(503, 50301, '附件存储类型不可用')
+        return cls(settings.model_copy(update={'image_storage': row.storage_backend}))
+
     def path(self, key):
         if not KEY_RE.fullmatch(key):
             raise ApiError(400, 40001, '图片标识无效')

@@ -21,9 +21,9 @@
 - **资料库**：VIP 发布、非 VIP 链接脱敏、点赞与收藏
 - **社区**：动态与二级评论、励志区投稿审核、梦校墙
 - **AI 助教**：考研答疑 / 作文批改 / 计划 / 复盘；VIP或审批授权可用BYOK；图片输入、SSE、日预算、上下文设置、模型目录缓存、本人学习摘要、预览确认后批量导入任务；明确排除DOM/通用工具
-- **账号与会话**：邮箱验证码登录（5 分钟有效、5 次输错作废）；access token 仅驻内存，refresh token 只放 httpOnly Cookie；每个账号使用独立本地库，换号不串数据
+- **账号与会话**：当前内测仅账号密码登录，新账号由管理员创建；保留邮件找回密码。access token 仅驻内存，refresh token 只放 httpOnly Cookie；每个账号使用独立本地库，换号不串数据
 - **账号与后台**：忘记密码、站内消息、VIP / 邀请码、功能申请、内容审核、审计日志
-- **预留开关**：微信 / QQ / 手机号登录代码已实现，通过 `AUTH_CHANNELS` 控制，默认仅邮箱
+- **预留开关**：验证码、微信 / QQ / 手机号登录均受 `AUTH_PASSWORD_ONLY` 总开关控制；内测必须保持 true，不因 `AUTH_CHANNELS=email` 启用验证码登录
 - **开放与运维**：首次初始化默认关闭注册、账号上限4人；房间类型由后端开关控制；手机号绑定、持久邮件重试、迁移就绪检查、校验备份与恢复到新目录
 
 当前尚有部分实现、未实现和缺陷，不能按全需求完成交付。有效规则见[当前规则](docs/design-2026-10-25/PRD-当前规则.md)；功能范围、统一测试步骤及真实服务待验项见[统一验收清单](docs/acceptance-checklist.md)和[开发进度](docs/implementation-status.md)。视频小房间/云端自习室默认关闭，按PRD F-26不包含视频推流。
@@ -68,7 +68,7 @@ yanshi/
 cd server
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 Copy-Item .env.example .env
 python -m alembic upgrade head
 python -m app.seed
@@ -100,9 +100,9 @@ npm run dev
 | 变量 | 说明 |
 |---|---|
 | `ENVIRONMENT` | `development` / `test` / `production` |
-| `DATABASE_URL` | 开发默认 SQLite；生产可换 MySQL 8 |
+| `DATABASE_URL` | 当前已验收 SQLite 单机单 worker；MySQL 需另配驱动、迁移与并发验收 |
 | `JWT_SECRET` | 生产必须填写随机长串；开发留空自动生成 `data/jwt.key` |
-| `AUTH_CHANNELS` | 登录渠道开关，默认 `email`；可加 `wechat,qq,phone` |
+| `AUTH_PASSWORD_ONLY` / `AUTH_CHANNELS` | 内测仅密码登录；保持总开关 true，email 表示邮箱账号，不开放验证码登录 |
 | `AUTH_EMAIL_DOMAINS` | 邮箱验证码允许的域名，默认 `qq.com`；留空表示不限制 |
 | `REGISTRATION_OPEN` / `ACCOUNT_MAX_USERS` | 首次初始化注册开关与独立账号名额；已有库注册开关由后台管理 |
 | `FEATURES` | 后端功能和房间类型开关，视频/云端类型默认关闭 |
@@ -141,8 +141,8 @@ npm run build
 - 后端测试使用临时 SQLite 与 mock AI，不会访问真实网络。
 - 前端回归测试使用 Vitest + fake-indexeddb，覆盖实际 Dexie 库、Pinia store、账号切换、图片补传与备份序列化。
 - CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）在 push / PR 到 `main`、`dev` 时执行：后端迁移可执行性 + 全量 pytest；前端 `npm ci` + `npm test` + `npm run build`。
-- 第 0 期修复范围、数据兼容规则与人工验收步骤见 [第 0 期修复说明](docs/phase0-acceptance.md)。
-- 历史代码基线自动回归：后端130项、前端82项；含图片权限、AI本人摘要/确认导入、共享验证码、原子兑换、并发座位、离线队列与恢复校验。真实SMTP/短信/OAuth/七牛/AI供应商另按统一清单验收。
+- 较早修复的数据兼容与人工验收记录见 [历史修复说明](docs/phase0-acceptance.md)，当前规则以本文链接的统一验收清单为准。
+- 回归数量与最终提交检查结果以 GitHub CI 为准；CI包含依赖安全审计、Linux容器构建、迁移、反向代理、Secure Cookie与备份恢复冒烟。真实SMTP/七牛/AI供应商另按统一清单验收。
 
 ## 分支与提交规范
 
@@ -160,7 +160,9 @@ git push -u origin feat/room-invite
 
 ## 部署
 
-部署参考见 `server/deploy/`（systemd、Nginx、步骤说明）。要点：
+Azure Ubuntu 24.04 + 已有 Nginx/Certbot 的正式入口见 [Compose部署手册](deploy/azure/README.md)。宿主Nginx继续管理80/443，转发至仅回环监听的18080；应用、持久卷、备份和镜像digest由Compose管理。发布工作流默认关闭自动部署，首次需完成服务器与第三方服务验收。
+
+不使用容器时，可另选 `server/deploy/` 的 systemd 方案。两套方案不要同时写同一数据库。通用要点：
 
 1. 生产 `.env` 使用独立数据库与强随机 `JWT_SECRET`，不要提交
 2. 前端 `npm run build` 后将 `web/dist` 交给 Nginx 同源托管
@@ -170,7 +172,7 @@ git push -u origin feat/room-invite
 ## 常见问题
 
 - **端口被占用**：前端固定 `27341`（`strictPort`），后端默认 `8000`；先停止旧进程再启动。
-- **时间显示偏差**：后端统一存 UTC，前端通过 `web/src/utils/time.js` 转本地时区，不要直接截取字符串。
+- **时间显示偏差**：后端统一存 UTC，学习统计归日统一按 UTC+8；不要直接截取UTC字符串或用设备时区改变业务日期。
 - **管理员密码忘了**：`ADMIN_PASSWORD` 只在首次 seed 生效；可在数据库重置密码哈希，或用后台其他管理员账号重置。
 - **离线数据不同步**：确认已登录；同步队列在 IndexedDB 的 `outbox` 表，可在「我的 → 立即同步」手动触发。
 
@@ -179,5 +181,5 @@ git push -u origin feat/room-invite
 - 当前架构基线（v4.0，2026-10-25）：[server/docs/ARCHITECTURE.md](server/docs/ARCHITECTURE.md)
 - 产品 / 数据 / 同步设计原文：[docs/design-2026-10-25/](docs/design-2026-10-25/)
 - 历史四人版架构（仅存档）：`server/docs/ARCHITECTURE-v3-4person-HISTORICAL.md`
-- 部署步骤：`server/deploy/部署步骤.md`
+- 当前Azure部署：[deploy/azure/README.md](deploy/azure/README.md)；systemd备选：`server/deploy/部署步骤.md`
 - 前端说明：[web/README.md](web/README.md)

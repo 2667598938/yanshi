@@ -79,8 +79,8 @@ def view(key: str, request: Request, user: User = Depends(get_current_user), db=
     if not row or not logic.can_view(row, user, db):
         raise ApiError(404, 40401, '图片不存在或无权查看')
     settings = request.app.state.settings
-    storage = ImageStorage(settings)
-    if settings.image_storage != 'qiniu':
+    storage = ImageStorage.for_attachment(settings, row)
+    if row.storage_backend == 'local':
         path = storage.path(key)
         if not path.is_file():
             raise ApiError(404, 40401, '图片文件不存在')
@@ -102,12 +102,12 @@ def storage(request: Request, user: User = Depends(get_current_user),
 def reclaim(request: Request, user: User = Depends(get_current_user),
             db=Depends(get_db)):
     rows = logic.orphan_attachments(db, user.id)
-    storage = ImageStorage(request.app.state.settings)
     freed = 0
     deleted = []
     failures = []
     for row in rows:
         try:
+            storage = ImageStorage.for_attachment(request.app.state.settings, row)
             storage.delete(row.object_key)
         except ApiError:
             failures.append(row.object_key)
