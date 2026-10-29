@@ -53,10 +53,11 @@ export const roomApi = {
   putGoal: (body, id) => http.put(id ? `/rooms/${id}/goal` : '/room/goal', body),
   list: () => http.get('/rooms'),
   create: (body) => http.post('/rooms', body),
-  join: (id, code = '') => http.post(`/rooms/${id}/join`, { code }),
-  joinByCode: (code) => http.post('/rooms/join-by-code', { code }),
+  join: (id, code = '', acceptSharing = false) => http.post(`/rooms/${id}/join`, { code, accept_sharing: acceptSharing }),
+  joinByCode: (code, acceptSharing = false) => http.post('/rooms/join-by-code', { code, accept_sharing: acceptSharing }),
+  confirmSharing: (id) => http.post(`/rooms/${id}/sharing/confirm`, { accept_sharing: true }),
   preview: (id) => http.get(`/rooms/${id}/preview`),
-  apply: (id, message = '') => http.post(`/rooms/${id}/apply`, { message }),
+  apply: (id, message = '', acceptSharing = false) => http.post(`/rooms/${id}/apply`, { message, accept_sharing: acceptSharing }),
   applies: (id, status = 'pending') => http.get(`/rooms/${id}/applies`, { query: { status } }),
   reviewApply: (id, applyId, approve) =>
     http.post(`/rooms/${id}/applies/${applyId}/review`, { approve }),
@@ -87,9 +88,9 @@ export const attachmentApi = {
 
 // ------------------------------------------------------------ 院校
 export const groupApi = {
-  members: () => http.get('/group/members'),
-  changes: (id, since) => http.get(`/group/members/${id}/learning/changes`, { query: { since } }),
-  learning: (id, after = '') => http.get(`/group/members/${id}/learning`, { query: { after } }),
+  members: (roomId) => http.get('/group/members', { query: roomId ? { room_id: roomId } : {} }),
+  changes: (id, since, roomId) => http.get(`/group/members/${id}/learning/changes`, { query: { since, ...(roomId ? { room_id: roomId } : {}) } }),
+  learning: (id, after = '', roomId) => http.get(`/group/members/${id}/learning`, { query: { after, ...(roomId ? { room_id: roomId } : {}) } }),
   presence: (body) => http.post('/group/presence', body),
 }
 export const timeNodeApi = { list: () => http.get('/time-nodes') }
@@ -227,15 +228,4 @@ export const timerApi = {
  release:(body)=>http.post('/timer/release',body),
  conflicts:()=>http.get('/timer/conflicts'),
  resolve:(body)=>http.post('/timer/resolve',body),
-}
-
-export const groupAdmissionApi={
- mine:()=>http.get('/group-admission/mine'),
- apply:(body)=>http.post('/group-admission/applications',body),
- withdraw:(id,revision)=>http.post(`/group-admission/applications/${id}/withdraw`,{expected_revision:revision}),
- createInvite:(body)=>http.post('/group-admission/invites',body),
- invites:()=>http.get('/group-admission/invites'),
- revoke:(id)=>http.post(`/group-admission/invites/${id}/revoke`,{}),
- queue:()=>http.get('/group-admission/applications'),
- review:(id,body)=>http.post(`/group-admission/applications/${id}/review`,body),
 }

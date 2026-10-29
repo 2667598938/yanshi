@@ -6,7 +6,7 @@ from ..models import SessionFact, LearningRecord, LearningChange
 from ..schemas.session import normalize_session
 
 
-def display_record(db, uid, record):
+def display_record(db, uid, record, facts=None):
     if not record or record.get("type") != "session":
         return record
     try:
@@ -18,7 +18,11 @@ def display_record(db, uid, record):
             "validation_issue": "历史计时缺少合法起止时间，暂不计入统计",
             "conflict_flag": True,
         }
-    fact = db.get(SessionFact, (uid, record["id"]))
+    fact = (
+        db.get(SessionFact, (uid, record["id"]))
+        if facts is None
+        else facts.get(record["id"])
+    )
     if fact and fact.conflict:
         clean.update(
             conflict_flag=True, conflict_duration_sec=clean["actualSec"], actualSec=0
@@ -102,3 +106,21 @@ def refresh_facts(db, uid, primary_ids=()):
                 )
             )
     db.flush()
+
+
+def display_records(db, uid, records):
+    """One fact lookup per snapshot/change page, rather than per session."""
+    ids = [r["id"] for r in records if r and r.get("type") == "session"]
+    facts = (
+        {
+            f.record_id: f
+            for f in db.scalars(
+                select(SessionFact).where(
+                    SessionFact.user_id == uid, SessionFact.record_id.in_(ids)
+                )
+            ).all()
+        }
+        if ids
+        else {}
+    )
+    return [display_record(db, uid, r, facts) for r in records]

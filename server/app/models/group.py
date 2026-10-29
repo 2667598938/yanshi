@@ -1,3 +1,8 @@
+"""Legacy study-group tables are retained for history only; room membership grants sharing.
+
+TimeNode remains a live, owner-private model.
+"""
+
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
 from ..database import Base
 

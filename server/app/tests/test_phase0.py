@@ -24,7 +24,7 @@ def test_room_writes_require_current_membership(client, visibility):
     room = client.post(
         "/api/v1/rooms",
         headers=owner,
-        json={"name": "权限回归房", "visibility": visibility},
+        json={"accept_sharing": True, "name": "权限回归房", "visibility": visibility},
     ).json()["data"]
     rid = room["id"]
 
@@ -66,7 +66,9 @@ def test_room_writes_require_current_membership(client, visibility):
     # 只有显式加入授予成员身份；被移除后心跳不能自动重新加入。
     assert (
         client.post(
-            f"/api/v1/rooms/{rid}/join", headers=outsider, json={"code": room["code"]}
+            f"/api/v1/rooms/{rid}/join",
+            headers=outsider,
+            json={"accept_sharing": True, "code": room["code"]},
         ).status_code
         == 200
     )
@@ -84,23 +86,26 @@ def test_default_room_writes_cannot_rejoin_after_leaving(client):
     owner = auth(client)
     make_member(client, owner, "leave@test.com", "退出同学")
     member = auth(client, "leave@test.com", "Friend2028")
+    from app.tests.conftest import join_friend_room
+
+    join_friend_room(client, owner, member)
     rid = client.get("/api/v1/room", headers=member).json()["data"]["room"]["id"]
     assert client.post(f"/api/v1/rooms/{rid}/leave", headers=member).status_code == 200
     assert (
         client.post(
             "/api/v1/room/heartbeat", headers=member, json={"status": "online"}
         ).status_code
-        == 403
+        == 404
     )
     assert (
         client.post(
             "/api/v1/room/messages", headers=member, json={"content": "x"}
         ).status_code
-        == 403
+        == 404
     )
     assert (
         client.put("/api/v1/room/goal", headers=member, json={"words": "x"}).status_code
-        == 403
+        == 404
     )
 
 

@@ -3,8 +3,8 @@ import { useAuthStore } from '../stores/auth'
 import { authorizeRoute } from './access'
 
 export const routes = [
-  {path:'/group/admission',component:()=>import('../views/GroupAdmissionView.vue'),meta:{requiresAuth:true,hideTabbar:true}},
-  {path:'/admin/group',component:()=>import('../views/GroupReviewView.vue'),meta:{requiresAuth:true,requiresAdmin:true,hideTabbar:true}},
+  {path:'/group/admission',redirect:'/rooms'},
+  {path:'/admin/group',redirect:'/rooms'},
   { path: '/group', component: () => import('../views/GroupLearningView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
   { path: '/schools/manage', component: () => import('../views/SchoolAdminView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
   { path: '/settings/time-nodes', component: () => import('../views/TimeNodesView.vue'), meta: { requiresAuth: true, hideTabbar: true } },

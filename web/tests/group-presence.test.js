@@ -10,7 +10,7 @@ vi.mock('vue-router',()=>({useRoute:()=>mocks.route,useRouter:()=>({back:vi.fn()
 vi.mock('../src/stores/auth',()=>({useAuthStore:()=>mocks.auth}))
 vi.mock('../src/stores/timer',()=>({useTimerStore:()=>mocks.timer}))
 vi.mock('../src/stores/subjects',()=>({useSubjectsStore:()=>({byId:{math:{name:'数学'}}})}))
-vi.mock('../src/api',()=>({groupApi:{presence:mocks.presence,members:mocks.members}}))
+vi.mock('../src/api',()=>({roomApi:{list:vi.fn().mockResolvedValue([])},groupApi:{presence:mocks.presence,members:mocks.members}}))
 let wrapper
 beforeEach(()=>{
  sessionStorage.clear()

@@ -32,6 +32,9 @@ def friend(client, monkeypatch):
     )
     assert r.status_code == 200, r.text
     owner = h(login(client, "ai1@test.com", "Friend2028")["access_token"])
+    from app.tests.conftest import join_friend_room
+
+    join_friend_room(client, ah, owner)
     assert (
         client.put(
             "/api/v1/ai/key",

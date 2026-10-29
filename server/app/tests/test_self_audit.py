@@ -68,8 +68,9 @@ def test_configured_defaults_reach_admin_created_accounts_and_personal_nodes(cli
 
 def test_public_disclosure_matches_default_sharing_and_ai_summary(client):
     data = client.get('/api/v1/legal').json()['data']
-    assert data['version'] == '2026-10-26'
-    assert '同受邀小组默认只读' in data['privacy']
+    assert data['version'] == '2026-10-29'
+    assert '同一好友房间中已确认共享的成员默认只读' in data['privacy']
+    assert '管理员建号和VIP兑换不自动加入房间' in data['privacy']
     assert '本人学习摘要' in data['privacy']
     assert 'API Key及资料个人备注不参与共享' in data['privacy']
     assert '默认仅本人可见' not in data['terms']

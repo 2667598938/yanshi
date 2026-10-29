@@ -107,10 +107,7 @@ def test_snapshot_pagination_keeps_first_watermark_and_rechecks_acl(client):
         ).status_code
         == 200
     )
-    assert (
-        client.delete(f"/api/v1/admin/group-members/{uid}", headers=h).status_code
-        == 200
-    )
+    assert client.delete(f"/api/v1/rooms/1/members/{uid}", headers=h).status_code == 200
     assert client.get(base + "/changes", headers=h).status_code == 404
 
 

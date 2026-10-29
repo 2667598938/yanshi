@@ -9,6 +9,7 @@ import { useTimerStore } from '../stores/timer'
 import { useAuthStore } from '../stores/auth'
 import { useSchoolsStore } from '../stores/schools'
 import { roomApi } from '../api'
+import { ROOM_SHARING_NOTICE } from '../utils/roomSharing'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
@@ -30,6 +31,7 @@ const roomId = computed(() => (route.params.id ? Number(route.params.id) : null)
 let alive = true
 const room = ref(null)
 const joined = ref(true)
+const joining = ref(false)
 const members = ref([])
 const ranking = ref({ today: [], week: [], all: [] })
 const messages = ref([])
@@ -49,7 +51,7 @@ const showGoal = ref(false)
 const goalDraft = ref({ target_school: '', target_score: '', words: '' })
 const showManage = ref(false)
 const manageForm = ref({ name: '', intro: '', visibility: 'public' })
-const isOwner = computed(() => room.value?.my_role === 'owner' || auth.isAdmin)
+const isOwner = computed(() => room.value?.my_role === 'owner')
 const preview = ref(null)
 const joinCode = ref('')
 const applyDraft = ref('')
@@ -82,7 +84,7 @@ function fmtTime(iso) {
 function presenceText(m) {
   const p = m.presence || {}
   if (p.status === 'private') return { label: '隐私中', color: '#8d7fa3' }
-  if (p.status === 'unshared') return { label: '仅同组可见', color: '#8d7fa3' }
+  if (p.status === 'unshared') return { label: '未确认本房间共享', color: '#8d7fa3' }
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
   if (p.status === 'resting') return { label: '休息中', color: '#8b5cf6' }
   if (p.status === 'away') return { label: '暂离 · 后台', color: '#8d8f96' }
@@ -93,18 +95,17 @@ function presenceText(m) {
   return { label: '在线', color: '#4f46e5' }
 }
 
-// 4 个座位：成员在前，空位补满 capacity
+// Unlimited rooms show current members and one invitation placeholder.
 const seats = computed(() => {
-  const cap = room.value?.capacity || 4
-  const filled = members.value.map((m) => ({ ...m, empty: false }))
-  const empties = Math.max(0, cap - filled.length)
-  return [...filled, ...Array.from({ length: empties }, () => ({ empty: true }))]
+  const filled = members.value.map(m => ({ ...m, empty: false }))
+  const empties = room.value?.capacity > 0 ? Math.max(0, room.value.capacity - filled.length) : 1
+  return [...filled, ...Array.from({ length: Math.min(empties, 8) }, () => ({ empty: true }))]
 })
 
 const todayTotal = computed(() => members.value.reduce((a, m) => a + (m.today_sec || 0), 0))
 const onlineCount = computed(() => room.value?.online_count || 0)
 const isFull = computed(() =>
-  Math.max(room.value?.member_count || 0, members.value.length) >= (room.value?.capacity || 4))
+  room.value?.capacity > 0 && Math.max(room.value?.member_count || 0, members.value.length) >= room.value.capacity)
 
 const rankList = computed(() => {
   const ids = ranking.value[rankTab.value] || []
@@ -216,8 +217,10 @@ function startBeating() {
 }
 
 async function join() {
+  if (joining.value || !confirm(ROOM_SHARING_NOTICE)) return
+  joining.value = true
   try {
-    await roomApi.join(roomId.value, joinCode.value.trim())
+    await roomApi.join(roomId.value, joinCode.value.trim(), true)
     toast('已加入自习室')
     applyDraft.value = ''
     preview.value = null
@@ -225,14 +228,15 @@ async function join() {
     startBeating()
   } catch (e) {
     toast(e.message)
-  }
+  } finally { joining.value = false }
 }
 
 async function applyJoin() {
-  if (applying.value || myApply.value?.status === 'pending') return
+  if (applying.value || (myApply.value?.status === 'pending' && myApply.value?.accept_sharing)) return
+  if (!confirm(ROOM_SHARING_NOTICE)) return
   applying.value = true
   try {
-    await roomApi.apply(roomId.value, applyDraft.value.trim())
+    await roomApi.apply(roomId.value, applyDraft.value.trim(), true)
     toast('申请已提交，等待房主审批')
     await loadPreview()
   } catch (e) {
@@ -240,6 +244,14 @@ async function applyJoin() {
   } finally {
     applying.value = false
   }
+}
+
+async function confirmRoomSharing() {
+  if (joining.value || !confirm(ROOM_SHARING_NOTICE)) return
+  joining.value = true
+  try { await roomApi.confirmSharing(roomId.value); await fetchRoom(); toast('本房间共享已开启') }
+  catch (e) { toast(e.message) }
+  finally { joining.value = false }
 }
 
 async function loadApplies() {
@@ -273,7 +285,7 @@ async function copyCode() {
 }
 async function copyInvite() {
   const url = new URL(`/rooms/${room.value.id}`, location.origin)
-  await copyToClipboard(url.href, room.value.visibility === 'private' ? '申请链接已复制，房主审批后加入' : '房间链接已复制')
+  await copyToClipboard(url.href, '申请链接已复制，确认共享并经房主审批后加入')
 }
 async function leaveRoom() {
   if (!confirm('退出这个自习室？')) return
@@ -475,7 +487,7 @@ onBeforeUnmount(() => {
     <div class="nav">
       <button class="back" @click="router.push('/rooms')"><ArrowLeft :size="20" /></button>
       <div>
-        <div class="nav-title">{{ room?.name || '四人自习室' }}</div>
+        <div class="nav-title">{{ room?.name || '好友自习室' }}</div>
         <div class="nav-sub">大雪深埋，与同道并肩</div>
       </div>
       <button v-if="isOwner" class="switch-btn gear" @click="openManage"><Settings :size="15" /></button>
@@ -513,22 +525,22 @@ onBeforeUnmount(() => {
         <div class="room-top">
           <div class="room-icon"><Users :size="22" /></div>
           <div class="room-meta">
-            <div class="room-name">{{ room?.name || '研时 · 四人自习室' }}</div>
+            <div class="room-name">{{ room?.name || '研时 · 好友自习室' }}</div>
             <div class="room-private">
               <Lock v-if="room?.visibility === 'private'" :size="11" :stroke-width="2.5" />
-              {{ room?.visibility === 'private' ? '私密 · 凭房间码加入' : '公开 · 欢迎同频研友' }}
+              {{ room?.visibility === 'private' ? '私密 · 凭房间码加入' : '公开预览 · 邀请或审批加入' }}
               · 无摄像头 · 状态同步
             </div>
             <button v-if="joined && room?.code" class="room-code" @click="copyCode">
               房间码 {{ room.code }}<Copy :size="11" />
             </button>
-            <button v-if="joined" class="room-code" @click="copyInvite">{{ room?.visibility === 'private' ? '申请链接' : '房间链接' }}</button>
+            <button v-if="joined" class="room-code" @click="copyInvite">{{ '入房申请链接' }}</button>
             <button v-if="joined && room?.my_role !== 'owner'" class="room-code" @click="leaveRoom">退出房间</button>
           </div>
         </div>
         <div class="room-stat">
           <div>
-            <div class="rs-num tnum">{{ onlineCount }} / {{ room?.capacity || 4 }}</div>
+            <div class="rs-num tnum">{{ onlineCount }}</div>
             <div class="rs-label">当前连接（含暂离）</div>
           </div>
           <div class="rs-line"></div>
@@ -539,26 +551,31 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <div v-if="joined && room?.sharing_confirmed === false" class="card sharing-consent">
+        <strong>旧房间需要重新确认共享</strong><p>当前未向本房间开放你的学习数据。确认后，任务、错题、番茄记录、热力图、学习时长与状态对本房间已确认的成员可见；隐私模式仍可一键隐藏。</p>
+        <button class="btn btn-primary" :disabled="joining" @click="confirmRoomSharing">了解并开启本房间共享</button>
+      </div>
       <div v-if="joined" class="card co-study-controls">
-        <strong>固定成员 {{room?.member_count || members.length}} / {{room?.capacity || 4}}</strong>
+        <strong>房间成员 {{room?.member_count || members.length}} · {{room?.capacity > 0 ? room.capacity + '人上限' : '不限人数'}}</strong>
         <p>离开共学只停止本次房间状态；成员席位会保留。切到专注、AI 或资料页不会离开共学。</p>
         <button v-if="studyRoom.room?.id!==room?.id" class="btn btn-outline" @click="studyRoom.enter(room,auth.user?.id)">进入共学</button>
         <button v-else class="btn btn-outline" @click="studyRoom.leave()">离开共学</button>
         <button class="btn btn-primary" @click="studyRoom.enter(room,auth.user?.id);router.push('/focus')">{{timer.current?'查看当前专注':'开始专注'}}</button>
         <button class="btn btn-outline" @click="studyRoom.enter(room,auth.user?.id);router.push('/tasks')">选一项任务学习</button>
+        <button class="btn btn-outline" @click="router.push({path:'/group',query:{room:room.id}})">查看本房间学习共享</button>
       </div>
 
       <!-- 未加入 -->
       <div v-if="!joined" class="full-banner">
         <component :is="joinRequired ? Lock : Users" :size="18" />
         <div v-if="isFull">
-          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || 4 }}）</div>
+          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || '不限' }}）</div>
           <div class="fb-sub">暂时没有座位，可以换一个自习室，或等成员退出后再加入。</div>
         </div>
         <div v-else-if="joinRequired">
-          <div class="fb-title">私密自习室 · 需房主通过</div>
+          <div class="fb-title">好友自习室 · 凭邀请或审批加入</div><p v-if="room?.legacy_member" class="field-hint">旧成员资格不自动开放学习共享，请联系房主获取新的房间码，或重新提交申请。</p>
           <div class="fb-sub">
-            <template v-if="myApply?.status === 'pending'">申请已提交，等待房主审批，通过后自动进入。</template>
+            <template v-if="myApply?.status === 'pending' && myApply?.accept_sharing">申请已提交，等待房主审批，通过后自动进入。</template>
             <template v-else-if="myApply?.status === 'rejected'">上次申请未通过，可以补充说明后再次申请。</template>
             <template v-else>有房间码可直接加入；没有房间码可提交申请，由房主审核。</template>
           </div>
@@ -575,11 +592,11 @@ onBeforeUnmount(() => {
         <div class="ac-title"><Lock :size="14" /> 凭房间码直接加入</div>
         <div class="ac-code-row">
           <input v-model="joinCode" maxlength="32" placeholder="输入 6 位房间码" @keyup.enter="join" />
-          <button class="cc-btn" @click="join">加入</button>
+          <button class="cc-btn" :disabled="joining" @click="join">{{ joining ? '加入中…' : '确认共享并加入' }}</button>
         </div>
         <div class="ac-divider"></div>
-        <div class="ac-title">没有房间码？申请加入</div>
-        <template v-if="myApply?.status === 'pending'">
+        <div class="ac-title">没有房间码？申请加入</div><p class="field-hint">加入后与本房间已确认的成员默认互看历史学习数据；隐私模式可一键隐藏。账号密码、AI 密钥和聊天、个人备注不共享。</p>
+        <template v-if="myApply?.status === 'pending' && myApply?.accept_sharing">
           <div class="ac-pending">
             <span class="ac-dot"></span>
             申请已提交（{{ fmtTime(myApply.created_at) }}），等待房主审批

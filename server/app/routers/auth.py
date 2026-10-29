@@ -284,7 +284,9 @@ def login(body: LoginInput, request: Request, response: Response, db=Depends(get
     akey, ipkey = "login-account:" + digest(email), "login-ip:" + request.client.host
     ua = request.headers.get("user-agent", "")
 
-    if store.get("locked:" + akey) or store.get("locked:" + ipkey):
+    # A short shared-IP rate limit bounds work without a 15-minute lockout of classmates.
+    store.limit("login-request:" + request.client.host, 60, 60)
+    if store.get("locked:" + akey):
         db.add(
             LoginLog(
                 user_id=user.id if user else None,
@@ -298,11 +300,9 @@ def login(body: LoginInput, request: Request, response: Response, db=Depends(get
         raise ApiError(403, 40302, "尝试次数过多，请 15 分钟后再试")
 
     if not user or not verify_password(body.password, user.password_hash):
-        ac, ic = store.count(akey, 900), store.count(ipkey, 900)
+        ac = store.count(akey, 900)
         if ac >= 5:
             store.set("locked:" + akey, "1", 900)
-        if ic >= 10:
-            store.set("locked:" + ipkey, "1", 900)
         db.add(
             LoginLog(
                 user_id=user.id if user else None,

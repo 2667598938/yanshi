@@ -8,6 +8,7 @@ import { roomApi, publicApi } from '../api'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import CopyFallback from '../components/CopyFallback.vue'
+import { ROOM_SHARING_NOTICE } from '../utils/roomSharing'
 
 const router = useRouter()
 const { toast } = useToast()
@@ -23,7 +24,7 @@ const roomTypes = [
   { key: 'video_small_room', name: '视频小房间' },
   { key: 'cloud_video_room', name: '云端自习室' },
 ]
-const form = ref({ name: '', intro: '', visibility: 'public', room_type: 'checkin_room' })
+const form = ref({ name: '', intro: '', visibility: 'private', room_type: 'checkin_room' })
 const codeInput = ref('')
 const saving = ref(false)
 
@@ -47,12 +48,13 @@ function openRoom(row) {
 
 function openCreate(type = 'checkin_room') {
   if (!features.value.includes(type)) return toast('该房间类型暂未开放')
-  form.value = { name: '', intro: '', visibility: 'public', room_type: type }
+  form.value = { name: '', intro: '', visibility: 'private', room_type: type }
   sheet.value = 'create'
 }
 
 async function create() {
   if (form.value.name.trim().length < 2) return toast('房间名至少 2 个字')
+  if (saving.value || !confirm(ROOM_SHARING_NOTICE)) return
   saving.value = true
   try {
     const row = await roomApi.create({
@@ -60,6 +62,7 @@ async function create() {
       intro: form.value.intro.trim(),
       visibility: form.value.visibility,
       room_type: form.value.room_type,
+      accept_sharing: true,
     })
     toast('自习室已创建')
     sheet.value = null
@@ -73,9 +76,10 @@ async function create() {
 
 async function joinByCode() {
   if (!codeInput.value.trim()) return toast('请输入房间码')
+  if (saving.value || !confirm(ROOM_SHARING_NOTICE)) return
   saving.value = true
   try {
-    const data = await roomApi.joinByCode(codeInput.value.trim())
+    const data = await roomApi.joinByCode(codeInput.value.trim(), true)
     toast('已加入')
     sheet.value = null
     codeInput.value = ''
@@ -108,8 +112,8 @@ onMounted(load)
 
     <div class="page">
       <div class="hero">
-        <div class="hero-title">四人一桌，各学各的</div>
-        <div class="hero-sub">公开房间可直接加入；私密房间凭 6 位房间码进入</div>
+        <div class="hero-title">和同频的朋友，一起专注</div>
+        <div class="hero-sub">自己建房邀请朋友，不限人数；公开房间仅开放预览与申请</div>
       </div>
 
       <!-- 房间类型快捷入口：两列等宽，避免参差换行 -->
@@ -150,7 +154,7 @@ onMounted(load)
               </div>
               <div class="rc-sub">
                 {{ r.visibility === 'private' ? '私密房间' : '公开房间' }}
-                · 固定成员 {{ r.member_count }}/{{ r.capacity }}
+                · 成员 {{ r.member_count }} · {{ r.capacity > 0 ? r.capacity + '人上限' : '不限人数' }}
                 <span> · {{ r.online_count || 0 }} 连接</span>
               </div>
             </div>
@@ -175,7 +179,7 @@ onMounted(load)
     <div v-if="sheet" class="mask" @click.self="sheet = null">
       <div class="sheet">
         <template v-if="sheet === 'create'">
-          <div class="sheet-title">创建{{ roomTypes.find(t => t.key === form.room_type)?.name }}</div>
+          <div class="sheet-title">创建{{ roomTypes.find(t => t.key === form.room_type)?.name }}</div><p class="sheet-tip">房间就是你的好友共享小组，不限人数。默认私密；公开只开放房间预览和申请，加入仍须邀请或房主审批。</p>
           <label class="sf">
             <span>房间名</span>
             <input v-model="form.name" maxlength="20" placeholder="如：冲刺 408 小组" />
@@ -199,7 +203,7 @@ onMounted(load)
 
         <template v-else>
           <div class="sheet-title">凭房间码加入</div>
-          <p class="sheet-tip">向房主要 6 位房间码；公开房间也可以直接在列表里进入。</p>
+          <p class="sheet-tip">向朋友要 6 位邀请房间码；没有邀请码可在房间页面申请，由房主审批。加入后默认共享学习数据，隐私模式可隐藏。</p>
           <input v-model="codeInput" class="code-input tnum" maxlength="32" placeholder="输入房间码" />
           <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="joinByCode">
             {{ saving ? '加入中…' : '加入' }}

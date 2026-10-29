@@ -1,30 +1,48 @@
-"""受邀小组是共享边界；加入公开自习室不能获得学习数据权限。"""
+"""受邀或审批入房并确认共享的成员构成好友小组；不同房间相互隔离。"""
 
 import json
 from sqlalchemy import select, func
-from ..models import User, StudyGroup, StudyGroupMember, LearningRecord, LearningChange
+from ..models import User, LearningRecord, LearningChange
 from ..errors import ApiError
-from .session_records import display_record
+from .session_records import display_records
 
 
-def enroll(db, user_id):
-    if not db.get(StudyGroup, 1):
-        db.add(StudyGroup(id=1, name="研时学习小组"))
-        db.flush()
-    if not db.get(StudyGroupMember, (1, user_id)):
-        db.add(StudyGroupMember(group_id=1, user_id=user_id))
+def shared_user_ids(viewer_id, room_id=None):
+    """A direct, confirmed membership in a live room is the sole sharing boundary.
+
+    Legacy StudyGroupMember rows never grant access. Room membership is not
+    transitive: a friend's other roommates do not become the viewer's friends.
+    """
+    from ..models import Room, RoomMember
+
+    rooms = (
+        select(RoomMember.room_id)
+        .join(Room, Room.id == RoomMember.room_id)
+        .where(
+            RoomMember.user_id == viewer_id,
+            RoomMember.sharing_confirmed.is_(True),
+            Room.dissolved_at.is_(None),
+        )
+    )
+    if room_id is not None:
+        rooms = rooms.where(Room.id == room_id)
+    return (
+        select(RoomMember.user_id)
+        .where(
+            RoomMember.room_id.in_(rooms),
+            RoomMember.sharing_confirmed.is_(True),
+        )
+        .distinct()
+    )
 
 
 def same_group(db, viewer_id, owner_id):
-    mine = select(StudyGroupMember.group_id).where(
-        StudyGroupMember.user_id == viewer_id
-    )
     return (
         db.scalar(
-            select(StudyGroupMember.group_id)
+            select(User.id)
             .where(
-                StudyGroupMember.user_id == owner_id,
-                StudyGroupMember.group_id.in_(mine),
+                User.id == owner_id,
+                User.id.in_(shared_user_ids(viewer_id)),
             )
             .limit(1)
         )
@@ -132,18 +150,14 @@ def shared_records(db, viewer, owner_id, after="", kind=None):
     rows = db.scalars(query.order_by(LearningRecord.id).limit(200)).all()
     return {
         "items": [
-            project(display_record(db, owner_id, json.loads(row.body))) for row in rows
+            project(record)
+            for record in display_records(
+                db, owner_id, [json.loads(row.body) for row in rows]
+            )
         ],
         "next": rows[-1].id if len(rows) == 200 else None,
         "cursor": cursor,
     }
-
-
-def shared_user_ids(viewer_id):
-    groups = select(StudyGroupMember.group_id).where(
-        StudyGroupMember.user_id == viewer_id
-    )
-    return select(StudyGroupMember.user_id).where(StudyGroupMember.group_id.in_(groups))
 
 
 def shared_changes(db, viewer, owner_id, since):
@@ -160,15 +174,30 @@ def shared_changes(db, viewer, owner_id, since):
         .order_by(LearningChange.id)
         .limit(200)
     ).all()
+    public_ids = {c.record_id for c in changes if c.record_type in FIELDS}
+    rows = (
+        {
+            row.id: row
+            for row in db.scalars(
+                select(LearningRecord).where(
+                    LearningRecord.user_id == owner_id,
+                    LearningRecord.id.in_(public_ids),
+                )
+            ).all()
+        }
+        if public_ids
+        else {}
+    )
+    bodies = [json.loads(row.body) for row in rows.values() if not row.deleted]
+    displayed = {r["id"]: r for r in display_records(db, owner_id, bodies) if r}
     items = {}
     for change in changes:
         if change.record_type not in FIELDS:
             continue
-        row = db.get(LearningRecord, (owner_id, change.record_id))
-        record = json.loads(row.body) if row and not row.deleted else None
+        record = displayed.get(change.record_id)
         items[change.record_id] = {
             "id": change.record_id,
-            "record": project(display_record(db, owner_id, record))
+            "record": project(record)
             if record and record.get("type") in FIELDS
             else None,
         }
