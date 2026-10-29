@@ -161,7 +161,13 @@ def overview(request: Request, db=Depends(get_db), admin=Depends(get_admin)):
             select(func.count())
             .select_from(RoomMember)
             .join(Room, Room.id == RoomMember.room_id)
-            .where(Room.dissolved_at.is_(None))
+            .where(
+                Room.dissolved_at.is_(None),
+                or_(
+                    RoomMember.sharing_confirmed.is_(True),
+                    Room.owner_id == RoomMember.user_id,
+                ),
+            )
         )
         or 0
     )
@@ -223,7 +229,8 @@ def overview(request: Request, db=Depends(get_db), admin=Depends(get_admin)):
             "conversation_count": conversation_count,
             "message_count": message_count,
             "attachment_bytes": attachment_bytes or 0,
-            "registration_open": not request.app.state.settings.auth_password_only and config_get(db, "registration_open", False),
+            "registration_open": not request.app.state.settings.auth_password_only
+            and config_get(db, "registration_open", False),
             "site_name": config_get(db, "site_name", "研时"),
             "exam_date": config_get(db, "exam_date", "2027-12-25"),
             "exam_year": config_get(db, "exam_year", 2028),
@@ -247,9 +254,6 @@ def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db))
     from ..services.admission import check_capacity
 
     check_capacity(db, request.app.state.settings)
-    room_service.get_default_room(
-        db
-    )  # Preserve the existing availability check without an unused binding.
     user = User(
         email=body.email,
         nickname=body.nickname,
@@ -260,10 +264,6 @@ def create_member(body: AdminCreateMember, request: Request, db=Depends(get_db))
     )
     db.add(user)
     db.flush()
-    room_service.join_room_quietly(db, user)
-    from ..services.group import enroll
-
-    enroll(db, user.id)
     audit(db, request, "admin.create_member", user_id=user.id, detail=body.email)
     db.commit()
     db.refresh(user)
@@ -801,7 +801,12 @@ def config_payload(db):
 
 @router.get("/config")
 def get_config(request: Request, db=Depends(get_db)):
-    return ok({**config_payload(db), "auth_password_only": request.app.state.settings.auth_password_only})
+    return ok(
+        {
+            **config_payload(db),
+            "auth_password_only": request.app.state.settings.auth_password_only,
+        }
+    )
 
 
 @router.put("/config")

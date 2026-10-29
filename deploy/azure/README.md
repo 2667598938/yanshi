@@ -1,6 +1,6 @@
 # Azure Ubuntu 24.04 部署与恢复
 
-适配：4vCPU/16GiB/64GiB，宿主已有Nginx 1.24、Certbot和boang.fun/www证书，SSH限定来源IP。当前四人使用SQLite单worker；不用安装宿主Python、Node、Java、MySQL或宝塔。
+适配：4vCPU/16GiB/64GiB，宿主已有Nginx 1.24、Certbot和boang.fun/www证书，SSH限定来源IP。当前账号总数上限100、使用SQLite单worker；不用安装宿主Python、Node、Java、MySQL或宝塔。
 
 流向：浏览器HTTPS → **已有宿主Nginx** → `127.0.0.1:18080` → web容器 → api容器8000 → 持久卷/七牛/SMTP/本人AI服务商。容器不发布80/443或api8000，既有证书与续期保留。
 
@@ -64,7 +64,7 @@ sudo install -m 0600 server.env.example /etc/yanshi/server.env
 sudoedit /etc/yanshi/server.env
 ```
 
-新库用两次`openssl rand -hex 48`生成独立JWT_SECRET与AI_KEY_ENC_SECRET；在服务器填写，不提交Git或镜像。填真实管理员强密码、SMTP授权码、七牛**私有**bucket与地域，替换全部REPLACE_WITH。raw文件直接写字面值，无包围引号。内测保持AUTH_PASSWORD_ONLY=true，注册关闭，账号上限4，视频房型关闭。
+新库用两次`openssl rand -hex 48`生成独立JWT_SECRET与AI_KEY_ENC_SECRET；在服务器填写，不提交Git或镜像。填真实管理员强密码、SMTP授权码、七牛**私有**bucket与地域，替换全部REPLACE_WITH。raw文件直接写字面值，无包围引号。内测保持AUTH_PASSWORD_ONLY=true，注册关闭，账号上限100，视频房型关闭。
 
 容器以10001身份读写卷`yanshi-data`，新卷自动继承镜像内目录所有权；不要改卷名或用`down -v`删除数据。root文件系统只读，临时文件在受限tmpfs。备份目录所有者必须10001，否则备份会失败。
 
@@ -145,6 +145,6 @@ df -h
 
 ## 首次业务验收
 
-密码登录/刷新/退出及邮件找回；管理员创建成员；小组/房间独立准入；两设备计时独占、暂停、跨页共学、后台暂离/90秒离线；隐私后端隔离；七牛题图/解析/相册跨设备；AI本人Key/模型/真实SSE/公式/历史/学习摘要/人工确认导入与撤销；重启数据持久、备份与隔离恢复。电脑和手机都要实测。
+密码登录/刷新/退出及邮件找回；管理员创建成员；账号/VIP不自动入房；好友房间邀请、房主审批、共享确认和跨房间隔离；两设备计时独占、暂停、跨页共学、后台暂离/90秒离线；隐私后端隔离；七牛题图/解析/相册跨设备；AI本人Key/模型/真实SSE/公式/历史/学习摘要/人工确认导入与撤销；重启数据持久、备份与隔离恢复。电脑和手机都要实测。
 
 CI中的生产冒烟只在GitHub临时runner使用伪配置，不调用真实七牛、SMTP或收费模型，不代表上述真实环境验收已经完成。

@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     wechat_app_secret: str = ""
     qq_app_id: str = ""
     qq_app_secret: str = ""
-    account_max_users: int = Field(default=4, ge=0, le=1000000)
+    account_max_users: int = Field(default=100, ge=0, le=1000000)
     registration_open: bool = False
     features: str = "checkin_room,resource,post,inspiration,dream_school"
     sms_secret_id: str = ""
@@ -64,7 +64,9 @@ class Settings(BaseSettings):
     image_directory: Path = BASE_DIR / "data" / "uploads"
     image_max_avatar_bytes: int = 2 * 1024 * 1024
     image_max_bytes: int = 5 * 1024 * 1024
-    storage_quota_bytes: int = 200 * 1024 * 1024  # 每用户 200MB（4 人私密足够）
+    storage_quota_bytes: int = (
+        200 * 1024 * 1024
+    )  # 每用户 200MiB；站点总对象存储容量需另行规划
     qiniu_access_key: str = ""
     qiniu_secret_key: str = ""
     qiniu_bucket: str = "sharearea"

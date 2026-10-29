@@ -161,7 +161,7 @@ it('目标分数字段提交字符串，空字段不传null', async () => {
 it('申请分享链接只暴露预览入口，不附带房间码', async () => {
   wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
   await flushPromises()
-  await wrapper.findAll('button').find((button) => button.text() === '申请链接').trigger('click')
+  await wrapper.findAll('button').find((button) => button.text() === '入房申请链接').trigger('click')
   await flushPromises()
   const value = wrapper.get('textarea[aria-label="待复制内容"]').element.value
   expect(new URL(value).pathname).toBe('/rooms/2')

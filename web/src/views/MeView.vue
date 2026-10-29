@@ -546,7 +546,7 @@ onMounted(() => {
         <div class="group-title">小组与共享</div>
         <p class="group-help">受邀加入后互看学习数据；房间准入和会员权益分别管理。</p>
         <div class="card menu">
-          <button class="row" @click="router.push('/group/admission')"><span class="row-ic c-blue"><ClipboardCheck :size="18" /></span><span class="row-label">入组申请与记录</span><ChevronRight :size="17" class="row-arrow" /></button>
+          <button class="row" @click="router.push('/rooms')"><span class="row-ic c-blue"><ClipboardCheck :size="18" /></span><span class="row-label">好友房间与邀请</span><ChevronRight :size="17" class="row-arrow" /></button>
           <button type="button" class="row" role="switch" :aria-checked="!!auth.user?.is_private_mode" @click="togglePrivacy">
             <span class="row-ic c-purple"><EyeOff :size="18" /></span>
             <span class="row-label">小组隐私模式</span>

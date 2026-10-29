@@ -1,4 +1,4 @@
-"""图片处理与附件编排（4 人私密版：无审核，统一转 JPEG，按用户配额）。"""
+"""图片处理与附件编排（私有学习图片：无审核，统一转 JPEG，按用户配额）。"""
 
 import secrets
 import json
@@ -13,7 +13,13 @@ from sqlalchemy import func, select
 
 from ..errors import ApiError
 from ..models import (
-    AIConversation, AIMessage, Attachment, Inspiration, LearningRecord, School, User,
+    AIConversation,
+    AIMessage,
+    Attachment,
+    Inspiration,
+    LearningRecord,
+    School,
+    User,
 )
 from ..time import utcnow
 
@@ -194,9 +200,7 @@ def referenced_keys(db, user_id):
         if body.get("type") == "mistake":
             keys.update(key for key in body.get("images", []) if key)
             keys.update(key for key in body.get("answerImages", []) if key)
-    for school in db.scalars(
-        select(School).where(School.owner_id == user_id)
-    ).all():
+    for school in db.scalars(select(School).where(School.owner_id == user_id)).all():
         if school.logo_key:
             keys.add(school.logo_key)
         try:
@@ -228,7 +232,9 @@ def orphan_attachments(db, user_id, *, grace_hours=ORPHAN_GRACE_HOURS):
             Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None)
         )
     ).all()
-    return [row for row in rows if row.object_key not in used and row.created_at <= cutoff]
+    return [
+        row for row in rows if row.object_key not in used and row.created_at <= cutoff
+    ]
 
 
 def storage_summary(db, user_id, quota_bytes, *, grace_hours=ORPHAN_GRACE_HOURS):

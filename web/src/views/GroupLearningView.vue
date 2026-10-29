@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { groupApi } from '../api'
+import { groupApi, roomApi } from '../api'
 import { useAuthStore } from '../stores/auth'
 import BlobImage from '../components/BlobImage.vue'
 import { REASON_MAP } from '../data/subjects'
 const router=useRouter(), auth=useAuthStore()
+const rooms=ref([]), roomId=ref(Number(router.currentRoute?.value?.query?.room)||null)
 const members=ref([]), selected=ref(null), records=ref([]), error=ref(''), tab=ref('task')
 let interval, generation=0, alive=true, flight=null, cursor=null
 function clear(){ records.value=[]; cursor=null }
@@ -16,7 +17,7 @@ async function load(){
   if(flight?.seq===seq)return
   const token={seq};flight=token
   try{
-    const rows=await groupApi.members()
+    const rows=await groupApi.members(roomId.value)
     if(!valid(seq,account))return
     members.value=rows
     const member=rows.find(row=>row.id===selected.value)
@@ -25,7 +26,7 @@ async function load(){
     if(nextCursor===null){
       result=new Map();let after=''
       for(;;){
-        const data=await groupApi.learning(member.id,after)
+        const data=await groupApi.learning(member.id,after,roomId.value)
         if(!valid(seq,account))return
         // Keep the FIRST page's watermark: changes during pagination must replay.
         if(nextCursor===null)nextCursor=data.cursor
@@ -35,7 +36,7 @@ async function load(){
       }
     }
     for(;;){
-      const data=await groupApi.changes(member.id,nextCursor)
+      const data=await groupApi.changes(member.id,nextCursor,roomId.value)
       if(!valid(seq,account))return
       for(const change of data.items){
         if(change.record)result.set(change.id,change.record)
@@ -48,7 +49,10 @@ async function load(){
   }catch(e){if(valid(seq,account)){clear();error.value=e.status===404?'该成员已开启隐私或共享权限已变化':e.message}}
   finally{if(flight===token)flight=null}
 }
-watch(()=>auth.user?.id,()=>{generation++;clear();members.value=[];selected.value=null;load()})
+watch(()=>auth.user?.id,()=>{generation++;clear();members.value=[];rooms.value=[];roomId.value=null;selected.value=null;loadRooms();load()})
+async function loadRooms(){const account=auth.user?.id;try{const rows=await roomApi.list();if(alive&&account===auth.user?.id)rooms.value=rows.filter(r=>r.joined)}catch(e){if(alive&&account===auth.user?.id)error.value=e.message}}
+function changeRoom(){generation++;clear();members.value=[];selected.value=null;router.replace?.({query:{...router.currentRoute?.value?.query,room:roomId.value||undefined}});load()}
+watch(()=>router.currentRoute?.value?.query?.room,value=>{const next=Number(value)||null;if(roomId.value!==next){roomId.value=next;generation++;clear();members.value=[];selected.value=null;load()}})
 function select(member){generation++;clear();selected.value=member.id;load()}
 const chosen=computed(()=>members.value.find(row=>row.id===selected.value))
 const visible=computed(()=>records.value.filter(row=>row.type===tab.value).sort((a,b)=>tab.value==='task' ? Number(a.done||0)-Number(b.done||0)||(a.dueDate||'9999').localeCompare(b.dueDate||'9999') : (b.createdAt||0)-(a.createdAt||0)))
@@ -59,12 +63,15 @@ const heat=computed(()=>{
  const result={};for(const row of records.value.filter(row=>row.type==='session'&&!row.conflict_flag&&!row.validation_issue))result[row.date]=(result[row.date]||0)+(row.actualSec||0)
  return Object.entries(result).sort(([a],[b])=>a.localeCompare(b))
 })
-onMounted(()=>{load();interval=setInterval(load,5000);document.addEventListener('visibilitychange',load)})
+onMounted(()=>{loadRooms();load();interval=setInterval(load,5000);document.addEventListener('visibilitychange',load)})
 onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(interval);document.removeEventListener('visibilitychange',load)})
 </script>
 <template>
- <div class="page"><button class="btn btn-outline" @click="router.back()">返回</button><h2>受邀小组 · 学习互助</h2><router-link to="/group/admission">入组邀请与申请记录</router-link>
- <p>小组默认共享学习记录；隐私模式一键停止共享。这里只读查看，不会导入或修改对方的数据。</p>
+ <div class="page"><button class="btn btn-outline" @click="router.back()">返回</button><h2>好友房间 · 学习互助</h2><router-link to="/rooms">创建房间、邀请朋友与审批</router-link>
+ <label class="room-picker">共享范围 <select v-model="roomId" @change="changeRoom"><option :value="null">全部已加入的好友房间</option><option v-for="r in rooms" :key="r.id" :value="r.id">{{r.name}}</option></select></label>
+ <router-link v-if="roomId" :to="`/rooms/${roomId}`">返回本房间 / 确认共享</router-link>
+ <p v-if="!members.length && !error">还没有可查看的共享成员。请先加入好友房间并确认共享；旧房间成员也需要分别确认。</p>
+ <p>仅与同一好友房间已确认共享的成员互看学习记录；不同房间互不开放，隐私模式一键停止共享。这里只读查看，不会导入或修改对方的数据。</p>
  <button v-for="member in members" :key="member.id" class="btn btn-outline" @click="select(member)">{{member.nickname}} · {{member.statusText || '状态更新中'}}<small style="display:block">{{member.status==='private'?'位置已隐藏':member.roomName ? '房间：'+member.roomName : member.isOnline?'未在自习室':'未在线'}} </small></button>
  <p v-if="error">{{error}}</p>
  <template v-if="chosen">
@@ -81,4 +88,4 @@ onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(int
  </div><p v-if="!visible.length&&tab!=='stats'">暂无已同步记录</p>
  </template></template></div>
 </template>
-<style scoped>p{font-size:13px;line-height:1.7}button{margin:4px}.picture{width:100%;max-height:360px;object-fit:contain}.heat{display:flex;flex-wrap:wrap;gap:4px}.heat span{padding:7px;border-radius:4px;font-size:10px}</style>
+<style scoped>.room-picker{display:flex;align-items:center;gap:10px;margin:18px 0;flex-wrap:wrap}.room-picker select{max-width:100%;min-height:42px;padding:8px;border:1px solid var(--line,#ddd);border-radius:10px;background:var(--card,#fff);color:inherit}p{font-size:13px;line-height:1.7}button{margin:4px}.picture{width:100%;max-height:360px;object-fit:contain}.heat{display:flex;flex-wrap:wrap;gap:4px}.heat span{padding:7px;border-radius:4px;font-size:10px}</style>

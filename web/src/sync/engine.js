@@ -405,6 +405,24 @@ let periodicStarted = false
 let accountSwitches = 0
 let syncCompletion = Promise.resolve()
 
+// 首次同步先把云端记录落到本地，再决定哪些本机记录需要入队。
+// 新设备会本地预置 8 个固定 ID 的默认科目；若先推送，它们的
+// expectedRevision=0 会与云端已有 revision 冲突，产生一串假冲突。
+async function ensureBootstrapped() {
+  if (await db.syncMeta.get('bootstrapDone')) return { ready: true, pulled: false }
+  let pulled = false
+  try {
+    pulled = await pullAll()
+  } catch (e) {
+    // 离线首登不抢先入队；下次同步继续重试预拉取，避免制造假冲突。
+    console.warn('首次同步预拉取失败，稍后重试', e?.message || e)
+    return { ready: false, pulled: false }
+  }
+  await bootstrapLocal()
+  await db.syncMeta.put({ key: 'bootstrapDone', value: 1 })
+  return { ready: true, pulled }
+}
+
 // 换号前等待当前批次结束，期间禁止新批次；旧请求始终在旧账号/旧库下收尾。
 export async function pauseSyncForAccountSwitch() {
   accountSwitches += 1
@@ -433,13 +451,16 @@ export async function syncNow() {
   let completeSync
   syncCompletion = new Promise((resolve) => { completeSync = resolve })
   try {
+    const bootstrap = await ensureBootstrapped()
+    if (!bootstrap.ready) return false
     // 先把离线拍的错题图补传为附件 key，再推送记录
     const uploaded = await flushMistakeImages()
     for (const row of uploaded) await enqueueRecord('mistakes', row)
     await flushCommunity()
     const pushed = await pushOutbox()
     const changed = await pullAll()
-    if (changed || pushed || uploaded.length) await reloadStores()
+    // 首登预拉取后刷新一次：云端默认科目进入 UI，旧数据迁移在 push 之后入队，等下一轮发送。
+    if (changed || pushed || uploaded.length || bootstrap.pulled) await reloadStores()
     await db.syncMeta.put({ key: 'lastSyncAt', value: Date.now() })
     return true
   } catch (e) {
@@ -472,18 +493,16 @@ export async function initSyncForUser() {
     heldIds.add(row.value.id)
     syncState.pendingConflicts.push(row.value)
   }
-  const bootDone = await db.syncMeta.get('bootstrapDone')
-  if (!bootDone) {
-    await bootstrapLocal()
-    await db.syncMeta.put({ key: 'bootstrapDone', value: 1 })
-  }
+  // 首登顺序由 syncNow 内的 ensureBootstrapped 保证：先拉云端，再入队本机。
   await syncNow()
   if (!periodicStarted) {
     periodicStarted = true
     setInterval(() => syncNow(), 30000)
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') syncNow()
-    })
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') syncNow()
+      })
+    }
   }
 }
 

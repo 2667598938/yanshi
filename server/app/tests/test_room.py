@@ -34,22 +34,9 @@ def register_friend(client, admin_headers, email, name, password="Friend2028"):
     assert r.status_code == 200, r.text
     data = r.json()["data"]
     owner_headers = auth_header(data["access_token"])
-    # A trusted test participant is explicitly admitted; VIP/registration no longer grants access.
-    assert (
-        client.post(
-            f"/api/v1/admin/group-members/{data['user']['id']}",
-            headers=admin_headers,
-            json={},
-        ).status_code
-        == 200
-    )
-    room = client.get("/api/v1/rooms", headers=owner_headers).json()["data"][0]
-    joined = client.post(
-        f"/api/v1/rooms/{room['id']}/join",
-        headers=owner_headers,
-        json={"code": room["code"]},
-    )
-    assert joined.status_code in (200, 403), joined.text
+    from app.tests.conftest import join_friend_room
+
+    join_friend_room(client, admin_headers, owner_headers)
     return owner_headers
 
 
@@ -187,10 +174,17 @@ def test_room_state_heartbeat_and_stats(client):
     start_day = datetime.fromtimestamp(record["startedAt"] / 1000, CN).date()
     current_day = datetime.now(CN).date()
     assert me["today_sec"] == (1500 if start_day == current_day else 0)
-    assert me["week_sec"] == (1500 if start_day >= current_day - timedelta(days=current_day.weekday()) else 0)
+    assert me["week_sec"] == (
+        1500 if start_day >= current_day - timedelta(days=current_day.weekday()) else 0
+    )
     assert me["total_sec"] == 1500
     assert me["streak"] == 1
-    assert next(row for row in state["ranking"]["today"] if row["user_id"] == me["user_id"])["sec"] == me["today_sec"]
+    assert (
+        next(
+            row for row in state["ranking"]["today"] if row["user_id"] == me["user_id"]
+        )["sec"]
+        == me["today_sec"]
+    )
 
 
 def test_room_messages_and_goal(client):
@@ -246,9 +240,9 @@ def test_room_messages_and_goal(client):
     )
 
 
-def test_room_capacity_four(client):
+def test_account_limit_is_separate_from_room_membership(client):
     client.app.state.settings.account_max_users = (
-        4  # 显式四人内测账号上限，与房间席位分别校验。
+        4  # 显式小规模账号上限，与房间席位分别校验。
     )
     admin = login(client, **ADMIN)
     ah = auth_header(admin["access_token"])
@@ -266,7 +260,9 @@ def test_room_capacity_four(client):
         )
         assert r.status_code == 200, r.text
     state = client.get("/api/v1/room", headers=ah).json()["data"]
-    assert state["room"]["member_count"] == 4
+    assert (
+        state["room"]["member_count"] == 2
+    )  # Admin-created accounts do not join automatically.
     # 第 5 人不允许
     r = client.post(
         "/api/v1/admin/members",
@@ -284,7 +280,11 @@ def _admin_create_member(client, ah, email, name):
     )
     assert r.status_code == 200, r.text
     uid = r.json()["data"]["id"]
-    return uid, auth_header(login(client, email, "Member2028")["access_token"])
+    guest = auth_header(login(client, email, "Member2028")["access_token"])
+    from app.tests.conftest import join_friend_room
+
+    join_friend_room(client, ah, guest)
+    return uid, guest
 
 
 def test_offline_after_heartbeat_window(client):
