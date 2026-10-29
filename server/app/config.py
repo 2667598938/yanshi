@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     wechat_app_secret: str = ""
     qq_app_id: str = ""
     qq_app_secret: str = ""
-    account_max_users: int = Field(default=4, ge=0, le=1000000)
+    account_max_users: int = Field(default=100, ge=0, le=1000000)
     registration_open: bool = False
     features: str = "checkin_room,resource,post,inspiration,dream_school"
     sms_secret_id: str = ""
