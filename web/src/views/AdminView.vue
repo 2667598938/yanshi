@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowLeft, Copy, Plus, UserPlus, Megaphone, Users, Trash2, Ban, KeyRound,
@@ -11,10 +11,13 @@ import BlobImage from '../components/BlobImage.vue'
 import { fmtDate, fmtShort, fmtDateTime } from '../utils/time'
 import { SCHOOL_MAP } from '../data/schools'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
 const overview = ref(null)
 const members = ref([])
@@ -26,7 +29,23 @@ const inspirations = ref([])
 const inspFilter = ref('pending')
 const inspTarget = ref(null)
 const inspNote = ref('')
+const takedownTarget = ref(null)
+const takedownNote = ref('')
 const tab = ref('invite')
+const listSearch = ref(''), listPage = ref(1)
+const pageSize = 20
+const matchingRows = computed(() => {
+  const rows = { invite: invites.value, member: members.value, request: requests.value,
+    content: inspirations.value, announce: announcements.value }[tab.value] || []
+  const term = listSearch.value.trim().toLocaleLowerCase()
+  return term ? rows.filter(row => [row.code, row.remark, row.nickname, row.email,
+    row.status, row.reason, row.content, row.user?.nickname, row.user?.email].some(value =>
+      String(value || '').toLocaleLowerCase().includes(term))) : rows
+})
+const pageCount = computed(() => Math.max(1, Math.ceil(matchingRows.value.length / pageSize)))
+const pageRows = computed(() => matchingRows.value.slice((listPage.value - 1) * pageSize, listPage.value * pageSize))
+watch([tab, listSearch, requestFilter, inspFilter], () => { listPage.value = 1 })
+watch(pageCount, count => { listPage.value = Math.min(listPage.value, count) })
 
 const sheet = ref(null)
 const inviteForm = ref({ remark: '', expires_days: '', vip_days: '' })
@@ -35,7 +54,7 @@ const announcementForm = ref('')
 const resetTarget = ref(null)
 const newPwd = ref('')
 const vipTarget = ref(null)
-const vipForm = ref({ action: 'grant', days: 30, note: '' })
+const vipForm = ref({ action: 'grant', days: 30, until: '', note: '' })
 const reviewTarget = ref(null)
 const reviewNote = ref('')
 
@@ -111,6 +130,26 @@ async function rejectInspiration() {
   }
 }
 
+function openTakedown(row) {
+  takedownTarget.value = row
+  takedownNote.value = ''
+  sheet.value = 'insp-takedown'
+}
+
+async function takedownInspiration() {
+  if (takedownNote.value.trim().length < 5) return toast('下架原因至少5字')
+  try {
+    const next = await inspirationApi.takedown(takedownTarget.value.id, takedownNote.value.trim())
+    Object.assign(takedownTarget.value, next)
+    toast('已下架，新的列表与弹幕请求不会再返回')
+    sheet.value = null
+    takedownTarget.value = null
+    await loadInspirations(inspFilter.value)
+  } catch (e) {
+    toast(e.message)
+  }
+}
+
 function switchTab(next) {
   tab.value = next
   if (next === 'request') loadRequests('pending')
@@ -119,7 +158,7 @@ function switchTab(next) {
 
 function openVip(m) {
   vipTarget.value = m
-  vipForm.value = { action: 'grant', days: 30, note: '' }
+  vipForm.value = { action: 'grant', days: 30, until: '', note: '' }
   sheet.value = 'vip'
 }
 
@@ -127,7 +166,11 @@ async function submitVip() {
   const f = vipForm.value
   if (f.note.trim().length < 5) return toast('请填写至少 5 个字的操作备注')
   const payload = { vip_action: f.action, note: f.note.trim() }
-  if (f.action !== 'revoke') payload.vip_days = Number(f.days) || 30
+    if (['grant', 'renew'].includes(f.action)) payload.vip_days = Number(f.days) || 30
+    if (f.action === 'set_expiry') {
+      if (!f.until) return toast('请选择到期日期')
+      payload.vip_until = new Date(`${f.until}T23:59:59+08:00`).toISOString()
+    }
   try {
     const row = await adminApi.updateMember(vipTarget.value.id, payload)
     Object.assign(vipTarget.value, row)
@@ -172,7 +215,7 @@ function openReject(r) {
 }
 
 async function submitReject() {
-  if (!reviewNote.value.trim()) return toast('请填写驳回原因')
+  if (reviewNote.value.trim().length < 5) return toast('驳回原因至少5个字')
   try {
     const row = await adminApi.reviewRequest(reviewTarget.value.id, {
       action: 'reject', note: reviewNote.value.trim(),
@@ -189,12 +232,7 @@ async function submitReject() {
 }
 
 async function copyCode(code) {
-  try {
-    await navigator.clipboard.writeText(code)
-    toast('邀请码已复制：' + code)
-  } catch {
-    toast('请手动复制：' + code)
-  }
+  await copyToClipboard(code, '邀请码已复制：' + code)
 }
 
 async function createInvite() {
@@ -259,15 +297,6 @@ async function submitReset() {
   }
 }
 
-async function removeMember(m) {
-  if (!confirm(`确认删除成员 ${m.nickname}？此操作不可恢复`)) return
-  try {
-    await adminApi.deleteMember(m.id)
-    members.value = members.value.filter((x) => x.id !== m.id)
-  } catch (e) {
-    toast(e.message)
-  }
-}
 
 async function createAnnouncement() {
   if (!announcementForm.value.trim()) return
@@ -297,38 +326,53 @@ onMounted(() => {
   }
   loadAll()
 })
+async function editAnnouncement(row){
+ const content=prompt('编辑公告',row.content);if(content===null||!content.trim())return
+ try{const data=await adminApi.updateAnnouncement(row.id,{content:content.trim(),expected_revision:row.revision});Object.assign(row,data);toast('公告已更新')}catch(e){toast(e.message);if(e.status===409)await loadAll()}
+}
+async function toggleAnnouncement(row){
+ try{const data=await adminApi.updateAnnouncement(row.id,{is_active:!row.is_active,expected_revision:row.revision});Object.assign(row,data)}catch(e){toast(e.message);if(e.status===409)await loadAll()}
+}
 </script>
 
 <template>
   <div class="admin-page">
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>
     </div>
+    <nav class="admin-subnav" aria-label="后台功能"><router-link class="btn btn-ghost btn-sm" to="/admin/group">小组邀请与审批</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/resources">资料审核</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/email-jobs">通知邮件任务与重试</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/operations">设置、日志与运行状态</router-link></nav>
 
     <div class="page">
       <!-- 概览 -->
       <div v-if="overview" class="ov-grid">
-        <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}/{{ overview.room_capacity }}</div><div class="ov-l">成员</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.vip_count || 0 }}</div><div class="ov-l">VIP</div></div>
-        <div class="ov"><div class="ov-n tnum">{{ overview.online_count }}</div><div class="ov-l">在线</div></div>
-        <div class="ov"><div class="ov-n tnum">{{ fmtSec(overview.total_focus_sec) }}</div><div class="ov-l">累计专注</div></div>
+
+        <div class="ov"><div class="ov-n tnum">{{ overview.room_member_count }}</div><div class="ov-l">有效房间席位占用（人次）</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.online_count }}</div><div class="ov-l">可见在线成员（去重）</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtBytes(overview.attachment_bytes) }}</div><div class="ov-l">图片占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.record_count }}</div><div class="ov-l">同步记录</div></div>
       </div>
 
+      <p v-if="overview" class="field-hint">席位统计全部未解散房间的成员关系，同一人在不同房间分别计次。在线人数按90秒有效心跳去重，并遵守小组共享与隐私权限。</p>
+
       <div class="tabs">
         <button :class="{ on: tab === 'invite' }" @click="switchTab('invite')">邀请码</button>
         <button :class="{ on: tab === 'member' }" @click="switchTab('member')">成员</button>
-        <button :class="{ on: tab === 'request' }" @click="switchTab('request')">审批</button>
-        <button :class="{ on: tab === 'content' }" @click="switchTab('content')">内容</button>
+        <button :class="{ on: tab === 'request' }" @click="switchTab('request')">功能审批</button>
+        <button :class="{ on: tab === 'content' }" @click="switchTab('content')">励志内容审核</button>
         <button :class="{ on: tab === 'announce' }" @click="switchTab('announce')">公告</button>
       </div>
+
+      <div class="admin-list-tools"><input v-model="listSearch" class="input" type="search" aria-label="搜索当前管理列表" placeholder="搜索当前列表的昵称、邮箱、内容或备注" /><span class="sub">当前已加载列表匹配 {{ matchingRows.length }} 条 · 每页 {{ pageSize }} 条</span></div>
+      <p v-if="listSearch && !matchingRows.length" class="empty">没有匹配结果，请调整关键词。</p>
 
       <!-- 邀请码 -->
       <div v-if="tab === 'invite'" class="card">
         <button class="btn btn-primary btn-block" @click="sheet = 'invite'"><Plus :size="16" />生成邀请码</button>
-        <div v-for="c in invites" :key="c.id" class="invite-row">
+        <div v-for="c in pageRows" :key="c.id" class="invite-row">
           <div class="invite-main">
             <div class="invite-code tnum">{{ c.code }}</div>
             <div class="invite-sub">
@@ -348,7 +392,8 @@ onMounted(() => {
       <!-- 成员 -->
       <div v-if="tab === 'member'" class="card">
         <button class="btn btn-primary btn-block" @click="sheet = 'member'"><UserPlus :size="16" />直接创建账号</button>
-        <div v-for="m in members" :key="m.id" class="member-row">
+        <div class="desktop-table"><table><thead><tr><th>成员</th><th>邮箱</th><th>角色 / 状态</th><th>会员</th><th>账号管理</th></tr></thead><tbody><tr v-for="m in pageRows" :key="m.id"><td>{{ m.nickname }}</td><td>{{ m.email }}</td><td>{{ m.role === 'admin' ? '管理员' : '成员' }} · {{ m.status === 'banned' ? '已封禁' : m.status === 'deleted' ? '已注销' : '正常' }}</td><td>{{ m.vip_permanent ? '永久 VIP' : m.is_vip ? 'VIP' : '普通成员' }}</td><td><div class="table-actions"><button class="mini" title="会员调整" @click="openVip(m)"><Crown :size="15" /></button><button class="mini" title="重置密码" @click="sheet = 'reset'; resetTarget = m; newPwd = ''"><KeyRound :size="15" /></button><button v-if="m.role !== 'admin'" class="mini" title="封禁/恢复" @click="toggleBan(m)"><Ban :size="15" /></button></div></td></tr></tbody></table></div>
+        <div v-for="m in pageRows" :key="m.id" class="member-row mobile-admin-row">
           <div class="member-main">
             <div class="member-name">
               {{ m.nickname }}
@@ -358,15 +403,15 @@ onMounted(() => {
               <span v-if="m.status === 'deleted'" class="tag tag-used">已注销</span>
             </div>
             <div class="member-sub">
-              {{ m.email }} · {{ SCHOOL_MAP[m.target_school]?.short || '未填梦校' }}
-              <span v-if="m.is_vip"> · 到期 {{ fmtDate(m.vip_until) }}</span>
+              {{ m.email }}
+              <span v-if="m.is_vip"> · {{ m.vip_permanent ? '永久VIP' : `到期 ${fmtDate(m.vip_until)}` }}</span>
             </div>
           </div>
           <div class="member-actions">
             <button class="mini" title="会员调整" @click="openVip(m)"><Crown :size="15" /></button>
             <button class="mini" title="重置密码" @click="sheet = 'reset'; resetTarget = m; newPwd = ''"><KeyRound :size="15" /></button>
             <button v-if="m.role !== 'admin'" class="mini" title="封禁/恢复" @click="toggleBan(m)"><Ban :size="15" /></button>
-            <button v-if="m.role !== 'admin'" class="mini danger" title="删除" @click="removeMember(m)"><Trash2 :size="15" /></button>
+
           </div>
         </div>
       </div>
@@ -380,7 +425,7 @@ onMounted(() => {
           <button :class="{ on: requestFilter === 'revoked' }" @click="loadRequests('revoked')">已撤销</button>
         </div>
         <div v-if="!requests.length" class="empty">暂无记录</div>
-        <div v-for="r in requests" :key="r.id" class="req-card">
+        <div v-for="r in pageRows" :key="r.id" class="req-card">
           <div class="req-top">
             <span class="req-avatar">{{ r.user.nickname.slice(0, 1) }}</span>
             <div class="req-user">
@@ -408,9 +453,11 @@ onMounted(() => {
           <button :class="{ on: inspFilter === 'pending' }" @click="loadInspirations('pending')">待审核</button>
           <button :class="{ on: inspFilter === 'approved' }" @click="loadInspirations('approved')">已通过</button>
           <button :class="{ on: inspFilter === 'rejected' }" @click="loadInspirations('rejected')">已驳回</button>
+          <button :class="{ on: inspFilter === 'taken_down' }" @click="loadInspirations('taken_down')">已下架</button>
+          <button :class="{ on: inspFilter === 'withdrawn' }" @click="loadInspirations('withdrawn')">作者撤回</button>
         </div>
         <div v-if="!inspirations.length" class="empty">暂无投稿</div>
-        <div v-for="it in inspirations" :key="it.id" class="req-card">
+        <div v-for="it in pageRows" :key="it.id" class="req-card">
           <div class="req-top">
             <span class="req-avatar"><Sparkles :size="14" /></span>
             <div class="req-user">
@@ -428,23 +475,29 @@ onMounted(() => {
             <button class="req-reject" @click="openInspReject(it)"><X :size="14" />驳回</button>
             <button class="req-approve" @click="approveInspiration(it)"><Check :size="14" />通过</button>
           </div>
+          <div v-if="it.status === 'approved'" class="req-actions">
+            <button class="req-reject" @click="openTakedown(it)">下架</button>
+          </div>
         </div>
       </div>
 
       <!-- 公告 -->
       <div v-if="tab === 'announce'" class="card">
         <button class="btn btn-primary btn-block" @click="sheet = 'announce'"><Megaphone :size="16" />发布公告</button>
-        <div v-for="a in announcements" :key="a.id" class="ann-row">
+        <div v-for="a in pageRows" :key="a.id" class="ann-row">
           <div class="ann-content">{{ a.content }}</div>
           <div class="ann-foot">
             <span>{{ fmtDateTime(a.created_at) }}</span>
             <span v-if="!a.is_active" class="tag tag-used">已停用</span>
+            <button class="mini" @click="editAnnouncement(a)">编辑</button><button class="mini" @click="toggleAnnouncement(a)">{{a.is_active?'停用':'启用'}}</button>
             <button class="mini danger" @click="removeAnnouncement(a.id)"><Trash2 :size="14" /></button>
           </div>
         </div>
         <div v-if="!announcements.length" class="empty">还没有公告</div>
       </div>
     </div>
+
+    <div class="admin-pagination page"><button class="btn btn-outline btn-sm" :disabled="listPage <= 1" @click="listPage--">上一页</button><span>第 {{ listPage }} / {{ pageCount }} 页</span><button class="btn btn-outline btn-sm" :disabled="listPage >= pageCount" @click="listPage++">下一页</button></div>
 
     <!-- 弹层 -->
     <div v-if="sheet" class="mask" @click.self="sheet = null">
@@ -477,17 +530,20 @@ onMounted(() => {
         <template v-else-if="sheet === 'vip'">
           <div class="sheet-title">会员调整 · {{ vipTarget?.nickname }}</div>
           <div class="vip-current">
-            当前状态：{{ vipTarget?.is_vip ? `VIP · ${fmtDate(vipTarget.vip_until)} 到期` : '未开通' }}
+            当前状态：{{ vipTarget?.vip_permanent ? '永久VIP' : vipTarget?.is_vip ? `VIP · ${fmtDate(vipTarget.vip_until)} 到期` : '未开通' }}
           </div>
           <div class="seg" style="margin-bottom: 12px">
             <button :class="{ on: vipForm.action === 'grant' }" @click="vipForm.action = 'grant'">开通</button>
             <button :class="{ on: vipForm.action === 'renew' }" @click="vipForm.action = 'renew'">续期</button>
             <button :class="{ on: vipForm.action === 'revoke' }" @click="vipForm.action = 'revoke'">降级</button>
+            <button :class="{ on: vipForm.action === 'permanent' }" @click="vipForm.action = 'permanent'">永久</button>
+            <button :class="{ on: vipForm.action === 'set_expiry' }" @click="vipForm.action = 'set_expiry'">指定到期</button>
           </div>
-          <label v-if="vipForm.action !== 'revoke'" class="sf">
+          <label v-if="['grant', 'renew'].includes(vipForm.action)" class="sf">
             <span>会员天数</span>
             <input v-model="vipForm.days" type="number" min="1" max="3650" placeholder="30" />
           </label>
+          <label v-if="vipForm.action === 'set_expiry'" class="sf"><span>到期日期（当天23:59）</span><input v-model="vipForm.until" type="date" /></label>
           <label class="sf">
             <span>操作备注（必填 ≥5 字）</span>
             <input v-model="vipForm.note" maxlength="300" placeholder="如：研友续期一个月" />
@@ -515,6 +571,17 @@ onMounted(() => {
             <textarea v-model="inspNote" class="ta" rows="3" maxlength="300" placeholder="写清楚原因，投稿人可见"></textarea>
           </label>
           <button class="btn btn-danger btn-block mt16" @click="rejectInspiration">确认驳回</button>
+          <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
+        </template>
+
+        <template v-else-if="sheet === 'insp-takedown'">
+          <div class="sheet-title">下架励志投稿</div>
+          <div class="vip-current">{{ takedownTarget?.user?.nickname }}：{{ takedownTarget?.content }}</div>
+          <label class="sf">
+            <span>下架原因（至少5字，投稿人可见）</span>
+            <textarea v-model="takedownNote" class="ta" rows="3" maxlength="300" placeholder="下架后会从励志区和弹幕池移除"></textarea>
+          </label>
+          <button class="btn btn-danger btn-block mt16" @click="takedownInspiration">确认下架</button>
           <button class="btn btn-ghost btn-block mt8" @click="sheet = null">取消</button>
         </template>
 
@@ -549,7 +616,7 @@ onMounted(() => {
 .mini { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--sub); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .mini.danger { color: var(--red); }
 .tag { font-size: 10px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
-.tag-new { background: #e7f6f0; color: #1f9d63; }
+.tag-new { background: #ecfdf5; color: #10b981; }
 .tag-used { background: #eef1f6; color: var(--faint); }
 .tag-admin { background: #fff3df; color: var(--accent-deep); }
 .tag-ban { background: #fdecec; color: var(--red); }

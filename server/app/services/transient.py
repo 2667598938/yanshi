@@ -1,78 +1,14 @@
-"""进程内临时状态（4 人版不依赖 Redis）：限流计数、验证码、登录锁定。
+"""验证码摘要与邮件投递工具。
 
-接口与 Redis 版保持一致，未来若需要可替换为 Redis 实现而不改业务代码。
+共享临时状态由 persistent_transient.PersistentTransientStore 管理。
 """
 import hashlib
 import secrets
 import smtplib
 import ssl
-import threading
-import time
 from email.message import EmailMessage
 
 from ..errors import ApiError
-
-
-class TransientStore:
-    def __init__(self):
-        self.data = {}
-        self.lock = threading.RLock()
-
-    def get(self, key):
-        with self.lock:
-            item = self.data.get(key)
-            if not item or item[1] <= time.time():
-                self.data.pop(key, None)
-                return None
-            return item[0]
-
-    def set(self, key, value, ttl):
-        with self.lock:
-            self.data[key] = (str(value), time.time() + ttl)
-
-    def consume(self, key):
-        with self.lock:
-            value = self.get(key)
-            self.data.pop(key, None)
-            return value
-
-    def verify(self, key: str, value_digest: str, max_attempts: int = 5) -> bool:
-        """核对验证码：允许最多 max_attempts 次输错，成功后立即失效。"""
-        with self.lock:
-            stored = self.get(key)
-            if not stored:
-                return False
-            attempts_key = key + ':attempts'
-            if stored == value_digest:
-                self.data.pop(key, None)
-                self.data.pop(attempts_key, None)
-                return True
-            attempts = int(self.get(attempts_key) or 0) + 1
-            if attempts >= max_attempts:
-                # 达到错误上限：验证码作废，必须重新获取
-                self.data.pop(key, None)
-                self.data.pop(attempts_key, None)
-            else:
-                self.set(attempts_key, attempts, 300)
-            return False
-
-    def set_once(self, key, value, ttl):
-        with self.lock:
-            if self.get(key) is not None:
-                return False
-            self.set(key, value, ttl)
-            return True
-
-    def count(self, key, ttl):
-        with self.lock:
-            old = self.data.get(key)
-            value = int(self.get(key) or 0) + 1
-            self.data[key] = (str(value), old[1] if old and old[1] > time.time() else time.time() + ttl)
-            return value
-
-    def limit(self, key, maximum, ttl):
-        if self.count(key, ttl) > maximum:
-            raise ApiError(429, 42901, '操作过于频繁，请稍后再试')
 
 
 def digest(value):

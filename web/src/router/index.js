@@ -1,7 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { authorizeRoute } from './access'
 
-const routes = [
+export const routes = [
+  {path:'/group/admission',component:()=>import('../views/GroupAdmissionView.vue'),meta:{requiresAuth:true,hideTabbar:true}},
+  {path:'/admin/group',component:()=>import('../views/GroupReviewView.vue'),meta:{requiresAuth:true,requiresAdmin:true,hideTabbar:true}},
+  { path: '/group', component: () => import('../views/GroupLearningView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
+  { path: '/schools/manage', component: () => import('../views/SchoolAdminView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
+  { path: '/settings/time-nodes', component: () => import('../views/TimeNodesView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
+  { path:'/admin/operations',component:()=>import('../views/AdminOperationsView.vue'),meta:{requiresAuth:true,requiresAdmin:true,hideTabbar:true} },
+  { path:'/admin/resources',component:()=>import('../views/ResourceReviewView.vue'),meta:{requiresAuth:true,requiresAdmin:true,hideTabbar:true} },
+  { path: '/admin/schools', name: 'school-admin', component: () => import('../views/SchoolAdminView.vue'), meta: { title: '院校与校园图片', requiresAuth: true, requiresAdmin: true, hideTabbar: true } },
+  { path: '/me/phone', name: 'phone-settings', component: () => import('../views/PhoneSettingsView.vue'), meta: { title: '绑定手机号', requiresAuth: true, hideTabbar: true } },
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: '今日' } },
   { path: '/stats', name: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计' } },
   { path: '/focus', name: 'focus', component: () => import('../views/FocusView.vue'), meta: { title: '专注' } },
@@ -35,13 +45,16 @@ const routes = [
   // 登录 / 注册 / 找回（无底部导航）
   { path: '/login', name: 'login', component: () => import('../views/auth/AuthView.vue'), meta: { title: '登录', hideTabbar: true } },
   // 后台管理（仅管理员，页面内二次校验）
-  { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { title: '后台管理', requiresAuth: true, hideTabbar: true } },
+  { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { title: '后台管理', requiresAuth: true, requiresAdmin: true, hideTabbar: true } },
+  { path: '/admin/email-jobs', name: 'email-jobs', component: () => import('../views/EmailJobsView.vue'), meta: { title: '通知邮件任务', requiresAuth: true, requiresAdmin: true, hideTabbar: true } },
 
   // 二级页（隐藏底部导航）
   { path: '/tasks', name: 'tasks', component: () => import('../views/TasksView.vue'), meta: { title: '任务计划', hideTabbar: true } },
   { path: '/mistakes', name: 'mistakes', component: () => import('../views/MistakesView.vue'), meta: { title: '错题本', hideTabbar: true } },
   { path: '/mistake/edit', name: 'mistake-edit', component: () => import('../views/MistakeEditView.vue'), meta: { title: '记一道错题', hideTabbar: true } },
   { path: '/subjects', name: 'subjects', component: () => import('../views/SubjectManageView.vue'), meta: { title: '科目管理', hideTabbar: true } },
+  { path: '/settings/learning', name: 'learning-settings', component: () => import('../views/LearningSettingsView.vue'), meta: { title: '专注与休息设置', hideTabbar: true } },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
@@ -52,13 +65,7 @@ const router = createRouter({
   },
 })
 
-// 云功能（自习室/AI/我的）需要登录；核心学习页可离线
-router.beforeEach((to) => {
-  const auth = useAuthStore()
-  if (to.meta.requiresAuth && !auth.isLoggedIn) {
-    return { path: '/login', query: { redirect: to.fullPath } }
-  }
-  return true
-})
+// 默认所有业务页均需登录。已经登录的账号仍可使用自己的离线学习数据。
+router.beforeEach((to) => authorizeRoute(to, useAuthStore()))
 
 export default router

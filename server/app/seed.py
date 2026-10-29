@@ -12,12 +12,13 @@ from .time import utcnow
 
 def seed(db, settings: Settings, echo=print):
     now = utcnow()
+    from .services.group import enroll
 
     defaults = {
         'site_name': '研时',
         'exam_date': '2027-12-25',
         'exam_year': 2028,
-        'registration_open': True,  # 自助注册仍需有效邀请码
+        'registration_open': settings.registration_open,
     }
     for key, value in defaults.items():
         if db.get(Config, key) is None:
@@ -45,7 +46,7 @@ def seed(db, settings: Settings, echo=print):
         ('zju', '浙江大学', '浙大', 7),
     ]
     for key, name, short, order in builtin_schools:
-        if not db.scalar(select(School.id).where(School.key == key)):
+        if not db.scalar(select(School.id).where(School.key == key, School.owner_id.is_(None))):
             db.add(School(key=key, name=name, short=short, is_builtin=True, sort_order=order))
 
     admin = db.scalar(select(User).where(User.email == settings.admin_email))
@@ -58,6 +59,7 @@ def seed(db, settings: Settings, echo=print):
             exam_year=2028, exam_date='2027-12-25',
         )
         db.add(admin)
+        db.flush()
         db.commit()
         echo('========================================================')
         echo(f'初始管理员已创建：{admin.email}')
@@ -66,6 +68,7 @@ def seed(db, settings: Settings, echo=print):
             echo('（密码为随机生成，仅显示一次，请立即登录并修改）')
         echo('========================================================')
 
+    enroll(db, admin.id)
     # 固定一个四人自习室，管理员为房主
     room = db.scalar(select(Room).order_by(Room.id).limit(1))
     if not room:
@@ -84,8 +87,12 @@ def seed(db, settings: Settings, echo=print):
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--quiet', action='store_true', help='不在自动发布日志打印初始密码')
+    args = parser.parse_args()
     settings = Settings()
     _, sessions = make_database(settings.database_url)
     with sessions() as db:
-        seed(db, settings)
+        seed(db, settings, echo=(lambda *a: None) if args.quiet else print)
     print('系统配置 / 官方节点 / 管理员已就绪；未生成任何虚构学习数据。')

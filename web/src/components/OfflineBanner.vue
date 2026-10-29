@@ -2,6 +2,7 @@
 // 全局离线提示：首次断网提醒可用功能，联网后自动隐藏
 import { ref, onMounted, onUnmounted } from 'vue'
 import { WifiOff } from 'lucide-vue-next'
+import { syncNow } from '../sync/engine'
 
 const offline = ref(!navigator.onLine)
 
@@ -10,6 +11,7 @@ function onOffline() {
 }
 function onOnline() {
   offline.value = false
+  syncNow()
 }
 
 onMounted(() => {

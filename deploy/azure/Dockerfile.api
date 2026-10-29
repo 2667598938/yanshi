@@ -1,0 +1,14 @@
+FROM python:3.12-slim-bookworm
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app/server
+COPY server/requirements.txt ./requirements.txt
+COPY server/requirements.lock ./requirements.lock
+RUN pip install --require-hashes -r requirements.lock && pip check \
+    && python -c "from importlib.metadata import version; assert tuple(map(int, version('cryptography').split('.')[:3])) >= (50,0,2), 'Upgrade and test cryptography before production build'"
+RUN groupadd --gid 10001 yanshi && useradd --uid 10001 --gid 10001 --no-create-home yanshi \
+    && mkdir -p /var/lib/yanshi && chown 10001:10001 /var/lib/yanshi
+COPY server/ ./
+USER 10001:10001
+EXPOSE 8000
+# No host port is published for this service. Only the dedicated Compose proxy is trusted.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips=*"]

@@ -1,8 +1,8 @@
 """站内消息服务：落库 + 可选邮件双通道，dedupe_key 防重复通知。"""
 from sqlalchemy import select
 
-from ..models import Message
-from ..services.transient import deliver
+from ..models import Message, EmailJob
+from ..time import utcnow
 
 
 def create_message(db, user, kind, title, content, link='', dedupe_key=None,
@@ -17,11 +17,10 @@ def create_message(db, user, kind, title, content, link='', dedupe_key=None,
                   dedupe_key=dedupe_key)
     db.add(row)
     if email and settings and user.email:
-        try:
-            deliver(settings, user.email, '研时 · ' + title, content)
-        except Exception:
-            # 邮件失败不应阻断业务事务，站内消息已落库
-            pass
+        db.flush()
+        db.add(EmailJob(user_id=user.id, message_id=row.id, recipient=user.email,
+                        subject=('研时 · ' + title)[:160], content=content or '',
+                        status='pending', next_attempt_at=utcnow()))
     return row
 
 

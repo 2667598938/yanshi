@@ -245,26 +245,26 @@ function dayNum(key) {
 
 /* 色阶 */
 .l0 {
-  background: #edf1f6;
+  background: #eef0fa;
 }
 .l1 {
-  background: #ffe0d8;
+  background: #e0e7ff;
 }
 .l2 {
-  background: #ffb5a6;
+  background: #c7d2fe;
 }
 .l3 {
-  background: #f9826c;
+  background: #8b5cf6;
 }
 .l4 {
-  background: #e0523f;
+  background: #4f46e5;
 }
 .f {
   background: transparent;
 }
 .month .l0,
 .hm-month .l0 {
-  background: #f1f4f8;
+  background: #eef0fa;
 }
 .legend {
   display: flex;

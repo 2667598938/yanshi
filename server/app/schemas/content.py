@@ -19,12 +19,14 @@ class ResourceInput(Strict):
     code: str = Field(default='', max_length=20)
     category: str = Field(default='', max_length=20)
     intro: str = Field(default='', max_length=300)
+    personal_note: str = Field(default='', max_length=1000)
 
     _url = field_validator('url')(url_value)
 
 
 class FavoriteState(Strict):
     favorited: bool
+    expected_revision: Optional[int] = Field(default=None, ge=0)
 
 
 class ResourceUpdate(Strict):
@@ -33,6 +35,8 @@ class ResourceUpdate(Strict):
     code: Optional[str] = Field(default=None, max_length=20)
     category: Optional[str] = Field(default=None, max_length=20)
     intro: Optional[str] = Field(default=None, max_length=300)
+    personal_note: Optional[str] = Field(default=None,max_length=1000)
+    expected_revision: Optional[int] = Field(default=None,ge=1)
 
     @field_validator('url')
     @classmethod

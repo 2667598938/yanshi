@@ -73,6 +73,7 @@ def issue_session(request, db, user, response, now=None):
 
 
 def user_payload(user):
+    from .features import is_vip
     return {
         'id': user.id, 'email': user.email, 'nickname': user.nickname,
         'phone': user.phone or '', 'avatar_key': user.avatar_key, 'role': user.role,
@@ -81,7 +82,9 @@ def user_payload(user):
         'signature': user.signature or '', 'figure_id': user.figure_id or 'figure-1',
         'daily_goal_min': user.daily_goal_min, 'exam_date': user.exam_date,
         'notify_enabled': user.notify_enabled,
-        'privacy_mode': bool(user.privacy_mode),
+        'privacy_mode': bool(user.is_private_mode), 'is_private_mode': bool(user.is_private_mode),
+        'custom_motto': user.custom_motto,
         'vip_until': iso(user.vip_until),
-        'is_vip': bool(user.vip_until and user.vip_until > utcnow()),
+        'vip_permanent': bool(user.vip_permanent),
+        'is_vip': is_vip(user),
     }

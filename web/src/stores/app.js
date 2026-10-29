@@ -9,6 +9,7 @@ const DEFAULTS = {
   dailyGoalMin: 300, // 每日专注目标，默认 5 小时
   examDate: EXAM_DATE,
   notifyEnabled: false,
+  heroCollapsed: false,
 }
 
 function load() {
@@ -24,10 +25,10 @@ export const useAppStore = defineStore('app', {
   state: () => load(),
   actions: {
     persist() {
-      const { nickname, dreamSchool, dailyGoalMin, examDate, notifyEnabled } = this
+      const { nickname, dreamSchool, dailyGoalMin, examDate, notifyEnabled, heroCollapsed } = this
       localStorage.setItem(
         APP_KEY,
-        JSON.stringify({ nickname, dreamSchool, dailyGoalMin, examDate, notifyEnabled })
+        JSON.stringify({ nickname, dreamSchool, dailyGoalMin, examDate, notifyEnabled, heroCollapsed })
       )
     },
     setDreamSchool(key) {
@@ -44,6 +45,10 @@ export const useAppStore = defineStore('app', {
     },
     setNotifyEnabled(v) {
       this.notifyEnabled = v
+      this.persist()
+    },
+    setHeroCollapsed(v) {
+      this.heroCollapsed = !!v
       this.persist()
     },
   },

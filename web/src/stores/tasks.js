@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { db, uid } from '../db'
+import { localAccountScope, uid } from '../db'
 import { todayKey, dayKey } from '../utils/date'
-import { enqueueRecord, enqueueDelete } from '../sync/engine'
+import { writeRecord, patchRecord, enqueueDelete } from '../sync/engine'
+import { useClockStore } from './clock'
 
 // 学习计划 / 任务清单。任务完成与否是"真学会"的指标之一，与时长并列。
 export const useTasksStore = defineStore('tasks', {
@@ -16,28 +17,32 @@ export const useTasksStore = defineStore('tasks', {
     open: (s) => s.list.filter((t) => !t.done),
     // 今日到期 + 已逾期（未完成）
     dueToday() {
-      const t = todayKey()
+      const t = useClockStore().today
       return this.open
         .filter((x) => x.dueDate && x.dueDate <= t)
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
     },
     overdueCount() {
-      const t = todayKey()
+      const t = useClockStore().today
       return this.open.filter((x) => x.dueDate && x.dueDate < t).length
     },
     // 今日到期的全部任务（含已完成，用于今日完成率）
     todayAll() {
-      const t = todayKey()
+      const t = useClockStore().today
       return this.sorted.filter((x) => x.dueDate === t)
     },
   },
   actions: {
     async load() {
+      const scope = localAccountScope()
       if (this.loaded) return
-      this.list = await db.tasks.toArray()
+      const rows = await scope.db.tasks.toArray()
+      if (!scope.isCurrent()) return
+      this.list = rows
       this.loaded = true
     },
     async add(payload) {
+      const scope = localAccountScope()
       const title = (payload.title || '').trim()
       if (!title) return null
       const item = {
@@ -46,22 +51,24 @@ export const useTasksStore = defineStore('tasks', {
         subjectId: payload.subjectId || 'other',
         phase: payload.phase || 'custom',
         acceptCriteria: payload.acceptCriteria || '',
-        dueDate: payload.dueDate || todayKey(),
+        dueDate: payload.dueDate ?? todayKey(),
+        estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(payload.estimatedMin)||0))),
         done: 0,
         doneAt: null,
         createdAt: Date.now(),
       }
-      await db.tasks.add(item)
+      await writeRecord('tasks', item, { create: true })
+      scope.assertCurrent()
       this.list.push(item)
-      await enqueueRecord('tasks', item)
       return item
     },
     async update(id, patch) {
-      await db.tasks.update(id, patch)
+      const scope = localAccountScope()
+      const row = await patchRecord('tasks', id, patch)
+      scope.assertCurrent()
       const i = this.list.findIndex((x) => x.id === id)
       if (i >= 0) {
-        this.list[i] = { ...this.list[i], ...patch }
-        await enqueueRecord('tasks', this.list[i])
+        if (row) this.list[i] = row
       }
     },
     async toggle(id) {
@@ -69,13 +76,12 @@ export const useTasksStore = defineStore('tasks', {
       if (!t) return
       const done = t.done ? 0 : 1
       const doneAt = done ? Date.now() : null
-      await db.tasks.update(id, { done, doneAt })
-      t.done = done
-      t.doneAt = doneAt
-      await enqueueRecord('tasks', t)
+      await this.update(id, { done, doneAt })
     },
     async remove(id) {
+      const scope = localAccountScope()
       await enqueueDelete('tasks', id)
+      scope.assertCurrent()
       this.list = this.list.filter((x) => x.id !== id)
     },
     // 某日期区间内（按到期日）任务完成率

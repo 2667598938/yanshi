@@ -12,6 +12,9 @@ class ChatInput(BaseModel):
     scene: Scene = 'general'
     content: str = Field(min_length=1, max_length=4000)
     conversation_id: Optional[int] = None
+    image_keys: list[str] = Field(default_factory=list, max_length=4)
+    use_tools: bool = False
+    use_search: bool = False
     context: Optional[dict] = None      # 复盘等场景附带的本地统计数据
 
 
@@ -28,13 +31,20 @@ class ConversationUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=80)
 
 
+class AIPreferencesInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    context_turns: int = Field(ge=0, le=50)
+
+
 class AIKeyInput(BaseModel):
+    supports_images: bool = False
+    supports_tools: bool = False
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     provider: Provider = 'deepseek'
     base_url: str = Field(default='', max_length=200)
     model: str = Field(default='', max_length=120)
-    api_key: str = Field(min_length=8, max_length=400)
+    api_key: Optional[str] = Field(default=None, min_length=8, max_length=400)
 
 
 class AIModelsInput(BaseModel):
@@ -43,3 +53,4 @@ class AIModelsInput(BaseModel):
     provider: Provider = 'deepseek'
     base_url: str = Field(default='', max_length=200)
     api_key: str = Field(default='', max_length=400)   # 留空则用已保存的 Key
+    force_refresh: bool = False

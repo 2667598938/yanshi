@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   Pause, Play, Bell, BellOff, Check, X, Minus, Plus,
   Settings2, NotebookPen, Timer, Hourglass,
@@ -11,6 +11,9 @@ import SubjectIcon from '../components/SubjectIcon.vue'
 import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useSubjectsStore } from '../stores/subjects'
+import { useLearningSettingsStore } from '../stores/learningSettings'
+import { useNotificationPreference } from '../composables/useNotificationPreference'
+import { useTasksStore } from '../stores/tasks'
 import {
   DURATIONS, MIN_DURATION, MAX_DURATION, ACTIVITIES,
 } from '../data/subjects'
@@ -22,14 +25,28 @@ const app = useAppStore()
 const subjects = useSubjectsStore()
 const { toast } = useToast()
 const router = useRouter()
+const route = useRoute()
+const settings = useLearningSettingsStore()
+const { toggle: toggleNotify, busy: notifyBusy } = useNotificationPreference()
+const tasks = useTasksStore()
+const linkedTask = computed(() => tasks.list.find(t=>t.id===(timer.current?.taskId || route.query.taskId || timer.lastFinished?.session?.taskId)))
+const completingTask = ref(false)
+async function completeLinkedTask(){
+  if(!linkedTask.value || linkedTask.value.done || completingTask.value)return
+  completingTask.value=true
+  try{await tasks.toggle(linkedTask.value.id);toast('任务已标记完成')}
+  catch(e){toast(e.message || '任务状态未保存')}
+  finally{completingTask.value=false}
+}
+const learningContent = ref(timer.current?.learningContent || String(route.query.content || ''))
 
 const ACT_ICONS = { Headphones, PenLine, RotateCcw, BookMarked }
 
 // idle 配置
 const mode = ref(timer.current?.mode || 'timer')
-const subjId = ref(timer.current?.subjectId || '')
+const subjId = ref(timer.current?.subjectId || String(route.query.subjectId || ''))
 const activity = ref(timer.current?.activityType || '')
-const plan = ref(timer.current?.mode === 'timer' ? timer.current.plannedMin || 25 : 25)
+const plan = ref(timer.current?.mode === 'timer' ? timer.current.plannedMin || settings.value.focusMin : settings.value.focusMin)
 const customOpen = ref(false)
 const customVal = ref(40)
 
@@ -38,7 +55,7 @@ const note = ref('')
 const finished = ref(null)
 
 const phase = computed(() =>
-  !timer.current ? 'idle' : timer.isPaused ? 'paused' : 'focusing'
+  timer.rest ? (timer.rest.finished ? 'restReady' : 'resting') : !timer.current ? 'idle' : timer.isPaused ? 'paused' : 'focusing'
 )
 const currentSubject = computed(
   () =>
@@ -52,40 +69,48 @@ const isStopwatch = computed(() =>
   phase.value === 'idle' ? mode.value === 'stopwatch' : timer.current?.mode === 'stopwatch'
 )
 const ringColor = computed(() => {
+  if (timer.rest) return '#10b981'
   if (phase.value === 'paused') return '#94a3b8'
-  return isStopwatch.value ? '#3a7fc4' : '#f2705b'
+  return isStopwatch.value ? '#6366f1' : '#8b5cf6'
 })
-const ringStart = computed(() => (isStopwatch.value ? '#82b4e8' : '#ff9d8a'))
+const ringStart = computed(() => (isStopwatch.value ? '#a5b4fc' : '#c4b5fd'))
 const ringProgress = computed(() => {
+  if (timer.rest) return 1 - timer.restRemainingSec / timer.rest.plannedSec
   if (phase.value === 'idle') return 0
   if (timer.current?.mode === 'stopwatch') return (timer.elapsedSec % 60) / 60
   return timer.progress
 })
 const displayTime = computed(() => {
+  if (timer.rest) return fmtClock(timer.restRemainingSec)
   if (phase.value === 'idle')
     return isStopwatch.value ? '00:00' : fmtClock(plan.value * 60)
   if (timer.current?.mode === 'stopwatch') return fmtClock(timer.elapsedSec)
   return fmtClock(timer.remainingSec)
 })
 const phaseText = computed(
-  () => ({ idle: '准备开始', focusing: '专注中', paused: '已暂停' }[phase.value])
+  () => ({ idle: '准备开始', focusing: '专注中', paused: '已暂停',
+    resting: timer.rest?.kind === 'long' ? '长休息' : '短休息', restReady: '休息结束，等待手动开始' }[phase.value])
 )
 
-function start() {
+async function start() {
   if (!subjects.active.length) {
     toast('请先添加一个科目')
     return
   }
   const subjectId = subjId.value || subjects.active[0].id
-  timer.start({
+  const started = await timer.start({
     subjectId,
     mode: mode.value,
     plannedMin: plan.value,
     activityType: activity.value,
+    learningContent: learningContent.value,
+    taskId: route.query.taskId || null,
   })
+  if(!started){if(timer.startError)toast(timer.startError);return}
   toast(mode.value === 'stopwatch' ? '开始正向计时，大雪深埋' : '开始专注，大雪深埋')
 }
 function toggle() {
+  if (timer.leaseLost) { toast('本机已失去主计时权限，请结束本机记录后重新开始'); return }
   if (timer.isPaused) timer.resume()
   else timer.pause()
 }
@@ -135,25 +160,6 @@ function applyCustom() {
   customOpen.value = false
 }
 
-async function toggleNotify() {
-  if (!('Notification' in window)) {
-    toast('当前浏览器不支持通知')
-    return
-  }
-  if (Notification.permission === 'granted') {
-    app.setNotifyEnabled(!app.notifyEnabled)
-    toast(app.notifyEnabled ? '已开启到点通知' : '已关闭通知')
-    return
-  }
-  const p = await Notification.requestPermission()
-  if (p === 'granted') {
-    app.setNotifyEnabled(true)
-    toast('已开启到点通知')
-  } else {
-    toast('未获得通知权限')
-  }
-}
-
 let lastAt = 0
 watch(
   () => timer.lastFinished?.at,
@@ -172,9 +178,10 @@ watch(
         <div class="nav-title">专注</div>
         <div class="nav-sub">沉潜一刻，静水流深</div>
       </div>
-      <button class="notify-btn" @click="toggleNotify">
+      <button class="notify-btn" :disabled="notifyBusy" :aria-pressed="app.notifyEnabled" aria-label="到点浏览器通知" @click="toggleNotify">
         <component :is="app.notifyEnabled ? Bell : BellOff" :size="18" :stroke-width="2.2" />
       </button>
+      <button class="notify-btn" aria-label="专注与休息设置" @click="router.push('/settings/learning')"><Settings2 :size="18" /></button>
     </div>
 
     <div class="page focus-page">
@@ -194,17 +201,30 @@ watch(
           </div>
         </FocusRing>
 
-        <template v-if="phase !== 'idle'">
+        <div v-if="timer.rest" class="active-controls">
+          <button v-if="timer.rest.finished" class="ctl-main" @click="timer.startNext()"><Play :size="20" />开始下一个番茄</button>
+          <button class="ctl-end" @click="timer.endRest()">{{ timer.rest.finished ? '返回设置' : '跳过休息' }}</button>
+        </div>
+        <template v-else-if="phase !== 'idle'">
           <div class="active-controls">
-            <button class="ctl-main" @click="toggle">
+            <button class="ctl-main" :disabled="timer.leaseLost" @click="toggle">
               <component :is="timer.isPaused ? Play : Pause" :size="22" :stroke-width="2.4" />
-              <span>{{ timer.isPaused ? '继续' : '暂停' }}</span>
+              <span>{{ timer.leaseLost ? '主计时权限已失效' : timer.isPaused ? '继续' : '暂停' }}</span>
             </button>
             <button class="ctl-end" @click="openConfirm">结束</button>
           </div>
         </template>
       </div>
 
+      <section class="focus-configuration" aria-label="专注配置与状态">
+      <div v-if="linkedTask" class="card task-focus-result">
+        <strong>关联任务：{{linkedTask.title}}</strong>
+        <p>已投入 {{Math.round((timer.taskSeconds?.[linkedTask.id]||0)/60)}} 分钟 · 预估 {{linkedTask.estimatedMin||0}} 分钟</p>
+        <p v-if="linkedTask.acceptCriteria">做完的标准：{{linkedTask.acceptCriteria}}</p>
+        <button v-if="!timer.current && timer.lastFinished?.session?.taskId===linkedTask.id && !linkedTask.done" class="btn btn-primary" :disabled="completingTask" @click="completeLinkedTask">已达到标准，标记任务完成</button>
+        <p v-else-if="linkedTask.done">此任务已完成。继续学习可选择新的任务。</p>
+        <p v-else>计时结束不会自动完成任务，请按实际成果确认。</p>
+      </div>
       <!-- idle 配置 -->
       <template v-if="phase === 'idle'">
         <!-- 模式切换 -->
@@ -225,7 +245,7 @@ watch(
           >
             <Timer :size="16" />
             <span>正向计时</span>
-            <small>无上限，手动结束</small>
+            <small>最多180分钟，手动结束</small>
           </button>
         </div>
 
@@ -271,6 +291,11 @@ watch(
         </div>
 
         <!-- 倒计时时长（正向计时不显示） -->
+        <div class="card">
+          <label class="cfg-label" for="learning-content">自由学习内容</label>
+          <input id="learning-content" v-model="learningContent" class="input" maxlength="100" list="learning-history" placeholder="如：高数第三章课后题，可选择历史内容" />
+          <datalist id="learning-history"><option v-for="item in timer.contentHistory" :key="item" :value="item" /></datalist>
+        </div>
         <div v-if="mode === 'timer'" class="card">
           <div class="cfg-label">专注时长（分钟）</div>
           <div class="pill-row">
@@ -279,7 +304,7 @@ watch(
               :key="d"
               class="pill"
               :class="{ active: !customOpen && plan === d }"
-              :style="!customOpen && plan === d ? { background: 'var(--tomato)' } : {}"
+              :style="!customOpen && plan === d ? { background: 'var(--primary)' } : {}"
               @click="customOpen = false; plan = d"
             >
               {{ d }}
@@ -287,7 +312,7 @@ watch(
             <button
               class="pill"
               :class="{ active: customOpen }"
-              :style="customOpen ? { background: 'var(--tomato)' } : {}"
+              :style="customOpen ? { background: 'var(--primary)' } : {}"
               @click="customOpen = true; customVal = plan"
             >
               自定义
@@ -313,11 +338,12 @@ watch(
 
         <button
           class="btn btn-block start-btn"
+            :disabled="timer.claiming || !!timer.remoteLease"
           :class="mode === 'stopwatch' ? 'btn-primary' : 'btn-tomato'"
           @click="start"
         >
           <Play :size="20" :stroke-width="2.6" />
-          <span>{{ mode === 'stopwatch' ? '开始正向计时' : `开始 ${plan} 分钟专注` }}</span>
+          <span>{{ timer.claiming ? '正在获取主计时权限…' : timer.remoteLease ? '主计时设备正在运行，本机仅查看' : mode === 'stopwatch' ? '开始正向计时' : `开始 ${plan} 分钟专注` }}</span>
         </button>
       </template>
 
@@ -328,6 +354,7 @@ watch(
         </span>
         <span v-else>已暂停，随时继续。</span>
       </div>
+      </section>
     </div>
 
     <!-- 结束确认 -->
@@ -349,7 +376,7 @@ watch(
             <Check :size="18" />记录并结束（按实际时长）
           </button>
           <button class="btn btn-danger btn-block mt8" @click="giveup">
-            <X :size="18" />放弃（不记录）
+              <X :size="18" />放弃（保留已专注时长）
           </button>
           <button class="btn btn-ghost btn-block mt8" @click="sheet = false">继续专注</button>
         </template>
@@ -390,7 +417,7 @@ watch(
 }
 
 .focus-hero {
-  background: linear-gradient(160deg, #2b2f45 0%, #1c2238 55%, #161b2e 100%);
+  background: linear-gradient(160deg, #4c1d95 0%, #312e81 55%, #1e1b4b 100%);
   border-radius: 26px;
   padding: 26px 18px 22px;
   box-shadow: 0 16px 34px rgba(22, 27, 46, 0.3);
@@ -399,7 +426,7 @@ watch(
   align-items: center;
 }
 .focus-hero.sw {
-  background: linear-gradient(160deg, #1f3b5c 0%, #16294d 55%, #10203f 100%);
+  background: linear-gradient(160deg, #4338ca 0%, #312e81 55%, #1e1b4b 100%);
 }
 .clock {
   font-size: 56px;
@@ -438,8 +465,8 @@ watch(
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #ff8a72, var(--tomato-deep));
-  box-shadow: 0 8px 20px rgba(224, 82, 63, 0.32);
+  background: var(--primary-grad);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -5,7 +5,7 @@ import { attachmentApi } from '../api'
 async function uploadList(list) {
   const out = []
   let failed = false
-  for (const item of list) {
+  for (const [index, item] of list.entries()) {
     if (typeof item === 'string') {
       out.push(item)
       continue
@@ -20,7 +20,10 @@ async function uploadList(list) {
       failed = true
       out.push(item)
       // 网络/服务不可用：保留 Blob，下次同步继续补传
-      if (!e.status || e.status >= 500) break
+      if (!e.status || e.status >= 500) {
+        out.push(...list.slice(index + 1))
+        break
+      }
     }
   }
   return { out, failed }

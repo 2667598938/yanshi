@@ -5,12 +5,37 @@ import { ACTIVITY_MAP } from '../data/subjects'
 export function filterSessions(sessions, { start, end, subjectId, activityType } = {}) {
   return sessions.filter(
     (s) =>
-      (s.status === 'done' || s.status === 'quit') &&
+      (s.status === 'done' || s.status === 'quit') && !s.conflict_flag && !s.validation_issue &&
       (!start || s.date >= start) &&
       (!end || s.date <= end) &&
       (!subjectId || s.subjectId === subjectId) &&
       (!activityType || (s.activityType || '') === activityType)
   )
+}
+
+export function periodBounds(period, key = todayKey()) {
+  const date = new Date(key + 'T00:00:00')
+  if (!Number.isFinite(date.getTime())) throw new Error('日期无效')
+  const year = date.getFullYear(), month = date.getMonth()
+  if (period === 'day') return { start: key, end: key }
+  if (period === 'week') { const start = weekStartKey(key); return { start, end: addDaysKey(start, 6) } }
+  if (period === 'month') return { start: dayKey(new Date(year, month, 1)), end: dayKey(new Date(year, month + 1, 0)) }
+  if (period === 'year') return { start: `${year}-01-01`, end: `${year}-12-31` }
+  throw new Error('统计周期无效')
+}
+
+export function contentBreakdown(rows) {
+  const grouped = new Map()
+  for (const row of rows) {
+    const name = row.learningContent?.trim() || '未填写学习内容'
+    grouped.set(name, (grouped.get(name) || 0) + Math.max(0, Number(row.actualSec) || 0))
+  }
+  const total = [...grouped.values()].reduce((sum, sec) => sum + sec, 0)
+  const colors = ['#4f46e5', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#6366f1', '#14b8a6']
+  return [...grouped].map(([name, sec]) => ({ name, sec, pct: total ? sec / total * 100 : 0,
+    color: name === '未填写学习内容' ? '#94a3b8'
+      : colors[[...name].reduce((hash, char) => hash + char.codePointAt(0), 0) % colors.length] }))
+    .filter((row) => row.sec > 0).sort((a, b) => b.sec - a.sec || a.name.localeCompare(b.name))
 }
 
 export function sumMin(rows) {
@@ -185,7 +210,7 @@ export function buildWeekDays(weekStart, minMap) {
 export function daySubjectDetail(sessions, date) {
   const m = {}
   sessions
-    .filter((s) => (s.status === 'done' || s.status === 'quit') && s.date === date)
+    .filter((s) => (s.status === 'done' || s.status === 'quit') && !s.conflict_flag && !s.validation_issue && s.date === date)
     .forEach((s) => {
       if (!m[s.subjectId]) m[s.subjectId] = 0
       m[s.subjectId] += s.actualSec / 60
@@ -196,11 +221,11 @@ export function daySubjectDetail(sessions, date) {
 // 某一天的总时长（含 quit 保留的实际时长）
 export function dayTotalMin(sessions, date) {
   return sessions
-    .filter((s) => (s.status === 'done' || s.status === 'quit') && s.date === date)
+    .filter((s) => (s.status === 'done' || s.status === 'quit') && !s.conflict_flag && !s.validation_issue && s.date === date)
     .reduce((a, s) => a + s.actualSec / 60, 0)
 }
 
 // 某一天的番茄数
 export function dayCount(sessions, date) {
-  return sessions.filter((s) => s.status === 'done' && s.date === date).length
+  return sessions.filter((s) => s.status === 'done' && !s.conflict_flag && !s.validation_issue && s.date === date).length
 }

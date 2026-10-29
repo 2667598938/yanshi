@@ -32,6 +32,7 @@ export const db = new Proxy({}, {
 // 每个账号独立 IndexedDB，避免换号后把上一个账号的未同步记录重新入队
 let currentDb = createDb('yanshi_db')
 let accountId = null
+let switchesInFlight = 0
 
 function createDb(name) {
   const instance = new Dexie(name)
@@ -61,6 +62,7 @@ function createDb(name) {
     localFavs: 'resourceId, updatedAt',
   })
 
+  instance.version(4).stores({ timeNodes: 'id' })
   return instance
 }
 
@@ -71,18 +73,25 @@ export function currentKey() {
 
 async function migrateGuestData(guest, target) {
   const tables = ['subjects', 'sessions', 'tasks', 'mistakes', 'outbox',
-    'localPosts', 'localFavs', 'kv']
-  let targetRows = 0
-  for (const table of ['subjects', 'sessions', 'tasks', 'mistakes', 'outbox',
-    'localPosts', 'localFavs']) {
-    targetRows += await target[table].count()
+    'localPosts', 'localFavs', 'kv', 'timeNodes']
+  const snapshots = await guest.transaction('r', tables, async () =>
+    Promise.all(tables.map((table) => guest[table].toArray())))
+  const migrated = await target.transaction('rw', tables, async () => {
+    for (const table of tables) {
+      if (await target[table].count()) return false
+    }
+    for (const [index, table] of tables.entries()) {
+      if (snapshots[index].length) await target[table].bulkPut(snapshots[index])
+    }
+    return true
+  })
+  // 跨库无法共用事务：先完整提交目标库，再清理游客库，失败时保留源数据。
+  if (migrated) {
+    await guest.transaction('rw', tables, async () => {
+      for (const table of tables) await guest[table].clear()
+    })
   }
-  if (targetRows > 0) return
-  for (const table of tables) {
-    const rows = await guest[table].toArray()
-    if (rows.length) await target[table].bulkPut(rows)
-  }
-  for (const table of tables) await guest[table].clear()
+  return migrated
 }
 
 // 登录/登出/启动时切换账号数据源；首次登录把游客数据迁移进该账号库
@@ -92,27 +101,43 @@ export async function activateAccount(userId, { migrateGuest = false } = {}) {
     if (!currentDb.isOpen()) await currentDb.open()
     return
   }
-  let next
-  if (nextId && migrateGuest) {
-    const target = createDb(`yanshi_db_u${nextId}`)
-    await target.open()
-    await migrateGuestData(currentDb, target)
-    await currentDb.close()
-    next = target
-  } else {
-    await currentDb.close()
-    next = createDb(nextId ? `yanshi_db_u${nextId}` : 'yanshi_db')
-    await next.open()
-  }
-  currentDb = next
-  accountId = nextId
+  switchesInFlight += 1
+  try {
+    let next
+    let claimedGuest = false
+    if (nextId && migrateGuest && accountId === null) {
+      const target = createDb(`yanshi_db_u${nextId}`)
+      await target.open()
+      try {
+        claimedGuest = await migrateGuestData(currentDb, target)
+      } catch (e) {
+        target.close()
+        throw e
+      }
+      await currentDb.close()
+      next = target
+    } else {
+      await currentDb.close()
+      next = createDb(nextId ? `yanshi_db_u${nextId}` : 'yanshi_db')
+      await next.open()
+    }
+    currentDb = next
+    accountId = nextId
 
-  if (nextId) {
-    const guestCurrent = localStorage.getItem(CUR_KEY)
-    const accountCurrent = localStorage.getItem(currentKey())
-    if (guestCurrent && !accountCurrent) localStorage.setItem(currentKey(), guestCurrent)
-    if (guestCurrent) localStorage.removeItem(CUR_KEY)
-  }
+    if (claimedGuest) {
+      const guestCurrent = localStorage.getItem(CUR_KEY)
+      const accountCurrent = localStorage.getItem(currentKey())
+      if (guestCurrent && !accountCurrent) localStorage.setItem(currentKey(), guestCurrent)
+      if (guestCurrent) localStorage.removeItem(CUR_KEY)
+    }
+  } finally { switchesInFlight -= 1 }
+}
+
+// Capture the actual account database, not just a numeric user ID (A→B→A is stale too).
+export function localAccountScope() {
+  const source = currentDb
+  return { db: source, isCurrent: () => source === currentDb && switchesInFlight === 0,
+    assertCurrent() { if (source !== currentDb || switchesInFlight > 0) throw new Error('账号已切换，请在当前账号重新操作') } }
 }
 
 export function activeAccountId() {

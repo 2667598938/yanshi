@@ -1,23 +1,28 @@
 """图片处理与附件编排（4 人私密版：无审核，统一转 JPEG，按用户配额）。"""
+
 import secrets
+import json
 import tempfile
 import threading
 import warnings
+from datetime import timedelta
 from pathlib import Path
 
 from PIL import Image, ImageOps
 from sqlalchemy import func, select
 
 from ..errors import ApiError
-from ..models import Attachment
+from ..models import (
+    AIConversation, AIMessage, Attachment, Inspiration, LearningRecord, School, User,
+)
 from ..time import utcnow
 
 Image.MAX_IMAGE_PIXELS = 4096 * 4096
 PROCESS_SLOTS = threading.BoundedSemaphore(2)
 FORMATS = {
-    'JPEG': ('image/jpeg', {'.jpg', '.jpeg'}),
-    'PNG': ('image/png', {'.png'}),
-    'WEBP': ('image/webp', {'.webp'}),
+    "JPEG": ("image/jpeg", {".jpg", ".jpeg"}),
+    "PNG": ("image/png", {".png"}),
+    "WEBP": ("image/webp", {".webp"}),
 }
 AVATAR_SIZE = 512
 MAX_EDGE = 2048
@@ -26,40 +31,47 @@ MAX_EDGE = 2048
 def transform(upload, *, avatar, max_bytes):
     """读取上传图片，校验后统一转为 JPEG；头像居中裁剪为方形。返回 (file,size,w,h)。"""
     if not PROCESS_SLOTS.acquire(timeout=1):
-        raise ApiError(429, 42901, '图片正在处理中，请稍后重试')
+        raise ApiError(429, 42901, "图片正在处理中，请稍后重试")
     result = None
     try:
         upload.file.seek(0, 2)
         size = upload.file.tell()
         upload.file.seek(0)
         if size <= 0 or size > max_bytes:
-            raise ApiError(400, 40001, '图片为空或超出大小限制')
+            raise ApiError(400, 40001, "图片为空或超出大小限制")
         with warnings.catch_warnings():
-            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(upload.file) as probe:
                 if probe.format not in FORMATS:
-                    raise ValueError('bad format')
+                    raise ValueError("bad format")
                 mime, suffixes = FORMATS[probe.format]
-                if upload.content_type != mime or Path(upload.filename or '').suffix.lower() not in suffixes:
-                    raise ValueError('bad mime/ext')
+                if (
+                    upload.content_type != mime
+                    or Path(upload.filename or "").suffix.lower() not in suffixes
+                ):
+                    raise ValueError("bad mime/ext")
                 if min(probe.size) < 1 or max(probe.size) > 4096:
-                    raise ValueError('bad dims')
+                    raise ValueError("bad dims")
                 probe.verify()
             upload.file.seek(0)
             with Image.open(upload.file) as original:
                 image = ImageOps.exif_transpose(original)
                 image.thumbnail((MAX_EDGE, MAX_EDGE), Image.Resampling.LANCZOS)
                 if avatar:
-                    image = ImageOps.fit(image, (AVATAR_SIZE, AVATAR_SIZE), Image.Resampling.LANCZOS)
-                if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
-                    rgba = image.convert('RGBA')
-                    flat = Image.new('RGB', rgba.size, 'white')
-                    flat.paste(rgba, mask=rgba.getchannel('A'))
+                    image = ImageOps.fit(
+                        image, (AVATAR_SIZE, AVATAR_SIZE), Image.Resampling.LANCZOS
+                    )
+                if image.mode in ("RGBA", "LA") or (
+                    image.mode == "P" and "transparency" in image.info
+                ):
+                    rgba = image.convert("RGBA")
+                    flat = Image.new("RGB", rgba.size, "white")
+                    flat.paste(rgba, mask=rgba.getchannel("A"))
                     image = flat
                 else:
-                    image = image.convert('RGB')
-                result = tempfile.SpooledTemporaryFile(max_size=64 * 1024, mode='w+b')
-                image.save(result, format='JPEG', quality=88)
+                    image = image.convert("RGB")
+                result = tempfile.SpooledTemporaryFile(max_size=64 * 1024, mode="w+b")
+                image.save(result, format="JPEG", quality=88)
                 size = result.tell()
                 result.seek(0)
                 return result, size, image.width, image.height
@@ -68,33 +80,89 @@ def transform(upload, *, avatar, max_bytes):
     except Exception:
         if result:
             result.close()
-        raise ApiError(400, 40001, '图片无效；仅接受 JPG/PNG/WebP，边长不超过 4096') from None
+        raise ApiError(
+            400, 40001, "图片无效；仅接受 JPG/PNG/WebP，边长不超过 4096"
+        ) from None
     finally:
         PROCESS_SLOTS.release()
 
 
 def used_bytes(db, user_id):
-    value = db.scalar(select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
-        Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None)))
+    value = db.scalar(
+        select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
+            Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None)
+        )
+    )
     return int(value or 0)
 
 
-def can_view(row, user):
+def can_view(row, user, db=None):
     if row.deleted_at:
         return False
-    if row.uploader_id == user.id or user.role == 'admin':
+    if row.uploader_id == user.id:
         return True
-    return row.biz_type == 'avatar'   # 头像在自习室互相可见，其余仅本人
+    if row.biz_type in {"mistake", "ai"}:
+        if row.biz_type == "ai" or db is None:
+            return False
+        from .group import can_read
+        from ..models import User, LearningRecord
+
+        if not can_read(db, user, db.get(User, row.uploader_id)):
+            return False
+        for record in db.scalars(
+            select(LearningRecord).where(
+                LearningRecord.user_id == row.uploader_id, LearningRecord.deleted == 0
+            )
+        ).all():
+            value = json.loads(record.body)
+            if value.get("type") == "mistake" and row.object_key in [
+                *value.get("images", []),
+                *value.get("answerImages", []),
+            ]:
+                return True
+        return False
+    if row.biz_type == "inspiration" and db is not None:
+        if user.role == "admin":
+            return True  # 管理员必须能查看待审配图；不扩大学习图片权限。
+        return (
+            db.scalar(
+                select(Inspiration.id)
+                .where(
+                    Inspiration.image_key == row.object_key,
+                    Inspiration.status == "approved",
+                )
+                .limit(1)
+            )
+            is not None
+        )
+    if row.biz_type == "school" and db is not None:
+        return any(
+            school.logo_key == row.object_key
+            or row.object_key in json.loads(school.album_keys or "[]")
+            for school in db.scalars(
+                select(School).where(School.owner_id == user.id)
+            ).all()
+        )
+    if user.role == "admin" and row.biz_type == "inspiration":
+        return True
+    return row.biz_type == "avatar"  # 头像在自习室互相可见，其余仅本人
 
 
 def create_attachment(db, settings, user, biz_type, processed, size, width, height):
     if used_bytes(db, user.id) + size > settings.storage_quota_bytes:
-        raise ApiError(403, 40301, '图片存储配额不足（每人 200MB）')
-    key = f'{biz_type}/{user.id}/{secrets.token_hex(16)}.jpg'
+        raise ApiError(403, 40301, "图片存储配额不足（每人 200MB）")
+    key = f"{biz_type}/{user.id}/{secrets.token_hex(16)}.jpg"
     row = Attachment(
-        object_key=key, storage_backend=settings.image_storage,
-        uploader_id=user.id, biz_type=biz_type, content_type='image/jpeg',
-        size_bytes=size, width=width, height=height, created_at=utcnow())
+        object_key=key,
+        storage_backend=settings.image_storage,
+        uploader_id=user.id,
+        biz_type=biz_type,
+        content_type="image/jpeg",
+        size_bytes=size,
+        width=width,
+        height=height,
+        created_at=utcnow(),
+    )
     db.add(row)
     db.flush()
     return row
@@ -103,3 +171,73 @@ def create_attachment(db, settings, user, biz_type, processed, size, width, heig
 def mark_deleted(row):
     if not row.deleted_at:
         row.deleted_at = utcnow()
+
+
+ORPHAN_GRACE_HOURS = 24
+
+
+def referenced_keys(db, user_id):
+    """仍在题目、相册、聊天、头像、励志投稿中被引用的本人附件 key。"""
+    keys = set()
+    user = db.get(User, user_id)
+    if user and user.avatar_key:
+        keys.add(user.avatar_key)
+    for record in db.scalars(
+        select(LearningRecord).where(
+            LearningRecord.user_id == user_id, LearningRecord.deleted == 0
+        )
+    ).all():
+        try:
+            body = json.loads(record.body or "{}")
+        except (TypeError, ValueError):
+            continue
+        if body.get("type") == "mistake":
+            keys.update(key for key in body.get("images", []) if key)
+            keys.update(key for key in body.get("answerImages", []) if key)
+    for school in db.scalars(
+        select(School).where(School.owner_id == user_id)
+    ).all():
+        if school.logo_key:
+            keys.add(school.logo_key)
+        try:
+            keys.update(key for key in json.loads(school.album_keys or "[]") if key)
+        except (TypeError, ValueError):
+            pass
+    for row in db.scalars(
+        select(Inspiration).where(Inspiration.user_id == user_id)
+    ).all():
+        if row.image_key:
+            keys.add(row.image_key)
+    for image_keys in db.scalars(
+        select(AIMessage.image_keys)
+        .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
+        .where(AIConversation.user_id == user_id)
+    ).all():
+        try:
+            keys.update(key for key in json.loads(image_keys or "[]") if key)
+        except (TypeError, ValueError):
+            pass
+    return keys
+
+
+def orphan_attachments(db, user_id, *, grace_hours=ORPHAN_GRACE_HOURS):
+    cutoff = utcnow() - timedelta(hours=grace_hours)
+    used = referenced_keys(db, user_id)
+    rows = db.scalars(
+        select(Attachment).where(
+            Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None)
+        )
+    ).all()
+    return [row for row in rows if row.object_key not in used and row.created_at <= cutoff]
+
+
+def storage_summary(db, user_id, quota_bytes, *, grace_hours=ORPHAN_GRACE_HOURS):
+    used = used_bytes(db, user_id)
+    orphans = orphan_attachments(db, user_id, grace_hours=grace_hours)
+    return {
+        "used_bytes": used,
+        "quota_bytes": int(quota_bytes),
+        "orphan_count": len(orphans),
+        "orphan_bytes": sum(int(row.size_bytes or 0) for row in orphans),
+        "grace_hours": grace_hours,
+    }

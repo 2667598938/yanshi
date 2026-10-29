@@ -9,7 +9,7 @@ import { fmtShort } from '../utils/time'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 import { useAuthStore } from '../stores/auth'
-import { pendingPosts, queuePost, SYNCED_EVENT } from '../sync/community'
+import { pendingPosts, queuePost, cachedPosts, pullCommunityMirrors, SYNCED_EVENT } from '../sync/community'
 import { scheduleSync } from '../sync/engine'
 
 const router = useRouter()
@@ -40,7 +40,10 @@ async function load() {
   loading.value = true
   await loadPending()
   try {
-    rows.value = tab.value === 'mine' ? await postApi.mine() : await postApi.list()
+    if (tab.value === 'mine') {
+      await pullCommunityMirrors().catch(() => {})
+      rows.value = await cachedPosts()
+    } else rows.value = await postApi.list()
   } catch (e) {
     toast(e.message)
   } finally {
@@ -67,21 +70,7 @@ async function publish() {
   if (!text) return toast('写点什么再发布')
   posting.value = true
   try {
-    if (!navigator.onLine) {
-      await saveLocal(text)
-      return
-    }
-    try {
-      const row = await postApi.create(text)
-      rows.value.unshift(row)
-      draft.value = ''
-      showCompose.value = false
-      toast('已发布')
-    } catch (e) {
-      // 鉴权/内容校验错误直接提示；断网或服务不可用（含网关 502）转为本地草稿
-      if (e.status && e.status < 500) return toast(e.message)
-      await saveLocal(text)
-    }
+    await saveLocal(text)
   } finally {
     posting.value = false
   }
@@ -181,7 +170,7 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
 <style scoped>
 .back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
 .compose-btn { margin-left: auto; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 12.5px; font-weight: 600; padding: 9px 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.insp-banner { width: 100%; display: flex; align-items: center; gap: 11px; border: none; border-radius: 14px; padding: 13px 15px; margin-bottom: 12px; background: linear-gradient(135deg, #16294d, #2d4f80); color: #eaf1ff; cursor: pointer; text-align: left; }
+.insp-banner { width: 100%; display: flex; align-items: center; gap: 10px; border: none; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; background: linear-gradient(135deg, #4f46e5, #312e81); color: #eef2ff; cursor: pointer; text-align: left; }
 .ib-main { flex: 1; }
 .ib-title { font-size: 13.5px; font-weight: 700; }
 .ib-sub { font-size: 11px; color: rgba(234, 241, 255, 0.66); margin-top: 2px; }

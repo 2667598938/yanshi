@@ -2,15 +2,19 @@
 import { activateAccount, initDb, db } from '../db'
 
 export async function afterLogin(userId) {
+  const { useSchoolsStore } = await import('../stores/schools')
+  useSchoolsStore().resetForAccount()
   await activateAccount(userId, { migrateGuest: true })
   await initDb()
   await reloadLocal()
   const { initSyncForUser, resetSyncRuntime } = await import('./engine')
   resetSyncRuntime()
-  initSyncForUser()
+  await initSyncForUser()
 }
 
 export async function afterLogout() {
+  const { useSchoolsStore } = await import('../stores/schools')
+  useSchoolsStore().resetForAccount()
   await activateAccount(null)
   await initDb()
   await reloadLocal()
@@ -39,6 +43,12 @@ async function reloadLocal() {
   tk.loaded = true
 
   const ms = m.useMistakesStore()
-  ms.list = await db.mistakes.toArray()
-  ms.loaded = true
+  await ms.load(true)
+  const { useLearningSettingsStore } = await import('../stores/learningSettings')
+  await useLearningSettingsStore().load(true)
+  const { useProfileStore } = await import('../stores/profile')
+  await useProfileStore().load(true)
+  const { useTimeNodesStore } = await import('../stores/timeNodes')
+  useTimeNodesStore().$reset()
+  await useTimeNodesStore().load(true)
 }

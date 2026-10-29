@@ -2,9 +2,11 @@
 import { useRoute } from 'vue-router'
 import { Home, BarChart3, Users, User, Timer, Sparkles } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
+import { useNotificationsStore } from '../stores/notifications'
 
 const route = useRoute()
 const timer = useTimerStore()
+const notifications = useNotificationsStore()
 
 const tabs = [
   { to: '/', label: '今日', icon: Home },
@@ -37,12 +39,14 @@ function isActive(t) {
       <template v-else>
         <component :is="t.icon" :size="21" :stroke-width="2.1" />
         <span>{{ t.label }}</span>
+        <span v-if="t.to === '/me' && notifications.unread" class="notification-count">{{ notifications.unread > 99 ? '99+' : notifications.unread }}</span>
       </template>
     </router-link>
   </nav>
 </template>
 
 <style scoped>
+.tab-item { position: relative; }.notification-count { position: absolute; top: 3px; right: 12%; background: var(--tomato); color: #fff; border-radius: 12px; font-size: 10px; padding: 1px 5px; }
 .tab-item.is-active {
   color: var(--primary);
 }

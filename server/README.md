@@ -7,20 +7,20 @@
 ## 技术栈
 
 FastAPI + SQLAlchemy 2 + Alembic + Pydantic v2 + PyJWT + bcrypt + httpx + Pillow + boto3。
-开发默认 SQLite（零外部依赖）；生产可切 MySQL 8。限流、验证码、登录锁定走进程内存。
+当前使用SQLite单机单worker；MySQL尚需补驱动与专项验收。限流、验证码、登录锁定和一次性票据由PersistentTransientStore在数据库中持久化并事务消费。
 
 ## 功能模块
 
 | 模块 | 说明 |
 |---|---|
-| 账号 | 邮箱验证码注册 / 登录、密码登录、忘记密码、JWT access/refresh 可旋转、登录失败锁定、审计日志；微信 / QQ / 手机号登录代码完整，`AUTH_CHANNELS` 开关控制 |
+| 账号 | 内测仅账号密码登录、管理员创建账号；忘记密码走邮件；JWT access/refresh可旋转、锁定与审计；其他登录由`AUTH_PASSWORD_ONLY`总开关关闭 |
 | 数据同步 | 本地优先：`learning_records` + `learning_operations`；expectedRevision 乐观并发、operationId 幂等、软删、配额 |
 | 学习数据 | 科目、番茄记录、任务、错题（艾宾浩斯）、错误类型、梦校关系 |
 | 自习室 | 公开 / 私密房间、6 位房间码、房主改名 / 换码 / 踢人 / 解散、心跳在线、留言板、目标墙、房间排行 |
 | 资料库 | VIP 发布、非 VIP 链接脱敏、点赞、收藏（支持离线同步） |
 | 社区 | 动态、二级评论、管理员删除并通知、励志区投稿 / 审核、梦校墙数据 |
 | 站内消息 | 列表 / 未读数 / 已读；审批与审核结果站内信 + 邮件双通道 |
-| AI | VIP 自填 Key（AES-256-GCM 加密）+ 服务端兜底 Key；OpenAI 兼容适配、模型列表拉取、SSE 流式对话、用量记录 |
+| AI | VIP 自填 Key（AES-256-GCM 加密）为唯一主路径；旧平台 Key 配置仅兼容读取，不参与聊天；OpenAI 兼容适配、模型列表拉取、SSE 流式对话、用量记录 |
 | 后台 | 概览、成员与封禁、邀请码、功能申请审核、公告、内容审核、审计日志、站点配置、数据导出 |
 
 ## 目录结构
@@ -48,7 +48,7 @@ server/
 cd server
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 Copy-Item .env.example .env
 python -m alembic upgrade head
 python -m app.seed
@@ -90,4 +90,4 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ## 上线
 
-见 `deploy/部署步骤.md`：生产 `.env`、systemd、Nginx、前端 dist、HTTPS、图片存储、每日备份。
+当前Azure环境采用[Compose部署手册](../deploy/azure/README.md)：保留已有Nginx/Certbot、私有镜像digest、单worker、持久卷及备份恢复。systemd备选见`deploy/部署步骤.md`。

@@ -14,6 +14,7 @@ class Post(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
     content = Column(String(2000), nullable=False)
+    revision = Column(Integer, nullable=False, default=1, server_default='1')
     # 离线发帖客户端 ID：同一用户重复上传返回同一条，避免重试产生重复帖子
     client_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=now, nullable=False, index=True)

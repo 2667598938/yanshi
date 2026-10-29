@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "vitest run",
+    "prebuild": "node scripts/build-neural-demo.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "dexie": "^4.4.6",
     "html-to-image": "^1.11.13",
+    "katex": "^0.19.1",
     "lucide-vue-next": "^0.577.0",
     "pinia": "^4.1.0",
     "vue": "^3.5.44",
@@ -18,6 +21,10 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.10",
-    "vite": "^8.3.4"
+    "@vue/test-utils": "^2.5.1",
+    "fake-indexeddb": "^6.2.6",
+    "happy-dom": "^21.0.4",
+    "vite": "^8.3.4",
+    "vitest": "^4.1.12"
   }
 }

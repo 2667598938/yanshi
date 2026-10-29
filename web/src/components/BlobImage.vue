@@ -16,6 +16,7 @@ const props = defineProps({
 const url = ref('')
 const failed = ref(false)
 let objectUrl = ''
+let generation = 0
 
 function clearObject() {
   if (objectUrl) {
@@ -29,6 +30,7 @@ function isKey(s) {
 }
 
 async function resolve() {
+  const current = ++generation
   clearObject()
   failed.value = false
   url.value = ''
@@ -42,9 +44,11 @@ async function resolve() {
       // 附件对象 key，需要带鉴权头拉取
       try {
         const blob = await fetchBlob(attachmentApi.viewUrl(props.src))
+        if (current !== generation) return
         objectUrl = URL.createObjectURL(blob)
         url.value = objectUrl
       } catch {
+        if (current !== generation) return
         failed.value = true
       }
     } else {
@@ -59,7 +63,7 @@ async function resolve() {
 }
 
 watch(() => [props.blob, props.src], resolve, { immediate: true })
-onBeforeUnmount(clearObject)
+onBeforeUnmount(() => { generation += 1; clearObject() })
 
 function onError() {
   if (props.fallback && url.value !== props.fallback) {
