@@ -128,6 +128,15 @@ def test_private_room_requires_code(client):
     assert client.get(f"/api/v1/rooms/{rid}", headers=mh).status_code == 403
 
     # 错误房间码 403，正确房间码可加入
+    for invalid in ["中文房间", "１２３４５６", "🧑‍🎓"]:
+        assert (
+            client.post(
+                f"/api/v1/rooms/{rid}/join",
+                headers=mh,
+                json={"accept_sharing": True, "code": invalid},
+            ).status_code
+            == 403
+        )
     assert (
         client.post(
             f"/api/v1/rooms/{rid}/join",

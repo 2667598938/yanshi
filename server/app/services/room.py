@@ -317,9 +317,18 @@ def create_room(db, user, name, intro, visibility, room_type="checkin_room"):
 @room_write
 def join_room(db, user, room, code=""):
     existing = get_membership(db, room.id, user.id)
-    if not (existing and (existing.sharing_confirmed or room.owner_id == user.id)) and (
-        not code.strip()
-        or not secrets.compare_digest(code.strip().upper(), room.code.upper())
+    normalized = code.strip().upper()
+    # compare_digest(str, str) rejects non-ASCII input with TypeError. A pasted
+    # Chinese/full-width/emoji code must be a normal refusal, never HTTP 500.
+    invited = (
+        bool(normalized)
+        and normalized.isascii()
+        and room.code.isascii()
+        and secrets.compare_digest(normalized, room.code.upper())
+    )
+    if (
+        not (existing and (existing.sharing_confirmed or room.owner_id == user.id))
+        and not invited
     ):
         raise ApiError(403, 40301, "请凭有效房间码加入，或先提交入房申请")
     ensure_member(db, user, room, sharing_confirmed=True)
