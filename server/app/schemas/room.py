@@ -6,12 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 class HeartbeatInput(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
-    status: Literal['offline', 'online', 'idle', 'focusing', 'resting']
+    status: Literal['offline', 'online', 'idle', 'focusing', 'resting', 'away']
     subject_client_id: str = Field(default='', max_length=500)
     subject_name: str = Field(default='', max_length=100)
     activity_type: str = Field(default='', max_length=20)
     mode: str = Field(default='', max_length=12)
     focus_started_at: Optional[int] = Field(default=None, ge=0)
+    # Display only; learning totals are still derived from validated session facts.
+    focus_elapsed_sec: Optional[int] = Field(default=None, ge=0, le=10800)
 
 
 class MessageInput(BaseModel):

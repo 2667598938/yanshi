@@ -7,7 +7,6 @@ import { SCHOOL_MAP } from '../data/schools'
 import { useAppStore } from '../stores/app'
 import { useProfileStore } from '../stores/profile'
 import { useToast } from '../composables/useToast'
-import TimeNodesHome from './TimeNodesHome.vue'
 import SchoolBullets from './SchoolBullets.vue'
 
 const schools = ref([])
@@ -108,7 +107,6 @@ async function setDream() {
       </div>
 
       <SchoolBullets />
-      <TimeNodesHome />
 
       <div class="school-strip">
         <div

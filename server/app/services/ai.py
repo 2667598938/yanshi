@@ -23,6 +23,13 @@ PROVIDERS = {
     'custom': {'label': '自定义', 'base_url': '', 'default_model': ''},
 }
 
+
+def check_finish_reason(reason):
+    if reason == 'length':
+        raise ApiError(502, 50202, '回答达到模型输出上限，内容未完整生成。请缩短问题或分步生成计划后重试')
+    if reason and reason != 'stop':
+        raise ApiError(502, 50202, '模型未完整返回回答，请调整问题后重试')
+
 BASE_PERSONA = """你是「研时」为考研学生打造的 AI 助教，服务于一个 4 人互助学习小组。
 职责：
 1. 考研答疑：覆盖政治、英语（一/二）、数学（一/二）、408 计算机学科专业基础及各专业课，严格依据考研大纲，不超纲、不编造；讲题先定位考点，再讲思路与易错点，必要时给一道同类变式。
@@ -114,10 +121,12 @@ async def call_openai(base_url: str, api_key: str, model: str, messages: list,
         raise ApiError(502, 50201, hint or 'AI 服务暂时不可用，请稍后重试')
     try:
         data = resp.json()
-        content = data['choices'][0]['message']['content'].strip()
+        choice = data['choices'][0]
+        content = choice['message']['content'].strip()
         usage = data.get('usage') or {}
     except Exception:
         raise ApiError(502, 50201, 'AI 返回内容解析失败') from None
+    check_finish_reason(choice.get('finish_reason'))
     return {
         'content': content,
         'prompt_tokens': usage.get('prompt_tokens'),
@@ -137,6 +146,7 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
     base_payload = {**payload, 'stream': True}
     usage = None
     finished = False
+    finish_reason = None
     saw_content = False
     for attempt in (0, 1):
         body = dict(base_payload)
@@ -171,7 +181,9 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
                             usage = obj['usage']
                         choices = obj.get('choices') or []
                         if choices:
-                            if choices[0].get('finish_reason'): finished = True
+                            if choices[0].get('finish_reason'):
+                                finish_reason = choices[0]['finish_reason']
+                                finished = True
                             delta = (choices[0].get('delta') or {}).get('content')
                             if delta:
                                 if not isinstance(delta, str): raise ApiError(502, 50201, '模型流式内容格式无效')
@@ -180,6 +192,7 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
                     break
         except httpx.HTTPError:
             raise ApiError(502, 50201, f'{label}连接失败，请稍后重试') from None
+    check_finish_reason(finish_reason)
     if not finished or not saw_content:
         raise ApiError(502, 50201, '模型连接提前结束或未返回有效回答，请重试')
     yield {'usage': usage or {}, 'latency_ms': int((time.monotonic() - started) * 1000)}

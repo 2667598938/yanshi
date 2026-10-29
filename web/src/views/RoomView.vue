@@ -6,7 +6,6 @@ import {
   UserMinus, Check, X, RefreshCw, ArrowDown,
 } from 'lucide-vue-next'
 import { useTimerStore } from '../stores/timer'
-import { useSubjectsStore } from '../stores/subjects'
 import { useAuthStore } from '../stores/auth'
 import { useSchoolsStore } from '../stores/schools'
 import { roomApi } from '../api'
@@ -14,11 +13,13 @@ import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import CopyFallback from '../components/CopyFallback.vue'
+import { useStudyRoomStore } from '../stores/studyRoom'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
 
 const timer = useTimerStore()
-const subjects = useSubjectsStore()
 const auth = useAuthStore()
+const studyRoom = useStudyRoomStore()
+let presenceInitialized = false
 const schools = useSchoolsStore()
 const { toast } = useToast()
 const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
@@ -84,6 +85,7 @@ function presenceText(m) {
   if (p.status === 'unshared') return { label: '仅同组可见', color: '#8d7fa3' }
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
   if (p.status === 'resting') return { label: '休息中', color: '#8b5cf6' }
+  if (p.status === 'away') return { label: '暂离 · 后台', color: '#8d8f96' }
   if (p.status === 'idle') return { label: '空闲', color: '#f59e0b' }
   if (p.status === 'focusing') {
     return { label: `专注中 · ${p.subject_name || '学习'}${p.focus_sec ? ' ' + fmtSec(p.focus_sec) : ''}`, color: '#10b981' }
@@ -115,25 +117,6 @@ const rankEmptyText = computed(() => ({
   all: '还没有累计专注记录',
 }[rankTab.value] || '还没有专注记录'))
 
-function buildHeartbeat() {
-  if(document.visibilityState !== 'visible')return {status:'offline'}
-  if(timer.isPaused)return {status:'idle'}
-  if (timer.rest && !timer.rest.finished) return { status: 'resting' }
-  const c = timer.current
-  if (c) {
-    const subj = subjects.byId[c.subjectId]
-    return {
-      status: 'focusing',
-      subject_client_id: c.subjectId,
-      subject_name: subj?.name || '学习',
-      activity_type: c.activityType || '',
-      mode: c.mode,
-      focus_started_at: c.startedAt,
-    }
-  }
-  return { status: 'idle', subject_client_id: '', subject_name: '', activity_type: '', mode: '', focus_started_at: null }
-}
-
 // 留言增量合并：只有停留在底部才自动跟随，向上翻看时不抢滚动，改为计数提示
 async function applyMessages(list) {
   list = list.filter(m => !removedMessageIds.value.has(m.id))
@@ -158,6 +141,7 @@ async function pullRoom() {
   room.value = data.room
   if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
   joined.value = data.joined !== false
+  if (joined.value && !presenceInitialized) { studyRoom.enter(data.room,auth.user?.id); presenceInitialized=true }
   preview.value = null
   loadError.value = ''
   members.value = data.members || []
@@ -186,6 +170,7 @@ function fetchRoom() {
           if (!alive) return
           if (e.status === 403) return loadPreview()
           if (e.status === 404) {
+            if(studyRoom.room?.id===roomId.value)studyRoom.leave()
             toast(e.message)
             router.replace('/rooms')
             return
@@ -224,12 +209,10 @@ async function loadPreview() {
   }
 }
 
-let beatTimer = null
 function startBeating() {
   if (!alive) return
-  if (beatTimer) return
+  studyRoom.enter(room.value,auth.user?.id)
   beat()
-  beatTimer = setInterval(() => beat(), 30000)
 }
 
 async function join() {
@@ -297,7 +280,7 @@ async function leaveRoom() {
   try {
     await roomApi.leave(roomId.value)
     joined.value = false
-    clearInterval(beatTimer)
+    if(studyRoom.room?.id===roomId.value)studyRoom.leave()
     toast('已退出自习室')
     router.replace('/rooms')
   } catch (error) { toast(error.message) }
@@ -428,6 +411,7 @@ async function dissolve() {
   if (!confirm('解散后成员会被移出，且不可恢复，确定解散？')) return
   try {
     await roomApi.dissolve(roomId.value)
+    if(studyRoom.room?.id===roomId.value)studyRoom.leave()
     toast('自习室已解散')
     router.replace('/rooms')
   } catch (e) {
@@ -479,7 +463,6 @@ function onLeave() { /* App级pagehide按设备上报 */ }
 onBeforeUnmount(() => {
   alive = false
   clearInterval(pollTimer)
-  clearInterval(beatTimer)
   document.removeEventListener('visibilitychange', onVisibility)
   window.removeEventListener('beforeunload', onLeave)
   // 在其他页面保持在线，由App级心跳接管；仅关闭/后台才上报离线。
@@ -546,14 +529,23 @@ onBeforeUnmount(() => {
         <div class="room-stat">
           <div>
             <div class="rs-num tnum">{{ onlineCount }} / {{ room?.capacity || 4 }}</div>
-            <div class="rs-label">当前在线</div>
+            <div class="rs-label">当前连接（含暂离）</div>
           </div>
           <div class="rs-line"></div>
           <div>
             <div class="rs-num tnum">{{ fmtSec(todayTotal) }}</div>
-            <div class="rs-label">今日房间总时长</div>
+            <div class="rs-label">成员今日学习总时长</div>
           </div>
         </div>
+      </div>
+
+      <div v-if="joined" class="card co-study-controls">
+        <strong>固定成员 {{room?.member_count || members.length}} / {{room?.capacity || 4}}</strong>
+        <p>离开共学只停止本次房间状态；成员席位会保留。切到专注、AI 或资料页不会离开共学。</p>
+        <button v-if="studyRoom.room?.id!==room?.id" class="btn btn-outline" @click="studyRoom.enter(room,auth.user?.id)">进入共学</button>
+        <button v-else class="btn btn-outline" @click="studyRoom.leave()">离开共学</button>
+        <button class="btn btn-primary" @click="studyRoom.enter(room,auth.user?.id);router.push('/focus')">{{timer.current?'查看当前专注':'开始专注'}}</button>
+        <button class="btn btn-outline" @click="studyRoom.enter(room,auth.user?.id);router.push('/tasks')">选一项任务学习</button>
       </div>
 
       <!-- 未加入 -->

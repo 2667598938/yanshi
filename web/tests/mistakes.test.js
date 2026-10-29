@@ -6,6 +6,19 @@ import { useMistakesStore } from '../src/stores/mistakes'
 import { afterLogin } from '../src/sync/account'
 import { enqueueRecord } from '../src/sync/engine'
 
+it('未到期的自由练习不推进节点；同一到期轮次并发确认只写一次',async()=>{
+  const store=useMistakesStore()
+  const row=await store.add({content:'交换积分次序'})
+  for(let i=0;i<8;i++)await store.review(row.id,true)
+  expect(store.list[0].mastered).toBe(0)
+  expect(store.list[0].stage).toBe(0)
+  await store.update(row.id,{nextReviewAt:Date.now()-1})
+  await Promise.all([store.review(row.id,true),store.review(row.id,true)])
+  const saved=await db.mistakes.get(row.id)
+  expect(saved.stage).toBe(1)
+  expect(saved.history).toHaveLength(1)
+})
+
 vi.mock('../src/sync/engine', () => ({
   enqueueRecord: vi.fn(), enqueueDelete: vi.fn(),
   initSyncForUser: vi.fn(), resetSyncRuntime: vi.fn(),
@@ -74,10 +87,12 @@ it('编辑时响应式数组也可写入，保留原记录而不重复新增', a
   expect(await db.mistakes.count()).toBe(1)
 })
 
-it('已有复习历史的响应式记录可连续复习并保存历史', async () => {
+it('每次到期后复习响应式记录，保留不同轮次的历史', async () => {
   const store = useMistakesStore()
   const row = await store.add({ content: '复习' })
+  await store.update(row.id,{nextReviewAt:Date.now()-1})
   await store.review(row.id, true)
+  await store.update(row.id,{nextReviewAt:Date.now()-1})
   await store.review(row.id, false)
   const saved = await db.mistakes.get(row.id)
   expect(saved.history).toHaveLength(2)

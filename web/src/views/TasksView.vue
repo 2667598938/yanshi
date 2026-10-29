@@ -8,6 +8,7 @@ import SubjectIcon from '../components/SubjectIcon.vue'
 import { useTasksStore } from '../stores/tasks'
 import { useSubjectsStore } from '../stores/subjects'
 import { useClockStore } from '../stores/clock'
+import { useTimerStore } from '../stores/timer'
 import { PHASES, PHASE_MAP } from '../data/subjects'
 import { todayKey, mdWeekLabel } from '../utils/date'
 import { useToast } from '../composables/useToast'
@@ -16,6 +17,8 @@ const router = useRouter()
 const tasks = useTasksStore()
 const subjects = useSubjectsStore()
 const clock = useClockStore()
+const timer = useTimerStore()
+const taskEffort = computed(() => timer.taskSeconds || {})
 const { toast } = useToast()
 
 const saving = ref(false)
@@ -127,7 +130,8 @@ async function remove(id) {
     <div class="rate-card">
       <div class="rate-l">
         <div class="rate-num tnum">{{ todayRate === null ? '—' : todayRate + '%' }}</div>
-        <div class="rate-cap">今日任务完成</div>
+        <div class="rate-cap">今日计划完成率（按截止日）</div>
+        <small>今天实际完成 {{tasks.doneCountBetween(today,today)}} 项，包含补做的旧任务</small>
       </div>
       <div class="rate-r">
         <div>今天 {{ tasks.todayAll.filter((t) => t.done).length }}/{{ tasks.todayAll.length }} 项</div>
@@ -149,6 +153,7 @@ async function remove(id) {
           <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
           <div class="task-body" @click="openEdit(t)">
             <div class="task-title danger">{{ t.title }}</div>
+            <div class="task-crit">已投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟 · 预估 {{t.estimatedMin||0}} 分钟</div>
             <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
             <div class="task-meta">
               <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
@@ -162,6 +167,7 @@ async function remove(id) {
             </div>
           </div>
           <button class="del" @click="remove(t.id)"><Trash2 :size="15" /></button>
+          <button class="edit" title="为此任务专注" @click="focusTask(t)"><Play :size="15" /></button>
         </div>
       </div>
     </template>
@@ -174,6 +180,7 @@ async function remove(id) {
         <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
         <div class="task-body" @click="openEdit(t)">
           <div class="task-title">{{ t.title }}</div>
+          <div class="task-crit">已投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟 · 预估 {{t.estimatedMin||0}} 分钟</div>
           <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
           <div class="task-meta">
             <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
@@ -198,6 +205,7 @@ async function remove(id) {
           <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
           <div class="task-body" @click="openEdit(t)">
             <div class="task-title">{{ t.title }}</div>
+            <div class="task-crit">已投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟 · 预估 {{t.estimatedMin||0}} 分钟</div>
             <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
             <div class="task-meta">
               <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
@@ -224,6 +232,7 @@ async function remove(id) {
           <button class="check on" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
           <div class="task-body">
             <div class="task-title">{{ t.title }}</div>
+            <div class="task-crit">累计投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟</div>
           </div>
           <button class="del" @click="remove(t.id)"><Trash2 :size="15" /></button>
         </div>
@@ -237,7 +246,7 @@ async function remove(id) {
       <div class="sheet-title">{{ editingId ? '编辑任务' : '新建任务' }}</div>
 
       <div class="f-label">任务标题</div>
-      <input v-model="fTitle" class="input" placeholder="如：高数极限章节习题做完" maxlength="40" />
+      <input v-model="fTitle" class="input" placeholder="如：高数极限章节习题做完" maxlength="200" />
 
       <div class="f-label">所属科目</div>
       <select v-model="fSubject" class="select">

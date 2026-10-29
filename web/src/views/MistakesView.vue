@@ -21,6 +21,12 @@ const { toast } = useToast()
 
 const filterSub = ref('')
 const detail = ref(null)
+const showAnswer = ref(false)
+const reviewBusy = ref(false)
+const aiImageChoice = ref(null)
+const selectedAiImages = ref([])
+const search = ref('')
+const masteryFilter = ref('all')
 
 const dueList = computed(() => {
   const arr = mistakes.dueReview
@@ -29,6 +35,11 @@ const dueList = computed(() => {
 const list = computed(() => {
   let arr = mistakes.sorted
   if (filterSub.value) arr = arr.filter((x) => x.subjectId === filterSub.value)
+  if (masteryFilter.value !== 'all') arr = arr.filter(x => masteryFilter.value === 'mastered' ? x.mastered : !x.mastered)
+  if (search.value.trim()) {
+    const q = search.value.trim().toLowerCase()
+    arr = arr.filter(x => [x.content,x.chapter,x.idea,x.analysis,...(x.tags||[])].join(' ').toLowerCase().includes(q))
+  }
   return arr
 })
 
@@ -51,32 +62,58 @@ function dueLabel(ms) {
 async function askAi() {
   if (!detail.value) return
   const m = detail.value
+  const images=[...(m.images||[]),...(m.answerImages||[])]
+  if(images.length>4){
+    aiImageChoice.value={mistake:m,images}
+    selectedAiImages.value=[0,1,2,3]
+    return
+  }
+  await sendAiDraft(m,images)
+}
+async function confirmAiImages(){
+  const choice=aiImageChoice.value
+  if(!choice || selectedAiImages.value.length>4)return
+  await sendAiDraft(choice.mistake,selectedAiImages.value.map(i=>choice.images[i]))
+}
+async function sendAiDraft(m,images){
   try {
     await db.kv.put({ key: 'ai:draft', value: {
       content: `请讲解这道错题的考点、解题思路和易错点。\n题目：${m.content || ''}\n我的思路：${m.idea || ''}\n已有解析：${m.analysis || ''}`.slice(0, 4000),
-      images: [...(m.images || []), ...(m.answerImages || [])].slice(0, 4),
+      images,
     } })
     detail.value = null
+    aiImageChoice.value = null
     router.push('/ai')
   } catch (e) { toast(e.message) }
 }
 
 function open(m) {
   detail.value = m
+  showAnswer.value = false
 }
 async function remember() {
-  if (!detail.value) return
+  if (!detail.value || reviewBusy.value) return
   const m = detail.value
   const willMaster = m.stage + 1 >= REVIEW_INTERVALS.length
   const next = willMaster ? null : intervalLabel(REVIEW_INTERVALS[m.stage + 1])
-  await mistakes.review(m.id, true)
+  reviewBusy.value = true
+  let result
+  try { result = await mistakes.review(m.id, true) }
+  catch(e){toast(e.message || '复习记录未保存');return}
+  finally{reviewBusy.value=false}
+  if (!result?.advanced) return toast('本轮已确认或尚未到期，可自由练习；下次到期再推进节点')
   detail.value = mistakes.list.find((x) => x.id === m.id) || null
   toast(willMaster ? '已掌握，这道题过关了' : `${next}后再复习，加油`)
 }
 async function forget() {
-  if (!detail.value) return
+  if (!detail.value || reviewBusy.value) return
   const m = detail.value
-  await mistakes.review(m.id, false)
+  reviewBusy.value=true
+  let result
+  try{result=await mistakes.review(m.id,false)}
+  catch(e){toast(e.message || '复习记录未保存');return}
+  finally{reviewBusy.value=false}
+  if(!result?.advanced)return toast('本轮尚未到期，可先自由练习')
   detail.value = mistakes.list.find((x) => x.id === m.id) || null
   const next = detail.value ? nextLabel(detail.value) : null
   toast(next ? `已回退一个节点，${next}后再复习` : '已回退一个复习节点')
@@ -132,6 +169,8 @@ async function remove() {
     </div>
 
     <!-- 错题列表 -->
+    <input v-model="search" class="input" placeholder="搜索题目、章节、思路或标签" aria-label="搜索错题" />
+    <select v-model="masteryFilter" class="select mt8" aria-label="掌握状态"><option value="all">全部掌握状态</option><option value="open">仍需复习</option><option value="mastered">已掌握</option></select>
     <div v-if="!list.length" class="empty-card">
       <Brain :size="30" />
       <div>还没有错题，专注结束后可一键收录</div>
@@ -211,11 +250,12 @@ async function remove() {
       </div>
 
       <div v-if="detail.content" class="dk-content">{{ detail.content }}</div>
-      <div v-if="detail.idea" class="dk-block">
+      <button class="btn btn-outline btn-block mt8" :aria-expanded="showAnswer" @click="showAnswer=!showAnswer">{{showAnswer?'收起思路与解析':'先独立尝试，再查看思路与解析'}}</button>
+      <div v-if="showAnswer && detail.idea" class="dk-block">
         <div class="dk-label">主要思路</div>
         <div class="dk-text">{{ detail.idea }}</div>
       </div>
-      <div v-if="detail.analysis" class="dk-block">
+      <div v-if="showAnswer && detail.analysis" class="dk-block">
         <div class="dk-label">答案解析</div>
         <div class="dk-text">{{ detail.analysis }}</div>
       </div>
@@ -223,17 +263,18 @@ async function remove() {
       <div v-if="detail.images?.length" class="dk-imgs">
         <BlobImage v-for="(b, i) in detail.images" :key="`q${i}`" :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" class="dk-img" />
       </div>
-      <div v-if="detail.answerImages?.length" class="dk-imgs">
+      <div v-if="showAnswer && detail.answerImages?.length" class="dk-imgs">
         <BlobImage v-for="(b, i) in detail.answerImages" :key="`a${i}`" :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" class="dk-img" />
       </div>
 
       <div v-if="!detail.mastered" class="review-actions">
-        <button class="btn btn-primary btn-block" @click="remember">
+        <p v-if="!isDue(detail)">未到下一轮复习时间，可随时自由练习，不推进排期节点。</p>
+        <button class="btn btn-primary btn-block" :disabled="reviewBusy || !isDue(detail)" @click="remember">
           <Check :size="18" />
           <span v-if="detail.stage + 1 >= REVIEW_INTERVALS.length">记住了，完成掌握</span>
           <span v-else>记住了，{{ intervalLabel(REVIEW_INTERVALS[detail.stage + 1]) }}后复习</span>
         </button>
-        <button class="btn btn-ghost btn-block mt8" @click="forget">
+        <button class="btn btn-ghost btn-block mt8" :disabled="reviewBusy || !isDue(detail)" @click="forget">
           <RefreshCw :size="16" />还没记住，回退上一个节点
         </button>
       </div>
@@ -251,9 +292,23 @@ async function remove() {
   </div>
   <aside v-if="!detail" class="workspace-placeholder"><BookOpenCheck :size="32" /><h3>选择一道错题，开始复习</h3><p>在左侧选择题目，在这里查看题图、思路与解析。</p></aside>
   </div>
+  <div v-if="aiImageChoice" class="mask" @click.self="aiImageChoice=null">
+    <div class="sheet ai-image-picker">
+      <h3>选择要发给 AI 的图片</h3>
+      <p>这道题共有 {{aiImageChoice.images.length}} 张题图/解析图，单次最多发送4张。请选好关键图片；也可全部取消，仅发送文字。</p>
+      <label v-for="(img,i) in aiImageChoice.images" :key="i">
+        <input v-model="selectedAiImages" type="checkbox" :value="i" :disabled="!selectedAiImages.includes(i) && selectedAiImages.length>=4" />
+        {{i<(aiImageChoice.mistake.images?.length||0)?'题目图':'解析图'}} {{i+1}}
+        <BlobImage :blob="typeof img==='string'?null:img" :src="typeof img==='string'?img:''" />
+      </label>
+      <button class="btn btn-primary" @click="confirmAiImages">携带选中图片去 AI</button>
+      <button class="btn btn-outline" @click="aiImageChoice=null">取消</button>
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.ai-image-picker{overflow:auto;max-height:80dvh}.ai-image-picker label{display:block;margin:8px 0;font-size:13px}.ai-image-picker :deep(img){display:block;max-width:100%;max-height:140px;object-fit:contain}.ai-image-picker p{font-size:13px;line-height:1.7}
 .back-btn {
   width: 36px;
   height: 36px;

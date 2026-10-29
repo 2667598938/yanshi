@@ -115,9 +115,10 @@ onMounted(load)
               <Lock :size="18" />
               <div class="mask-main">
                 <div class="mask-url">{{ row.url }}</div>
-                <div class="mask-tip">完整链接与提取码仅 VIP 可见</div>
+                <div class="mask-tip">VIP 或经资料权限审批授权可查看完整链接与提取码</div>
               </div>
               <button class="btn btn-accent btn-sm" @click="router.push('/vip')">开通 VIP</button>
+              <button class="btn btn-outline btn-sm" @click="router.push('/requests?feature=materials')">申请查看</button>
             </template>
             <template v-else>
               <div class="link-main">

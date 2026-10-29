@@ -32,7 +32,7 @@ async function save() {
     <h2>绑定手机号</h2>
     <p>当前：{{ auth.user?.phone || '未绑定' }}</p>
     <p v-if="!loaded">读取中…</p>
-    <p v-else-if="!enabled">手机号绑定暂未开放，当前可继续使用邮箱登录。</p>
+    <p v-else-if="!enabled">手机号绑定暂未开放，当前请使用邮箱账号和密码登录。</p>
     <div v-else class="card">
       <label>新手机号<input v-model="phone" class="input mt8" inputmode="tel" maxlength="11" placeholder="11位手机号" /></label>
       <button class="btn btn-outline mt8" :disabled="busy" @click="send">发送验证码</button>

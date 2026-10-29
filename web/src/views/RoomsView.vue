@@ -114,10 +114,10 @@ onMounted(load)
 
       <!-- 房间类型快捷入口：两列等宽，避免参差换行 -->
       <div class="card type-card">
-        <button v-for="type in roomTypes" :key="type.key" class="type-btn" @click="openCreate(type.key)">
+        <button v-for="type in roomTypes.filter(t=>features.includes(t.key))" :key="type.key" class="type-btn" @click="openCreate(type.key)">
           {{ type.name }} · {{ features.includes(type.key) ? '创建' : '暂未开放' }}
         </button>
-        <button class="type-btn ghost" @click="router.push('/requests?feature=room')">申请房间权限</button>
+        <button v-if="features.some(type=>type==='video_small_room'||type==='cloud_video_room')" class="type-btn ghost" @click="router.push('/requests?feature=room')">申请房间权限</button>
       </div>
       <div v-if="loading" class="sk-list" role="status">
         <span class="sr-only">正在读取自习室列表，请稍候…</span>
@@ -150,8 +150,8 @@ onMounted(load)
               </div>
               <div class="rc-sub">
                 {{ r.visibility === 'private' ? '私密房间' : '公开房间' }}
-                · {{ r.member_count }}/{{ r.capacity }} 人
-                <span v-if="r.online_count"> · {{ r.online_count }} 在线</span>
+                · 固定成员 {{ r.member_count }}/{{ r.capacity }}
+                <span> · {{ r.online_count || 0 }} 连接</span>
               </div>
             </div>
             <ChevronRight :size="17" class="rc-arrow" />

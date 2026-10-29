@@ -1,6 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import { renderMarkdown } from '../src/utils/markdown'
 
+it('排版分式、积分与矩阵；代码中的美元符保持原文',()=>{
+  const html=renderMarkdown(String.raw`行内 $\frac{\sin x}{x}$，块级：
+$$\begin{pmatrix}1&2\\3&4\end{pmatrix}$$
+\[\int_0^1 x^2\,dx\]
+`+'\n`$not_math$`')
+  expect(html).toContain('class="katex"')
+  expect(html).toContain('katex-display')
+  expect(html).toContain('<code>$not_math$</code>')
+})
+
+it('不执行公式中的链接、图片或HTML扩展，流式未闭合公式可安全显示',()=>{
+  const html=renderMarkdown(String.raw`$\href{javascript:alert(1)}{x}$ $\includegraphics{https://evil.test/a}$`)
+  expect(html).not.toContain('href="javascript:')
+  expect(html).not.toContain('<img')
+  expect(renderMarkdown('未结束：$\\frac{1}{')).toContain('$\\frac{1}{')
+})
+
 describe('AI 回复 Markdown 渲染', () => {
   it('转义 HTML，避免注入', () => {
     const html = renderMarkdown('<script>alert(1)</script>')

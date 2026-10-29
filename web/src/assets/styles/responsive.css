@@ -1,5 +1,9 @@
 /* 同一套业务界面：手机底栏、平板全宽、电脑侧栏与内容分区。 */
 :root { --desktop-nav-w: 196px; }
+.md .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 8px 2px; }
+.md .katex { font-size: 1.08em; }
+.co-study-controls {grid-column:1 / -1;padding:16px;font-size:13px;line-height:1.7}
+.co-study-controls button {margin:4px}.co-study-controls p {color:var(--sub);margin:8px 0}
 .desktop-nav, .workspace-placeholder, .ai-history-panel { display: none; }
 .skip-link { position: fixed; top: -80px; left: 16px; z-index: 600; padding: 10px 16px; background: #fff; color: var(--primary); border-radius: 8px; }
 .skip-link:focus { top: 12px; }

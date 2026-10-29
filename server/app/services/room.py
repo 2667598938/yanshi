@@ -34,7 +34,7 @@ from . import messages as message_service
 
 # 中国时区固定 UTC+8（无夏令时），用固定偏移避免依赖系统时区库
 CN = timezone(timedelta(hours=8))
-MAX_FOCUS_SEC = 6 * 3600  # 单次进行中专注展示上限
+MAX_FOCUS_SEC = 3 * 3600  # 与学习计时上限一致；心跳只用于展示
 MESSAGE_LIMIT = 50
 room_write_lock = threading.RLock()
 
@@ -617,6 +617,8 @@ def heartbeat(db, user, payload, room=None):
     presence.focus_started_at = (
         payload.focus_started_at if payload.status == "focusing" else None
     )
+    if payload.status == "focusing" and payload.focus_elapsed_sec is not None:
+        presence.focus_started_at = int(time.time() * 1000) - payload.focus_elapsed_sec * 1000
     presence.last_heartbeat_at = now
     db.commit()
     return {"status": presence.status, "server_time": int(time.time() * 1000)}

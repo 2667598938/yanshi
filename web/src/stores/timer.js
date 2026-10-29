@@ -74,6 +74,11 @@ export const useTimerStore = defineStore('timer', {
     doneSessions: (s) => s.sessions.filter((x) => x.status === 'done' && !x.conflict_flag && !x.validation_issue),
     // 有效时长包含 done 与 quit（超时/放弃仍计入学习时长）
     effectiveSessions: (s) => s.sessions.filter((x) => (x.status === 'done' || x.status === 'quit') && !x.conflict_flag && !x.validation_issue),
+    taskSeconds() {
+      const result = {}
+      for (const row of this.effectiveSessions) if(row.taskId) result[row.taskId]=(result[row.taskId]||0)+row.actualSec
+      return result
+    },
     todaySessions() {
       return this.effectiveSessions.filter((x) => x.date === todayKey())
     },
@@ -176,7 +181,7 @@ export const useTimerStore = defineStore('timer', {
       this.rest = { kind: long ? 'long' : 'short', startedAt: clockNow(), finished: false,
         plannedSec: (long ? settings.longBreakMin : settings.shortBreakMin) * 60,
         nextFocus: { subjectId: previous.subjectId, mode: previous.mode,
-          activityType: previous.activityType, learningContent: previous.learningContent || '' } }
+          activityType: previous.activityType, learningContent: previous.learningContent || '', taskId: previous.taskId || null } }
       this.now = clockNow()
       this.saveCycle()
       this.ensureTicker()

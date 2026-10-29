@@ -12,6 +12,8 @@ import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useSubjectsStore } from '../stores/subjects'
 import { useLearningSettingsStore } from '../stores/learningSettings'
+import { useProfileStore } from '../stores/profile'
+import { useTasksStore } from '../stores/tasks'
 import {
   DURATIONS, MIN_DURATION, MAX_DURATION, ACTIVITIES,
 } from '../data/subjects'
@@ -25,6 +27,17 @@ const { toast } = useToast()
 const router = useRouter()
 const route = useRoute()
 const settings = useLearningSettingsStore()
+const profile = useProfileStore()
+const tasks = useTasksStore()
+const linkedTask = computed(() => tasks.list.find(t=>t.id===(timer.current?.taskId || route.query.taskId || timer.lastFinished?.session?.taskId)))
+const completingTask = ref(false)
+async function completeLinkedTask(){
+  if(!linkedTask.value || linkedTask.value.done || completingTask.value)return
+  completingTask.value=true
+  try{await tasks.toggle(linkedTask.value.id);toast('任务已标记完成')}
+  catch(e){toast(e.message || '任务状态未保存')}
+  finally{completingTask.value=false}
+}
 const learningContent = ref(timer.current?.learningContent || String(route.query.content || ''))
 
 const ACT_ICONS = { Headphones, PenLine, RotateCcw, BookMarked }
@@ -153,14 +166,15 @@ async function toggleNotify() {
     return
   }
   if (Notification.permission === 'granted') {
-    app.setNotifyEnabled(!app.notifyEnabled)
-    toast(app.notifyEnabled ? '已开启到点通知' : '已关闭通知')
+    const enabled = !app.notifyEnabled
+    try { await profile.save({notify_enabled:enabled}); app.setNotifyEnabled(enabled); toast(enabled ? '已开启到点通知' : '已关闭通知') }
+    catch(e){toast(e.message || '通知设置保存失败')}
     return
   }
   const p = await Notification.requestPermission()
   if (p === 'granted') {
-    app.setNotifyEnabled(true)
-    toast('已开启到点通知')
+    try { await profile.save({notify_enabled:true}); app.setNotifyEnabled(true); toast('已开启到点通知') }
+    catch(e){toast(e.message || '通知设置保存失败')}
   } else {
     toast('未获得通知权限')
   }
@@ -223,6 +237,14 @@ watch(
       </div>
 
       <section class="focus-configuration" aria-label="专注配置与状态">
+      <div v-if="linkedTask" class="card task-focus-result">
+        <strong>关联任务：{{linkedTask.title}}</strong>
+        <p>已投入 {{Math.round((timer.taskSeconds?.[linkedTask.id]||0)/60)}} 分钟 · 预估 {{linkedTask.estimatedMin||0}} 分钟</p>
+        <p v-if="linkedTask.acceptCriteria">做完的标准：{{linkedTask.acceptCriteria}}</p>
+        <button v-if="!timer.current && timer.lastFinished?.session?.taskId===linkedTask.id && !linkedTask.done" class="btn btn-primary" :disabled="completingTask" @click="completeLinkedTask">已达到标准，标记任务完成</button>
+        <p v-else-if="linkedTask.done">此任务已完成。继续学习可选择新的任务。</p>
+        <p v-else>计时结束不会自动完成任务，请按实际成果确认。</p>
+      </div>
       <!-- idle 配置 -->
       <template v-if="phase === 'idle'">
         <!-- 模式切换 -->

@@ -103,7 +103,7 @@ const trendMax = computed(() => Math.max(60, ...trend.value.map((x) => x.min)))
 // ===== 热力图 =====
 const view = ref('month')
 const heatSub = ref('')
-const now = new Date()
+const now = new Date(today.value + 'T00:00:00')
 const yCursor = ref(now.getFullYear())
 const mCursor = ref({ year: now.getFullYear(), month: now.getMonth() })
 const wCursor = ref(weekStartKey(today.value))
@@ -143,9 +143,9 @@ function canPrev() {
   return wCursor.value > minWeek.value
 }
 function canNext() {
-  if (view.value === 'year') return yCursor.value < now.getFullYear()
+  if (view.value === 'year') return yCursor.value < Number(today.value.slice(0,4))
   if (view.value === 'month') {
-    return mCursor.value.year * 12 + mCursor.value.month < now.getFullYear() * 12 + now.getMonth()
+    return mCursor.value.year * 12 + mCursor.value.month < Number(today.value.slice(0,4)) * 12 + Number(today.value.slice(5,7)) - 1
   }
   return wCursor.value < weekStartKey(today.value)
 }

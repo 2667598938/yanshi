@@ -5,6 +5,7 @@ from ..models import AITaskImport, AIMessage, AIConversation, LearningRecord, Le
 from ..errors import ApiError
 from .ai_tasks import proposals
 from .sync import execute_commands, sync_write_lock
+from .ai_context import subject_catalog
 
 def owned_message(db,user,mid):
     m=db.get(AIMessage,mid)
@@ -29,7 +30,7 @@ def legacy_receipt(db,user,mid):
     row=AITaskImport(user_id=user.id,message_id=mid,selection='null',tasks=json.dumps(tasks));db.add(row)
     return row
 
-def import_tasks(db,user,mid,selected):
+def import_tasks(db,user,mid,selected,edits=None):
     with sync_write_lock:
         # Serialize with normal sync writes and use a single transaction for records+receipt.
         db.scalar(select(User).where(User.id==user.id).with_for_update())
@@ -41,19 +42,29 @@ def import_tasks(db,user,mid,selected):
         indexes=list(range(len(tasks))) if selected is None else selected
         if not indexes or len(set(indexes))!=len(indexes) or any(i<0 or i>=len(tasks) for i in indexes):raise ApiError(400,40001,'选择的任务无效')
         indexes=sorted(indexes)
+        edited = {row['index']: {k:v for k,v in row.items() if k!='index'} for row in (edits or [])}
+        if len(edited)!=len(edits or []) or any(i not in indexes for i in edited):
+            raise ApiError(400,40001,'修正项必须与选中的任务对应且不可重复')
+        selection = {'indexes': indexes, 'edits': sorted(edits,key=lambda r:r['index'])} if edits else indexes
         receipt=db.get(AITaskImport,(user.id,mid)) or legacy_receipt(db,user,mid)
         if receipt:
-            if receipt.selection!='null' and json.loads(receipt.selection)!=indexes:raise ApiError(409,40901,'该回复已导入，不能换一组选项再次导入')
+            if receipt.selection!='null' and json.loads(receipt.selection)!=selection:raise ApiError(409,40901,'该回复已导入，不能更换选项或修正内容再次导入')
             db.commit();return receipt_state(receipt)
         stamp=int(m.created_at.replace(tzinfo=timezone.utc).timestamp()*1000)
         changes=[]
+        catalog=subject_catalog(db,user.id)
+        valid_ids={s['id'] for s in catalog}
+        def resolve_subject(value):
+            if value in valid_ids:return value
+            matches=[s['id'] for s in catalog if s['name']==value]
+            return matches[0] if len(matches)==1 else 'other'
         for i in indexes:
-            task=tasks[i];key=f'ai-task-{mid}-{i}'
-            record={'id':key,'type':'task','title':task['title'],'subjectId':task['subject_id'] or 'other',
+            task=edited.get(i,tasks[i]);key=f'ai-task-{mid}-{i}'
+            record={'id':key,'type':'task','title':task['title'],'subjectId':resolve_subject(task['subject_id']),
                 'dueDate':task['due_date'],'estimatedMin':task['estimated_min'],'acceptCriteria':task['accept_criteria'],
                 'phase':'custom','done':0,'doneAt':None,'createdAt':stamp,'source':'ai','source_message_id':mid}
             changes.append({'id':key,'expectedRevision':0,'record':record})
-        receipt=AITaskImport(user_id=user.id,message_id=mid,selection=json.dumps(indexes),tasks='[]')
+        receipt=AITaskImport(user_id=user.id,message_id=mid,selection=json.dumps(selection,ensure_ascii=False,sort_keys=True),tasks='[]')
         def save(result):
             receipt.tasks=json.dumps(result['changed']);db.add(receipt)
         execute_commands(db,user.id,{'operationId':f'ai-import-v2-{mid}','changes':changes},before_commit=save)

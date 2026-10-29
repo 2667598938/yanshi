@@ -105,7 +105,7 @@ export const schoolApi = {
 
 // ------------------------------------------------------------ AI
 export const aiApi = {
-  importTasks: (id, selected) => http.post(`/ai/messages/${id}/import-tasks`, { confirmed: true, ...(selected ? {selected} : {}) }),
+  importTasks: (id, selected, edits) => http.post(`/ai/messages/${id}/import-tasks`, { confirmed: true, ...(selected ? {selected} : {}), ...(edits ? {edits} : {}) }),
   undoTasks: (id) => http.post(`/ai/messages/${id}/undo-tasks`, {confirmed:true}),
   usage: () => http.get('/ai/usage'),
   preferences: (body) => http.put('/ai/preferences', body),

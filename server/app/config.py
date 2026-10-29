@@ -75,12 +75,12 @@ class Settings(BaseSettings):
     volc_api_key: str = ""
     volc_model: str = "doubao-seed-2-1-pro-260915"
     volc_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
-    ai_max_tokens: int = 1200
+    ai_max_tokens: int = 4096
     ai_daily_limit: int = Field(default=100, ge=1, le=10000)
     ai_custom_hosts: str = ""
     ai_allow_private_hosts: bool = False
     ai_vision_enabled: bool = True
-    ai_context_budget: int = 1200
+    ai_context_budget: int = 6000
     ai_tools_enabled: bool = False
     ai_server_vision: bool = False
     ai_server_tools: bool = False

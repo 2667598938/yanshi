@@ -20,6 +20,7 @@ import {
 } from 'lucide-vue-next'
 import SubjectIcon from '../components/SubjectIcon.vue'
 import SchoolHero from '../components/SchoolHero.vue'
+import TimeNodesHome from '../components/TimeNodesHome.vue'
 import { useTimerStore } from '../stores/timer'
 import { useSubjectsStore } from '../stores/subjects'
 import { useTasksStore } from '../stores/tasks'
@@ -87,6 +88,7 @@ const encourage = computed(() => {
       </div>
 
       <!-- 错题复习提醒 -->
+      <TimeNodesHome />
       <button v-if="dueMistakes.length" class="review-banner" @click="router.push('/mistakes')">
         <AlarmClock :size="18" />
         <span class="rb-txt">{{ dueMistakes.length }} 道错题今天该复习</span>

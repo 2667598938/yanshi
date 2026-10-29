@@ -14,11 +14,15 @@ import BlobImage from '../components/BlobImage.vue'
 import CopyFallback from '../components/CopyFallback.vue'
 import AiAnswer from '../components/AiAnswer.vue'
 import { useAuthStore } from '../stores/auth'
+import { useSubjectsStore } from '../stores/subjects'
+import { useTasksStore } from '../stores/tasks'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 
 const router = useRouter()
 const auth = useAuthStore()
+const subjects = useSubjectsStore()
+const tasksStore = useTasksStore()
 const { toast } = useToast()
 const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
@@ -51,6 +55,23 @@ const features = ref({ v1_readonly: true, vision: false, tools: false, search: f
 const taskPreview = ref(null)
 const importing = ref(false)
 const taskSelection = ref([])
+const taskEdits = ref([])
+const contextWarning = ref('')
+const retryingSync = ref(false)
+const showVisualDemo = import.meta.env.DEV && new URLSearchParams(location.search).has('visual_demo')
+const importSubjects = computed(() => {
+  const rows = subjects.active || []
+  return rows.some(s => s.id === 'other') ? rows : [...rows, { id: 'other', name: '其他' }]
+})
+const importDays = computed(() => {
+  const result = new Map()
+  for (const i of taskSelection.value) {
+    const t = taskEdits.value[i]
+    if (t) result.set(t.due_date || '', (result.get(t.due_date || '') || 0) + Number(t.estimated_min || 0))
+  }
+  return [...result].map(([day, minutes]) => ({ day, minutes,
+    existing: (tasksStore.open || []).filter(t => (t.dueDate || '') === day).reduce((a,t)=>a+(t.estimatedMin||0),0) }))
+})
 const useTools = ref(false)
 const useSearch = ref(false)
 let controller
@@ -255,13 +276,13 @@ function onScroll() {
 function stopGeneration() {
   controller?.abort()
 }
-// 重试：移除失败回复与对应问题，用同一问题重新发送
+// Retry appends a new attempt, matching persistent history after reload.
 async function retry(m) {
   if (sending.value) return
   const index = messages.value.indexOf(m)
   const prev = messages.value[index - 1]
   if (index < 0 || !prev || prev.role !== 'user') return toast('未找到对应的问题')
-  messages.value.splice(index - 1, 2)
+  toast('保留上次中断的回答，正在追加一次重试')
   input.value = prev.content
   attachments.value = (prev.image_keys || []).map((key) => ({ id: uid(), key, blob: null, uploading: false, error: '' }))
   await send()
@@ -329,7 +350,8 @@ async function send() {
   scrollBottom()
   try {
     await waitForSync()
-    await syncNow()
+    const synced = await syncNow()
+    contextWarning.value = synced === true ? '' : '学习数据未完整同步，本次回答可能没有包含你刚做的修改。可以重试同步后重新提问。'
     if (!alive || activeAccountId() !== accountAtSend) return
     if (!conversationId.value) {
       const convo = await aiApi.createConversation({ scene: scene.value })
@@ -409,6 +431,20 @@ function newChat(s) {
   visualState.value = 'idle'
   receiving.value = false
   updateFocusPoint()
+}
+function changeScene(s) {
+  if (sending.value || loadingConversation.value) return
+  scene.value = s
+}
+async function retryContextSync() {
+  if (retryingSync.value) return
+  retryingSync.value = true
+  try {
+    await waitForSync()
+    contextWarning.value = await syncNow() === true
+      ? '同步已恢复；已有回答可能基于旧摘要，请重新提问以使用最新数据。'
+      : '同步仍未完成，账号摘要可能不是最新。'
+  } finally { retryingSync.value = false }
 }
 
 async function loadHistory(open = true) {
@@ -526,7 +562,14 @@ watch(input, (value) => {
   updateFocusPoint()
 })
 watch(visualState, () => updateFocusPoint())
-function previewTasks(message){taskSelection.value=message.suggested_tasks.map((_,i)=>i);taskPreview.value=message}
+function previewTasks(message){
+ taskSelection.value=message.suggested_tasks.map((_,i)=>i)
+ taskEdits.value=message.suggested_tasks.map((task,index)=>{
+  const match=importSubjects.value.find(s=>s.id===task.subject_id)||importSubjects.value.find(s=>s.name===task.subject_id)
+  return {due_date:'',estimated_min:0,accept_criteria:'',...task,index,subject_id:match?.id||'other'}
+ })
+ taskPreview.value=message
+}
 async function undoTasks(message){
  if(importing.value||!confirm('撤销本次导入？仅删除未修改、未完成的任务，其他任务保留。'))return
  importing.value=true
@@ -544,11 +587,17 @@ async function importTasks(){
  const selected=[...taskSelection.value]
  importing.value=true
  try{
-  const result=await aiApi.importTasks(message.id,selected)
+  const edits=selected.map(i=>({...taskEdits.value[i]}))
+  if(edits.some(t=>!t.title.trim()||!Number.isInteger(t.estimated_min)||t.estimated_min<0||t.estimated_min>1440))throw new Error('请检查任务标题和预计分钟（0–1440的整数）')
+  const result=await aiApi.importTasks(message.id,selected,edits)
   message.task_import=result
   if(taskPreview.value===message)taskPreview.value=null
-  await waitForSync();await syncNow()
-  toast('任务已导入，可在任务清单查看；重复确认不会重复新增')
+  await waitForSync();const synced=await syncNow()
+  if(synced===true)toast('任务已导入，可在任务清单查看；重复确认不会重复新增')
+  else{
+   contextWarning.value='任务已保存到云端，本机同步未完成。请重试同步后查看任务清单，不要重复导入。'
+   toast('任务已导入云端；本机尚未同步，请重试同步')
+  }
  }catch(e){toast(e.message)}finally{importing.value=false}
 }
 </script>
@@ -595,7 +644,7 @@ async function importTasks(){
         <button class="icon-btn" title="新建对话" aria-label="新建对话" @click="newChat()"><Plus :size="18" /></button>
         <button class="icon-btn history-trigger" title="历史对话" aria-label="历史对话" @click="loadHistory()"><History :size="18" /></button>
         <button class="icon-btn" :title="`主题：${themeLabel}（点击切换）`" :aria-label="`切换主题，当前：${themeLabel}`" @click="cycleTheme"><component :is="themeIcon" :size="17" /></button>
-        <a class="icon-btn" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="视觉动效演示" aria-label="打开视觉动效演示"><Play :size="17" /></a>
+        <a v-if="showVisualDemo" class="icon-btn" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="视觉动效演示" aria-label="打开视觉动效演示"><Play :size="17" /></a>
       </div>
     </div>
 
@@ -604,13 +653,17 @@ async function importTasks(){
         v-for="s in scenes"
         :key="s.key"
         class="scene-chip"
-        :class="{ on: s.key === scene && !conversationId }"
+        :class="{ on: s.key === scene }"
+        :aria-pressed="s.key === scene"
+        :title="`在当前对话中切换为${s.label}，保留聊天上下文`"
         :disabled="sending"
-        @click="newChat(s.key)"
+        @click="changeScene(s.key)"
       >
         <component :is="s.icon" :size="13" />{{ s.label }}
       </button>
     </div>
+
+    <div v-if="contextWarning" class="context-warning" role="status">{{contextWarning}} <button :disabled="retryingSync || sending" @click="retryContextSync">{{retryingSync?'同步中…':'重试同步'}}</button></div>
 
     <div v-if="blocked && !messages.length" class="ai-guide">
       <div class="guide-badge">
@@ -622,13 +675,13 @@ async function importTasks(){
       </div>
       <div class="guide-desc">
         <template v-if="blocked === 'vip'">
-          AI 问答需要 VIP 权限，或申请「AI 问答权限」并通过审批；使用时可填写你自己的模型 API Key，站内不会保存明文。
+          AI 问答需要 VIP 权限，或申请「AI 问答权限」并通过审批；获得权限后仍须填写本人的模型 API Key，密钥在服务端加密保存。
         </template>
         <template v-else-if="blocked === 'error'">
           {{ configError }}。网络恢复后点下方重新连接，不会影响已有历史对话。
         </template>
         <template v-else>
-          你已获得 AI 权限。前往 AI 设置填写自己的 API Key，即可开始对话；Key 使用 AES-256-GCM 加密存储。
+          你已获得 AI 权限。前往 AI 设置填写自己的 API Key，即可开始对话；密钥在服务端加密保存，不向组员共享。
         </template>
       </div>
       <button
@@ -664,7 +717,7 @@ async function importTasks(){
         <div class="empty-kicker">研时 · NEURAL STUDY</div>
         <div class="empty-title">{{ greeting }}</div>
         <div class="empty-desc"><strong>{{ scenes.find((x) => x.key === scene)?.label }}</strong> · {{ welcome }}</div>
-        <a class="empty-demo" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="打开独立动效演示">
+        <a v-if="showVisualDemo" class="empty-demo" href="/previews/ai-neural.html" target="_blank" rel="noopener" title="打开独立动效演示">
           <Play :size="13" />看动效演示 <span>thinking → delivering</span>
         </a>
         <div v-if="suggestions.length" class="starter-list">
@@ -693,7 +746,7 @@ async function importTasks(){
           <button v-if="access && m.id && m.suggested_tasks?.length && !m.streaming && (!m.task_import || m.task_import.state==='not_imported')" class="btn btn-outline" @click="previewTasks(m)">一键导入为系统任务</button>
           <div v-if="m.id && m.task_import?.state === 'imported'" class="msg-usage">已导入 {{m.task_import.imported_count}} 项任务 <button class="btn btn-outline" :disabled="importing" @click="undoTasks(m)">撤销本次导入</button></div>
           <div v-if="m.task_import?.state === 'undone'" class="msg-usage">已撤销 {{m.task_import.undo?.deleted}} 项；保留 {{m.task_import.undo?.kept?.length}} 项（已修改、完成或删除）</div>
-          <div v-if="!blocked && m.id && m.role==='assistant' && !m.streaming && !m.suggested_tasks?.length" class="msg-usage">此回复未包含有效的可导入任务。<button class="btn btn-outline" :disabled="sending" @click="regenerateTasks(m)">生成可导入任务</button></div>
+          <div v-if="!blocked && m.id && m.role==='assistant' && !m.streaming && !m.failed && !m.aborted && !m.suggested_tasks?.length" class="msg-usage"><button class="act-btn" :disabled="sending" @click="regenerateTasks(m)">将建议转为练习任务</button></div>
           <div v-if="m.tools?.length" class="msg-usage">已调用：{{ m.tools.map(t => `${t.name}${t.status === 'failed' ? '（失败）' : ''}`).join('、') }}</div>
           <details v-if="m.sources?.length" class="ai-sources">
             <summary>参考资料 {{ m.sources.length }} 条</summary>
@@ -729,7 +782,7 @@ async function importTasks(){
       <button class="btn btn-outline btn-sm" :disabled="sending || !features.vision" @click="fileInput?.click()">添加题图（最多4张）</button>
       <label v-if="!features.v1_readonly"><input v-model="useTools" type="checkbox" :disabled="sending || !features.tools || !features.model_tools" />只读学习工具</label>
       <label v-if="!features.v1_readonly"><input v-model="useSearch" type="checkbox" :disabled="sending || !features.search || !features.model_tools" />联网搜索</label>
-      <div class="msg-usage">对话自动携带本人已同步任务、自习状态与近30天学习摘要；不会读取组员数据或操控页面。回复与密钥仅本人可见。</div>
+      <div class="msg-usage">会向你选择的模型服务商发送本人已同步的任务、专注统计、少量错题文本和考试节点摘要，可能省略明细；不会读取组员或操控页面。聊天和密钥仅本人可见。</div>
       <div v-if="!features.model_vision" class="msg-usage">图片需在AI设置中确认模型支持；也可移除图片仅发送文字。</div>
       <div v-if="useTools || useSearch" class="msg-usage">工具模式等待完整结果；仅读取本人已同步数据，最多3次模型请求，不修改学习记录。联网时关键词会发送给搜索服务。</div>
       <div class="ai-images"><div v-for="row in attachments" :key="row.id">
@@ -776,9 +829,16 @@ async function importTasks(){
       <div class="sheet" style="max-height:75vh;overflow:auto">
         <div class="sheet-title">导入任务前请确认</div>
         <p>下列任务将写入你的任务清单，并遵循小组共享与隐私模式规则。同一回复只能确认一组选项；撤销后不能再次导入这批任务。如需补充或重导，请重新向AI生成清单。</p>
-        <div v-for="(task,i) in taskPreview.suggested_tasks" :key="i" class="card">
-          <label><input v-model="taskSelection" type="checkbox" :value="i" :disabled="importing" /> {{task.title}}</label><p>{{task.due_date || '未设日期'}} · 预计 {{task.estimated_min}} 分钟</p><p>{{task.accept_criteria}}</p>
+        <p>可以先修正内容再确认。未设日期的任务保留在“其他待办”；同一回复只能导入一次。</p>
+        <div v-for="(task,i) in taskEdits" :key="i" class="card import-task-editor">
+          <label><input v-model="taskSelection" type="checkbox" :value="i" :disabled="importing" /> 导入第{{i+1}}项</label>
+          <label>标题<input v-model="task.title" class="input" maxlength="200" :disabled="importing" /></label>
+          <label>科目<select v-model="task.subject_id" class="select" :disabled="importing"><option v-for="s in importSubjects" :key="s.id" :value="s.id">{{s.name}}</option></select></label>
+          <label>截止日期（可不设）<input v-model="task.due_date" class="input" type="date" :disabled="importing" /></label>
+          <label>预计分钟<input v-model.number="task.estimated_min" class="input" type="number" min="0" max="1440" step="1" :disabled="importing" /></label>
+          <label>做完的标准<textarea v-model="task.accept_criteria" class="input" maxlength="500" :disabled="importing"></textarea></label>
         </div>
+        <div class="import-load"><p v-for="day in importDays" :key="day.day">{{day.day || '未设日期'}}：本次 {{day.minutes}} 分钟，已有待办 {{day.existing}} 分钟，合计 {{day.minutes+day.existing}} 分钟。<strong v-if="day.minutes+day.existing>480">任务较多，请结合可用时间调整。</strong></p></div>
         <div class="task-actions"><button class="btn btn-outline" :disabled="importing" @click="taskPreview=null">取消</button>
         <button class="btn btn-primary" :disabled="importing || !taskSelection.length" @click="importTasks">{{importing?'导入中…':'确认批量导入'}}</button></div>
       </div>
@@ -818,4 +878,10 @@ async function importTasks(){
   </div>
 </template>
 
+<style scoped>
+.context-warning {padding:10px 16px;margin:4px 12px;border-radius:12px;background:var(--ai-panel,rgba(140,130,90,.15));font-size:12px;line-height:1.7;color:inherit}
+.context-warning button {margin-left:8px;color:inherit;text-decoration:underline;background:transparent;border:0;cursor:pointer}
+.import-task-editor {padding:14px;margin:10px 0}.import-task-editor label {display:block;margin:8px 0;font-size:13px}
+.import-load {font-size:12px;line-height:1.7}.import-load strong{color:var(--tomato)}
+</style>
 <style src="../assets/styles/ai-neural.css"></style>

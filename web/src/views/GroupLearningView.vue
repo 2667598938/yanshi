@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { groupApi } from '../api'
 import { useAuthStore } from '../stores/auth'
 import BlobImage from '../components/BlobImage.vue'
+import { REASON_MAP } from '../data/subjects'
 const router=useRouter(), auth=useAuthStore()
 const members=ref([]), selected=ref(null), records=ref([]), error=ref(''), tab=ref('task')
 let interval, generation=0, alive=true, flight=null, cursor=null
@@ -50,7 +51,10 @@ async function load(){
 watch(()=>auth.user?.id,()=>{generation++;clear();members.value=[];selected.value=null;load()})
 function select(member){generation++;clear();selected.value=member.id;load()}
 const chosen=computed(()=>members.value.find(row=>row.id===selected.value))
-const visible=computed(()=>records.value.filter(row=>row.type===tab.value))
+const visible=computed(()=>records.value.filter(row=>row.type===tab.value).sort((a,b)=>tab.value==='task' ? Number(a.done||0)-Number(b.done||0)||(a.dueDate||'9999').localeCompare(b.dueDate||'9999') : (b.createdAt||0)-(a.createdAt||0)))
+const subjectNames=computed(()=>Object.fromEntries(records.value.filter(r=>r.type==='subject').map(r=>[r.id,r.name])))
+function reasonLabel(value){return REASON_MAP[value]?.name || (/[\u4e00-\u9fff]/.test(value||'')?value:'自定义错因')}
+function sessionLabel(value){return value==='done'?'已完成':value==='quit'?'已结束（保留有效时长）':'学习记录'}
 const heat=computed(()=>{
  const result={};for(const row of records.value.filter(row=>row.type==='session'&&!row.conflict_flag&&!row.validation_issue))result[row.date]=(result[row.date]||0)+(row.actualSec||0)
  return Object.entries(result).sort(([a],[b])=>a.localeCompare(b))
@@ -70,9 +74,10 @@ onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(int
  <div v-if="tab==='stats'" class="card mt16"><p>累计已同步时长：{{Math.round(heat.reduce((sum,entry)=>sum+entry[1],0)/60)}} 分钟</p><div class="heat"><span v-for="[day,sec] in heat" :key="day" :title="`${day} ${Math.round(sec/60)}分钟`" :style="{background:sec>3600?'#56836a':'#cce3d3'}">{{day.slice(5)}}<br>{{Math.round(sec/60)}}m</span></div></div>
  <div v-for="row in visible" :key="row.id" class="card mt16">
  <strong>{{row.title||row.content||row.learningContent||row.date||'学习记录'}}</strong>
+ <p v-if="row.subjectId">科目：{{subjectNames[row.subjectId] || '其他/未同步科目'}}</p>
  <p v-if="row.type==='task'">{{row.done?'已完成':'待完成'}} · {{row.dueDate}} · 预计{{row.estimatedMin||0}}分钟 · {{row.acceptCriteria}}</p>
- <template v-if="row.type==='mistake'"><p>{{row.chapter}} · 错因：{{row.reason}} · {{(row.tags||[]).join('、')}}</p><p>思路：{{row.idea}}</p><p>解析：{{row.analysis}}</p><BlobImage v-for="key in [...(row.images||[]),...(row.answerImages||[])]" :key="key" :src="key" class="picture" /></template>
- <p v-if="row.type==='session'">{{row.conflict_flag||row.validation_issue?'待本人处理，暂不计入统计':Math.round((row.actualSec||0)/60)+'分钟 · '+row.status}}</p>
+ <template v-if="row.type==='mistake'"><p>{{row.chapter}} · 错因：{{reasonLabel(row.reason)}} · {{(row.tags||[]).join('、')}}</p><p>思路：{{row.idea}}</p><p>解析：{{row.analysis}}</p><BlobImage v-for="key in [...(row.images||[]),...(row.answerImages||[])]" :key="key" :src="key" class="picture" /></template>
+ <p v-if="row.type==='session'">{{row.conflict_flag||row.validation_issue?'待本人处理，暂不计入统计':Math.round((row.actualSec||0)/60)+'分钟 · '+sessionLabel(row.status)}}</p>
  </div><p v-if="!visible.length&&tab!=='stats'">暂无已同步记录</p>
  </template></template></div>
 </template>

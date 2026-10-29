@@ -17,7 +17,7 @@ const { toast } = useToast()
 const FEATURES = [
   { id: 'ai', label: 'AI 问答权限', icon: Sparkles },
   { id: 'materials', label: '资料区完整链接', icon: BookOpen },
-  { id: 'room', label: '云端自习室', icon: Users },
+  { id: 'room', label: '房间类型权限（未开放）', icon: Users },
   { id: 'other', label: '其他功能', icon: Ellipsis },
 ]
 const STATUS = {
@@ -104,7 +104,7 @@ onMounted(load)
         <div class="form-title">申请开通</div>
         <div class="feature-grid">
           <button
-            v-for="f in FEATURES"
+            v-for="f in FEATURES.filter(item=>item.id!=='room')"
             :key="f.id"
             class="feature-pill"
             :class="{ on: feature === f.id }"

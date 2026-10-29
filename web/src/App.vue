@@ -17,6 +17,7 @@ import SessionIssues from './components/SessionIssues.vue'
 import { useGroupPresence } from './composables/useGroupPresence'
 import { useNotificationsStore } from './stores/notifications'
 import { useClockStore } from './stores/clock'
+import StudyStatusBar from './components/StudyStatusBar.vue'
 
 const timer = useTimerStore()
 const app = useAppStore()
@@ -115,6 +116,7 @@ watch(
       <div v-if="auth.isLoggedIn !== false && timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
       <div v-if="auth.isLoggedIn !== false && timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
       <OfflineBanner />
+      <StudyStatusBar v-if="auth.isLoggedIn !== false" />
     </div>
     <SessionIssues v-if="auth.isLoggedIn !== false" />
     <CommunityIssues v-if="auth.isLoggedIn !== false" />

@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from datetime import timezone
 from sqlalchemy import select, delete
 from ..models import DevicePresence, RoomPresence, RoomMember, Room
 from ..time import utcnow
@@ -51,6 +52,10 @@ def update_presence(db,user,body):
     device.room_id=rid;device.status=body.status;device.heartbeat_at=now
     detail=body.model_dump(exclude={'device_id','room_id'})
     if body.status!='focusing':detail['focus_started_at']=None
+    elif body.focus_elapsed_sec is not None:
+        # Project an effective clock anchor, excluding all pauses. Never use it
+        # to create or update a historical learning record.
+        detail['focus_started_at']=int(now.replace(tzinfo=timezone.utc).timestamp()*1000)-body.focus_elapsed_sec*1000
     device.detail=json.dumps(detail,ensure_ascii=False)
     db.flush();project_rooms(db,user.id);db.commit()
     return {'status':body.status,'roomId':rid}
@@ -69,6 +74,6 @@ def member_state(db,viewer,owner):
         readable=room.visibility=='public' or db.scalar(select(RoomMember.id).where(RoomMember.room_id==room.id,RoomMember.user_id==viewer.id))
         if readable:rid,name=room.id,room.name
         else:name='私密自习室'
-    label={'focusing':'专注中','resting':'休息中'}.get(p.status,'在线')
+    label={'focusing':'专注中','resting':'休息中','away':'暂离 · 后台'}.get(p.status,'在线')
     if not room:label+=' · 未在自习室'
     return {'status':p.status,'statusText':label,'isOnline':True,'roomId':rid,'roomName':name}

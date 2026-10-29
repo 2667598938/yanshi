@@ -21,7 +21,7 @@ watch(() => [props.content, props.streaming, props.reduced], ([content, streamin
     let offset = 0, index = 0
     for (const node of nodes) {
       const end = offset + node.textContent.length
-      if (end > wrapFrom && !node.parentElement?.closest('pre,code')) {
+      if (end > wrapFrom && !node.parentElement?.closest('pre,code,.katex,math')) {
         const split = Math.max(0, wrapFrom - offset)
         const fragment = document.createDocumentFragment()
         fragment.append(document.createTextNode(node.textContent.slice(0, split)))

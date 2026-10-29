@@ -122,6 +122,9 @@ export const useMistakesStore = defineStore('mistakes', {
       const m = this.list.find((x) => x.id === id)
       if (!m) return
       const now = Date.now()
+      // A due review advances at most once. Free practice remains available in
+      // the detail view; it cannot compress spaced repetition into eight taps.
+      if (m.mastered || (m.nextReviewAt && m.nextReviewAt > now)) return { advanced: false }
       const history = [...(m.history || []), {
         date: todayKey(), remembered, at: now,
         fromStage: m.stage, intervalMinutes: REVIEW_INTERVALS[m.stage],
@@ -142,12 +145,18 @@ export const useMistakesStore = defineStore('mistakes', {
         nextReviewAt = scheduleAt(stage, now)
       }
       const patch = toPlain({ stage, mastered, nextReviewAt, history })
+      let advanced = false
       await db.transaction('rw', db.mistakes, db.outbox, db.syncMeta, async () => {
+        const current = await db.mistakes.get(id)
+        if (!current || current.mastered || (current.nextReviewAt && current.nextReviewAt > now)) return
+        if (current.stage !== m.stage) return
         await db.mistakes.update(id, patch)
         await enqueueRecord('mistakes', { ...toPlain(m), ...patch })
+        advanced = true
       })
       scope.assertCurrent()
-      Object.assign(m, patch)
+      if (advanced) Object.assign(m, patch)
+      return { advanced }
     },
     // 某日期新增错题数（仪表盘用）
     countByDateRange(startKey, endKey) {

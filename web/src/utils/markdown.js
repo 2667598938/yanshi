@@ -1,4 +1,5 @@
 // 轻量 Markdown 渲染：先全量转义，再生成受控标签，避免 XSS
+import katex from 'katex'
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 
 function escapeHtml(text) {
@@ -34,7 +35,26 @@ function splitRow(line) {
 
 /** 把 AI 回复渲染为安全 HTML：段落/标题/列表/引用/代码块/表格 */
 export function renderMarkdown(source = '') {
-  const lines = String(source).replace(/\r\n/g, '\n').split('\n')
+  const math = []
+  // Protect code first. Math is rendered independently with untrusted commands
+  // disabled, then restored AFTER Markdown escaping/formatting has finished.
+  const prepared = String(source).replace(/\r\n/g, '\n')
+    .split(/(```[\s\S]*?(?:```|$)|`[^`\n]+`)/g)
+    .map(part => part.startsWith('`') ? part : part.replace(
+      /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|(?<!\\)\$([^$\n]+?)(?<!\\)\$/g,
+      (whole, bracket, inline, display, dollar) => {
+        const expression = bracket ?? inline ?? display ?? dollar
+        if (expression.length > 12000) return whole
+        try {
+          const html = katex.renderToString(expression, { displayMode: bracket != null || display != null,
+            trust: false, throwOnError: false, strict: 'ignore', maxSize: 12, maxExpand: 1000,
+            errorColor: '#9b6666', macros: {} })
+          math.push(html)
+          return `\u0001MATH${math.length - 1}\u0001`
+        } catch { return whole }
+      }))
+    .join('')
+  const lines = prepared.split('\n')
   const out = []
   let list = null
   let i = 0
@@ -166,5 +186,5 @@ export function renderMarkdown(source = '') {
     out.push(`<p>${inline(buf.join('\n'))}</p>`)
   }
   closeList()
-  return out.join('')
+  return out.join('').replace(/\u0001MATH(\d+)\u0001/g, (_, i) => math[Number(i)] || '')
 }

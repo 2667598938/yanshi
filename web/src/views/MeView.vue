@@ -33,6 +33,8 @@ const app = useAppStore()
 const auth = useAuthStore()
 const profile = useProfileStore()
 const learningSettings = useLearningSettingsStore()
+const phoneAvailable = ref(false)
+onMounted(async()=>{try{phoneAvailable.value=(await publicApi.config()).enabled_auth_channels?.includes('phone') || false}catch{/* Closed by default. */}})
 onMounted(() => learningSettings.load(true).catch(() => {}))
 async function toggleBullets() {
   try { await learningSettings.save({ ...learningSettings.value, bulletEnabled: !learningSettings.value.bulletEnabled }) }
@@ -538,7 +540,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="group">
+      <div v-if="phoneAvailable || auth.user?.phone" class="group">
         <div class="group-title">账号安全</div>
         <div class="card menu"><button type="button" class="row" @click="router.push('/me/phone')">
           <span class="row-ic c-blue"><ShieldCheck :size="18" /></span><span class="row-label">绑定手机号</span><span class="row-val">{{ auth.user?.phone ? '已绑定' : '未绑定' }}</span><ChevronRight :size="17" />
