@@ -2,9 +2,10 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 import { db } from '../src/db'
 import { syncApi, attachmentApi } from '../src/api'
-import { enqueueRecord, syncNow, resetSyncRuntime, syncState, waitForSync } from '../src/sync/engine'
+import { enqueueRecord, initSyncForUser, syncNow, resetSyncRuntime, syncState, waitForSync } from '../src/sync/engine'
 import { useMistakesStore } from '../src/stores/mistakes'
 import { useLearningSettingsStore, DEFAULT_LEARNING_SETTINGS } from '../src/stores/learningSettings'
+import { DEFAULT_SUBJECTS } from '../src/data/subjects'
 
 vi.mock('../src/api', () => ({
   syncApi: { commands: vi.fn(), records: vi.fn() },
@@ -124,4 +125,41 @@ it('非法旧计时挂起待人工确认，其他任务继续同步且不计入�
  expect((await db.sessions.get(bad.id)).validation_issue).toContain('不合法')
  expect((await db.tasks.get('healthy-task'))._rev).toBe(1)
  expect(await db.sessions.count()).toBe(1)
+})
+
+function seedDefaults() {
+  return DEFAULT_SUBJECTS.map((s, i) => ({
+    id: s.id, name: s.name, color: s.color, icon: s.icon,
+    tags: [], order: i, archived: 0, builtin: 1, createdAt: 1,
+  }))
+}
+
+it('新设备首登先拉云端科目，不把默认科目当冲突推送', async () => {
+  const seeds = seedDefaults()
+  await db.subjects.bulkAdd(seeds)
+  const server = seeds.map((row, i) => ({
+    id: row.id, revision: i + 3, record: { ...row, type: 'subject' },
+  }))
+  syncApi.records.mockResolvedValue({ records: server })
+  await initSyncForUser()
+  expect(syncApi.commands).not.toHaveBeenCalled()
+  expect(await db.subjects.count()).toBe(8)
+  expect((await db.subjects.get('math'))._rev).toBe(3)
+  expect(syncState.pendingConflicts).toHaveLength(0)
+  expect(await db.syncMeta.get('bootstrapDone')).toBeTruthy()
+})
+
+it('新账号云端为空时默认科目仍会上传，保留AI可用科目目录', async () => {
+  const seeds = seedDefaults()
+  await db.subjects.bulkAdd(seeds)
+  syncApi.records.mockResolvedValue({ records: [] })
+  syncApi.commands.mockImplementation(async (_operation, changes) => ({
+    changed: changes.map((change) => ({ ...change, revision: 1 })),
+  }))
+  await initSyncForUser()
+  expect(syncApi.commands).toHaveBeenCalledTimes(1)
+  const sent = syncApi.commands.mock.calls[0][1]
+  expect(sent.map((item) => item.id).sort()).toEqual(seeds.map((row) => row.id).sort())
+  expect((await db.subjects.get('math'))._rev).toBe(1)
+  expect(await db.syncMeta.get('bootstrapDone')).toBeTruthy()
 })
