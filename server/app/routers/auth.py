@@ -431,8 +431,8 @@ def logout(
 
 
 @router.get("/auth/me")
-def me(user=Depends(get_current_user)):
-    return ok(user_payload(user))
+def me(request: Request, user=Depends(get_current_user)):
+    return ok(user_payload(user, request.app.state.settings))
 
 
 @router.put("/users/me")
@@ -458,7 +458,7 @@ def update_me(
 
     snapshot_profile(db, user)
     db.commit()
-    return ok(user_payload(user))
+    return ok(user_payload(user, request.app.state.settings))
 
 
 @router.put("/users/me/password")

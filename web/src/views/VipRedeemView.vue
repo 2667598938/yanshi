@@ -107,7 +107,7 @@ async function activate() {
 }
 .hero p {
   margin: 9px 0 0;
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--sub);
 }
 .form-card {
@@ -119,7 +119,7 @@ async function activate() {
   border: 1.5px solid var(--line);
   border-radius: 14px;
   padding: 0 16px;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: 4px;
   text-align: center;
@@ -137,7 +137,7 @@ async function activate() {
 }
 .hint {
   margin: 9px 2px 16px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--faint);
 }
 .rights {
@@ -145,7 +145,7 @@ async function activate() {
   padding: 16px 16px 6px;
 }
 .rights-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   margin-bottom: 6px;
 }
@@ -155,7 +155,7 @@ async function activate() {
   gap: 11px;
   padding: 11px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--ink);
 }
 .right-row:last-child {

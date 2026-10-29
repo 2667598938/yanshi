@@ -124,7 +124,8 @@ def test_oauth_channels_disabled_by_default(client):
     assert client.post('/api/v1/auth/phone/send-code',
                        json={'phone': '13800138000'}).status_code == 403
     # 未知渠道
-    assert client.get('/api/v1/auth/oauth/github/authorize').status_code == 404
+    assert client.get('/api/v1/auth/oauth/github/authorize').status_code == 403
+    assert client.get('/api/v1/auth/oauth/unknown/authorize').status_code == 404
     # 无效 ticket
     assert client.post('/api/v1/auth/oauth/exchange',
                        json={'ticket': 'not-a-real-ticket'}).status_code == 400

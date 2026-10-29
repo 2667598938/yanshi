@@ -71,7 +71,7 @@ const isStopwatch = computed(() =>
 const ringColor = computed(() => {
   if (timer.rest) return '#10b981'
   if (phase.value === 'paused') return '#94a3b8'
-  return isStopwatch.value ? '#6366f1' : '#8b5cf6'
+  return isStopwatch.value ? '#6366f1' : '#46845b'
 })
 const ringStart = computed(() => (isStopwatch.value ? '#a5b4fc' : '#c4b5fd'))
 const ringProgress = computed(() => {
@@ -417,7 +417,7 @@ watch(
 }
 
 .focus-hero {
-  background: linear-gradient(160deg, #4c1d95 0%, #312e81 55%, #1e1b4b 100%);
+  background: linear-gradient(160deg, #4c1d95 0%, #213f2d 55%, #1e1b4b 100%);
   border-radius: 26px;
   padding: 26px 18px 22px;
   box-shadow: 0 16px 34px rgba(22, 27, 46, 0.3);
@@ -426,7 +426,7 @@ watch(
   align-items: center;
 }
 .focus-hero.sw {
-  background: linear-gradient(160deg, #4338ca 0%, #312e81 55%, #1e1b4b 100%);
+  background: linear-gradient(160deg, #4338ca 0%, #213f2d 55%, #1e1b4b 100%);
 }
 .clock {
   font-size: 56px;
@@ -437,7 +437,7 @@ watch(
 }
 .clock-phase {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.72);
   display: flex;
   align-items: center;
@@ -466,7 +466,7 @@ watch(
   font-weight: 700;
   color: #fff;
   background: var(--primary-grad);
-  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.32);
+  box-shadow: 0 8px 20px rgba(50, 115, 75, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -505,14 +505,14 @@ watch(
   transition: all 0.15s ease;
 }
 .mode-btn span {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .mode-btn small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
   font-weight: 500;
 }
@@ -536,7 +536,7 @@ watch(
   border: none;
   background: none;
   color: var(--faint);
-  font-size: 12px;
+  font-size: 14px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -573,23 +573,23 @@ watch(
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
 }
 .range-hint {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
 }
 .start-btn {
   margin-top: 14px;
-  font-size: 17px;
+  font-size: 16px;
   padding: 16px;
 }
 .focus-tip {
   text-align: center;
   color: var(--faint);
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 18px;
 }
 
@@ -647,14 +647,14 @@ watch(
   to { transform: translateY(0); }
 }
 .sheet-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   text-align: center;
 }
 .sheet-sub {
   text-align: center;
   color: var(--sub);
-  font-size: 13px;
+  font-size: 14px;
   margin: 8px 0 14px;
 }
 </style>

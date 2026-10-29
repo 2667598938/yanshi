@@ -2,6 +2,9 @@
 import { ref, watch, onBeforeUnmount } from 'vue'
 import { fetchBlob } from '../api/http'
 import { attachmentApi } from '../api'
+import { resolveCachedImage } from '../db/imageCache'
+import { useAuthStore } from '../stores/auth'
+const auth = useAuthStore()
 
 const props = defineProps({
   // 本地 Blob（错题本地图片）
@@ -43,8 +46,8 @@ async function resolve() {
     if (isKey(props.src)) {
       // 附件对象 key，需要带鉴权头拉取
       try {
-        const blob = await fetchBlob(attachmentApi.viewUrl(props.src))
-        if (current !== generation) return
+        const blob = await resolveCachedImage(props.src, () => fetchBlob(attachmentApi.viewUrl(props.src)))
+        if (current !== generation || !blob) return
         objectUrl = URL.createObjectURL(blob)
         url.value = objectUrl
       } catch {
@@ -62,7 +65,7 @@ async function resolve() {
   }
 }
 
-watch(() => [props.blob, props.src], resolve, { immediate: true })
+watch(() => [props.blob, props.src, auth.user?.id], resolve, { immediate: true })
 onBeforeUnmount(() => { generation += 1; clearObject() })
 
 function onError() {

@@ -68,13 +68,17 @@ def issue_session(request, db, user, response, now=None):
     tokens = issue_tokens(request, db, user, now)
     refresh_token = tokens.pop('refresh_token')
     set_refresh_cookie(response, refresh_token, request.app.state.settings)
-    tokens['user'] = user_payload(user)
+    tokens['user'] = user_payload(user, request.app.state.settings)
     return tokens
 
 
-def user_payload(user):
+def user_payload(user, settings=None):
     from .features import is_vip
+    if settings is None:
+        from ..config import Settings
+        settings = Settings()
     return {
+        'is_super_admin': user.role == 'admin' and user.email.casefold() == settings.admin_email.casefold(),
         'id': user.id, 'email': user.email, 'nickname': user.nickname,
         'phone': user.phone or '', 'avatar_key': user.avatar_key, 'role': user.role,
         'status': user.status,

@@ -25,6 +25,7 @@ export const useAuthStore = defineStore('auth', {
     isLoggedIn: (s) => !!s.user,
     canRefresh: (s) => !!s.user,
     isAdmin: (s) => s.user?.role === 'admin',
+    isSuperAdmin: (s) => s.user?.is_super_admin ?? s.user?.role === 'admin',
     isVip: (s) => !!s.user?.vip_permanent || (!!s.user?.vip_until && new Date(s.user.vip_until).getTime() > s.vipNow),
   },
   actions: {

@@ -7,14 +7,14 @@ export const BRAND = Object.freeze({
   tagline: '每一份坚持，都在靠近理想。',
   supportingText: '专注当下 · 稳步向前',
   colors: {
-    background: '#F7F8FA', wash: '#F2E9E8', primary: '#7B2632',
+    background: '#F3F7F2', wash: '#E7EFE3', primary: '#32734B',
     title: '#293241', secondary: '#7D8793', accent: '#D6B366',
   },
   opening: {
     enabled: true,
     policy: 'session', // session：本次标签页访问一次；always：每次加载；off：关闭。
     storageKey: 'yanshi:brand-opening:v2',
-    colors: { background: '#300609', wash: '#650E16', primary: '#921C24',
+    colors: { background: '#183524', wash: '#245A39', primary: '#32734B',
       title: '#F3EBDD', secondary: '#BDAE9C', accent: '#D6B366' },
     durationMs: 3800,
     fadeOutMs: 700,

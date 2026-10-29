@@ -442,7 +442,7 @@ export async function waitForSync() { await syncCompletion }
 
 export async function syncNow() {
   const auth = useAuthStore()
-  if (!auth.isLoggedIn || accountSwitches) return
+  if (!auth.isLoggedIn || auth.isSuperAdmin || accountSwitches) return
   if (syncing) {
     queued = true
     return
@@ -478,7 +478,7 @@ export async function syncNow() {
 
 export function scheduleSync(delay = 1500) {
   const auth = useAuthStore()
-  if (!auth.isLoggedIn || accountSwitches) return
+  if (!auth.isLoggedIn || auth.isSuperAdmin || accountSwitches) return
   clearTimeout(timer)
   timer = setTimeout(() => syncNow(), delay)
 }
@@ -486,7 +486,7 @@ export function scheduleSync(delay = 1500) {
 // 登录后调用：首登全量 + 定时 + 回到前台时同步
 export async function initSyncForUser() {
   const auth = useAuthStore()
-  if (!auth.isLoggedIn) return
+  if (!auth.isLoggedIn || auth.isSuperAdmin) return
   const persisted = await db.syncMeta.toArray()
   for (const row of persisted) {
     if (!row.key.startsWith('conflict:') || heldIds.has(row.value.id)) continue

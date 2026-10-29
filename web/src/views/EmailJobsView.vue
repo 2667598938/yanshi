@@ -34,4 +34,4 @@ onMounted(load)
     </div>
   </div>
 </template>
-<style scoped>.email-row { margin-top: 14px; padding: 18px; overflow-wrap: anywhere; }.email-row p { font-size: 13px; color: var(--sub); line-height: 1.5; }</style>
+<style scoped>.email-row { margin-top: 14px; padding: 18px; overflow-wrap: anywhere; }.email-row p { font-size: 14px; color: var(--sub); line-height: 1.5; }</style>

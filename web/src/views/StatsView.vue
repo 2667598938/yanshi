@@ -488,7 +488,7 @@ function exportCsv() {
 .content-summary { padding: 18px; }
 .date-field { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--primary); }
 .date-field .input { flex: 1; min-width: 0; margin-top: 0; height: 44px; }
-.date-today { flex-shrink: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(79, 70, 229, 0.06); color: var(--primary); font-size: 12px; font-weight: 600; cursor: pointer; }
+.date-today { flex-shrink: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(50, 115, 75, 0.06); color: var(--primary); font-size: 14px; font-weight: 600; cursor: pointer; }
 .content-chart { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 18px; }
 .content-pie-wrap { position: relative; width: 144px; height: 144px; flex-shrink: 0; }
 .content-pie { width: 100%; height: 100%; border-radius: 50%; position: relative; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04); }
@@ -497,13 +497,13 @@ function exportCsv() {
 .content-pie.empty::after { inset: 24%; border: 1px dashed #cbd5e1; background: #fff; }
 .content-pie-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
 .content-pie-center strong { font-size: 16px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
-.content-pie-center small { margin-top: 2px; font-size: 10px; color: var(--faint); }
-.content-legend { flex: 1; min-width: 160px; display: grid; gap: 10px; font-size: 13px; }
+.content-pie-center small { margin-top: 2px; font-size: 12px; color: var(--faint); }
+.content-legend { flex: 1; min-width: 160px; display: grid; gap: 10px; font-size: 14px; }
 .legend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 10px; background: #f8faff; }
 .legend-name { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-weight: 600; }
 .legend-name i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .legend-row small { flex-shrink: 0; color: var(--sub); font-variant-numeric: tabular-nums; }
-.content-empty { margin: 0; color: var(--faint); font-size: 12px; }
+.content-empty { margin: 0; color: var(--faint); font-size: 14px; }
 .empty-block {
   text-align: center;
   padding: 44px 20px;
@@ -545,7 +545,7 @@ function exportCsv() {
   line-height: 1.3;
 }
 .ov-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
   margin-top: 2px;
 }
@@ -562,7 +562,7 @@ function exportCsv() {
   justify-content: space-between;
 }
 .goal-label {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--sub);
 }
 .goal-num {
@@ -592,7 +592,7 @@ function exportCsv() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--primary-deep);
 }
@@ -631,11 +631,11 @@ function exportCsv() {
 .tri-ic.t2 { color: var(--green); }
 .tri-ic.t3 { color: var(--tomato); }
 .tri-num {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
 }
 .tri-cap {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
   margin-top: 2px;
 }
@@ -655,7 +655,7 @@ function exportCsv() {
 .seg button {
   border: none;
   background: none;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--sub);
   padding: 6px 14px;
@@ -675,7 +675,7 @@ function exportCsv() {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--sub);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   padding: 6px 10px;
   border-radius: 9px;
@@ -696,7 +696,7 @@ function exportCsv() {
 }
 .export-scope {
   margin: -4px 0 12px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--faint);
 }
@@ -707,7 +707,7 @@ function exportCsv() {
   border: 1.5px solid var(--line);
   background: #fff;
   color: var(--sub);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   padding: 6px 11px;
   border-radius: 999px;
@@ -758,7 +758,7 @@ function exportCsv() {
 }
 .shot-foot {
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
   margin-top: 10px;
   letter-spacing: 1px;
@@ -779,7 +779,7 @@ function exportCsv() {
   font-weight: 800;
 }
 .dd-sum {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--primary);
   font-weight: 700;
 }
@@ -800,22 +800,22 @@ function exportCsv() {
   border-radius: 50%;
 }
 .dd-subj-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   flex: 1;
 }
 .dd-subj-min {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--sub);
 }
 .dd-empty {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--faint);
   margin-top: 8px;
 }
 .dd-link {
   margin-top: 10px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--primary);
   display: inline-flex;
@@ -826,7 +826,7 @@ function exportCsv() {
 }
 
 .card-title {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 700;
   margin-bottom: 14px;
   display: flex;
@@ -834,7 +834,7 @@ function exportCsv() {
   justify-content: space-between;
 }
 .trend-select {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--sub);
   border: 1px solid var(--line);
@@ -855,14 +855,14 @@ function exportCsv() {
   margin-bottom: 6px;
 }
 .subj-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 .subj-val {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--sub);
 }
 .subj-track {
@@ -893,7 +893,7 @@ function exportCsv() {
   margin-top: 10px;
 }
 .tl-item {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--sub);
   display: inline-flex;
   align-items: center;
@@ -928,7 +928,7 @@ function exportCsv() {
 .bars-x {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
   margin-top: 6px;
 }

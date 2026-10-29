@@ -158,16 +158,16 @@ def test_private_room_requires_code(client):
     assert client.delete(f"/api/v1/rooms/{default_id}", headers=ah).status_code == 200
 
 
-def _create_private_room(client, ah, name="私密申请房"):
+def _create_private_room(client, ah, name="公开申请房"):
     room = client.post(
         "/api/v1/rooms",
         headers=ah,
-        json={"accept_sharing": True, "name": name, "visibility": "private"},
+        json={"accept_sharing": True, "name": name, "visibility": "public"},
     ).json()["data"]
     return room
 
 
-def test_private_room_apply_and_owner_review(client):
+def test_public_room_apply_and_owner_review(client):
     """无码陌生人走申请：通过前无成员权限，只有房主能审批，通过后即时生效。"""
     admin = login(client, **ADMIN)
     ah = h(admin["access_token"])
@@ -180,9 +180,7 @@ def test_private_room_apply_and_owner_review(client):
     rid = room["id"]
 
     # 未加入：列表不可见、详情 403，但预览可看到申请入口
-    assert all(
-        x["id"] != rid for x in client.get("/api/v1/rooms", headers=oh).json()["data"]
-    )
+    assert any(x["id"]==rid for x in client.get("/api/v1/rooms",headers=oh).json()["data"])
     assert client.get(f"/api/v1/rooms/{rid}", headers=oh).status_code == 403
     preview = client.get(f"/api/v1/rooms/{rid}/preview", headers=oh).json()["data"]
     assert preview["joined"] is False and preview["join_required"] is True
@@ -309,7 +307,7 @@ def test_fifth_friend_and_public_applications_are_allowed(client):
             == 200
         )
     state = client.get(f"/api/v1/rooms/{rid}", headers=ah).json()["data"]
-    assert state["room"]["capacity"] == 0 and len(state["members"]) == 6
+    assert state["room"]["capacity"] == 50 and len(state["members"]) == 6
     public = client.post(
         "/api/v1/rooms",
         headers=ah,

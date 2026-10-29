@@ -308,7 +308,7 @@ async function remove() {
 </template>
 
 <style scoped>
-.ai-image-picker{overflow:auto;max-height:80dvh}.ai-image-picker label{display:block;margin:8px 0;font-size:13px}.ai-image-picker :deep(img){display:block;max-width:100%;max-height:140px;object-fit:contain}.ai-image-picker p{font-size:13px;line-height:1.7}
+.ai-image-picker{overflow:auto;max-height:80dvh}.ai-image-picker label{display:block;margin:8px 0;font-size: 14px}.ai-image-picker :deep(img){display:block;max-width:100%;max-height:140px;object-fit:contain}.ai-image-picker p{font-size: 14px;line-height:1.7}
 .back-btn {
   width: 36px;
   height: 36px;
@@ -346,11 +346,11 @@ async function remove() {
   flex-shrink: 0;
 }
 .due-num {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
 }
 .due-cap {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--sub);
   margin-top: 2px;
 }
@@ -371,7 +371,7 @@ async function remove() {
   border: 1.5px solid var(--line);
   background: #fff;
   color: var(--sub);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   padding: 7px 13px;
   border-radius: 999px;
@@ -387,7 +387,7 @@ async function remove() {
   margin-top: 24px;
   text-align: center;
   color: var(--faint);
-  font-size: 13px;
+  font-size: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -435,19 +435,19 @@ async function remove() {
   flex-wrap: wrap;
 }
 .mk-subj {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 .mk-chap {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--sub);
 }
 .mk-due {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #fff;
   background: var(--tomato);
@@ -456,7 +456,7 @@ async function remove() {
 }
 .mk-ok {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--green);
   display: inline-flex;
@@ -465,11 +465,11 @@ async function remove() {
 }
 .mk-next {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
 }
 .mk-content {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--sub);
   margin-top: 5px;
   display: -webkit-box;
@@ -485,14 +485,14 @@ async function remove() {
   flex-wrap: wrap;
 }
 .mk-reason {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--tomato-deep);
   background: #fdecec;
   padding: 2px 8px;
   border-radius: 999px;
 }
 .mk-tag {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--purple);
   background: #f1eefd;
   padding: 2px 8px;
@@ -508,7 +508,7 @@ async function remove() {
   border: none;
   background: var(--primary-grad);
   color: #fff;
-  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.34);
+  box-shadow: 0 12px 24px rgba(50, 115, 75, 0.34);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -546,7 +546,7 @@ async function remove() {
   flex-wrap: wrap;
 }
 .dk-chap {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .x-btn {
@@ -566,13 +566,13 @@ async function remove() {
   align-items: center;
   gap: 10px;
   margin-top: 14px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .stage-next {
   margin-left: auto;
   color: var(--tomato-deep);
-  font-size: 12px;
+  font-size: 14px;
 }
 .master-badge {
   display: inline-flex;
@@ -601,12 +601,12 @@ async function remove() {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 14px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--tomato-deep);
 }
 .dk-tag {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--purple);
   background: #f1eefd;
@@ -623,7 +623,7 @@ async function remove() {
   padding: 12px 14px;
 }
 .dk-block { margin-top: 12px; background: #f8fafc; border-radius: 12px; padding: 12px 14px; }
-.dk-label { font-size: 11.5px; color: var(--faint); margin-bottom: 4px; }
+.dk-label { font-size: 12px; color: var(--faint); margin-bottom: 4px; }
 .dk-text { font-size: 14px; color: var(--ink); line-height: 1.65; white-space: pre-wrap; }
 .dk-imgs {
   margin-top: 12px;
@@ -650,7 +650,7 @@ async function remove() {
   background: #fff;
   border-radius: 12px;
   padding: 11px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--sub);
   display: inline-flex;

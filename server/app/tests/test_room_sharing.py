@@ -235,7 +235,7 @@ def test_legacy_room_members_must_both_confirm_and_privacy_still_wins(client):
 def test_platform_admin_cannot_self_approve_or_manage_someone_elses_room(client):
     ah = admin(client)
     _, a = account(client, ah, 1)
-    r = room(client, a)
+    r = room(client, a, visibility="public")
     rid = r["id"]
     request = client.post(
         f"/api/v1/rooms/{rid}/apply", headers=ah, json={"accept_sharing": True}
@@ -449,7 +449,7 @@ def test_old_pending_application_cannot_be_approved_until_applicant_reconfirms(c
 
     ah = admin(client)
     _, a = account(client, ah, 1)
-    r = room(client, ah)
+    r = room(client, ah, visibility="public")
     path = f"/api/v1/rooms/{r['id']}"
     applied = client.post(
         path + "/apply", headers=a, json={"accept_sharing": True, "message": "旧说明"}

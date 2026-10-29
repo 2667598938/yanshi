@@ -28,4 +28,4 @@ onMounted(()=>load())
 <a :href="row.url" target="_blank" rel="noopener noreferrer">{{row.url}}</a><p>提取码：{{row.code||'无'}}</p><p v-if="row.review_note">审核说明：{{row.review_note}}</p>
 <template v-if="row.review_status==='pending'"><textarea v-model="notes[row.id]" class="input" maxlength="500" placeholder="驳回必须填写原因"></textarea><button class="btn btn-primary" :disabled="busy" @click="review(row,'approve')">通过并公开</button><button class="btn btn-outline" :disabled="busy" @click="review(row,'reject')">驳回</button></template><button class="btn btn-outline" :disabled="busy" @click="takedown(row)">下架资料</button></div>
 <p v-if="!rows.length">当前队列为空</p><button v-if="next" class="btn btn-outline" :disabled="busy" @click="load(true)">加载更多</button></div></template>
-<style scoped>p{font-size:13px;line-height:1.7}a{overflow-wrap:anywhere}button{margin:5px}</style>
+<style scoped>p{font-size: 14px;line-height:1.7}a{overflow-wrap:anywhere}button{margin:5px}</style>

@@ -63,6 +63,7 @@ function createDb(name) {
   })
 
   instance.version(4).stores({ timeNodes: 'id' })
+  instance.version(5).stores({ imageCache: 'key, lastAccessedAt, size' })
   return instance
 }
 

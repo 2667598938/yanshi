@@ -88,4 +88,4 @@ onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(int
  </div><p v-if="!visible.length&&tab!=='stats'">暂无已同步记录</p>
  </template></template></div>
 </template>
-<style scoped>.room-picker{display:flex;align-items:center;gap:10px;margin:18px 0;flex-wrap:wrap}.room-picker select{max-width:100%;min-height:42px;padding:8px;border:1px solid var(--line,#ddd);border-radius:10px;background:var(--card,#fff);color:inherit}p{font-size:13px;line-height:1.7}button{margin:4px}.picture{width:100%;max-height:360px;object-fit:contain}.heat{display:flex;flex-wrap:wrap;gap:4px}.heat span{padding:7px;border-radius:4px;font-size:10px}</style>
+<style scoped>.room-picker{display:flex;align-items:center;gap:10px;margin:18px 0;flex-wrap:wrap}.room-picker select{max-width:100%;min-height:42px;padding:8px;border:1px solid var(--line,#ddd);border-radius:10px;background:var(--card,#fff);color:inherit}p{font-size: 14px;line-height:1.7}button{margin:4px}.picture{width:100%;max-height:360px;object-fit:contain}.heat{display:flex;flex-wrap:wrap;gap:4px}.heat span{padding:7px;border-radius:4px;font-size: 12px}</style>

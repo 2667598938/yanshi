@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -31,13 +32,15 @@ class Settings(BaseSettings):
     # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，测试环境用空值）
     auth_email_domains: str = "qq.com"
     auth_qq_numeric_only: bool = True
+    github_client_id: str = ""
+    github_client_secret: str = ""
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
     qq_app_id: str = ""
     qq_app_secret: str = ""
     account_max_users: int = Field(default=100, ge=0, le=1000000)
     registration_open: bool = False
-    features: str = "checkin_room,resource,post,inspiration,dream_school"
+    features: str = "text_room,resource,post,inspiration,dream_school"
     sms_secret_id: str = ""
     sms_secret_key: str = ""
     sms_sdk_app_id: str = ""
@@ -45,6 +48,10 @@ class Settings(BaseSettings):
     sms_template_id: str = ""
     sms_region: str = "ap-guangzhou"
     sms_provider: str = ""  # 留空 = 未接入短信服务
+
+    room_sfu_enabled: bool = False
+    room_sfu_url: str = ""
+    room_ice_servers: str = '[{"urls":"stun:stun.l.google.com:19302"}]'
 
     # 邮件（QQ SMTP 465 SSL；留空且 mail_console=true 时验证码打印到控制台）
     mail_console: bool = True
@@ -60,7 +67,7 @@ class Settings(BaseSettings):
     admin_password: str = ""
 
     # 图片存储：本地开发用 data/uploads；生产切七牛 Kodo（私有 bucket + S3 签名 URL）
-    image_storage: str = "local"  # local | qiniu
+    image_storage: Literal['local', 'qiniu'] = "local"
     image_directory: Path = BASE_DIR / "data" / "uploads"
     image_max_avatar_bytes: int = 2 * 1024 * 1024
     image_max_bytes: int = 5 * 1024 * 1024
@@ -102,7 +109,7 @@ class Settings(BaseSettings):
     def enabled_auth_channels(self) -> list:
         if self.auth_password_only:
             return ["email"]
-        return [x.strip() for x in self.auth_channels.split(",") if x.strip()]
+        return [x.strip() for x in self.auth_channels.split(",") if x.strip() and (x.strip() != "github" or (self.github_client_id and self.github_client_secret))]
 
     @property
     def cors_list(self):

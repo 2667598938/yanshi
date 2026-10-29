@@ -170,7 +170,7 @@ def test_byok_models_stream_private_context_import_undo_and_history(
     )
 
 
-def test_private_room_approval_presence_privacy_and_global_timer(client):
+def test_private_room_code_presence_privacy_and_global_timer(client):
     admin, owner, uid = actors(client)
     room = client.post(
         "/api/v1/rooms",
@@ -183,19 +183,8 @@ def test_private_room_approval_presence_privacy_and_global_timer(client):
     ).json()["data"]
     path = f"/api/v1/rooms/{room['id']}"
     assert client.get(path, headers=owner).status_code == 403
-    applied = client.post(
-        path + "/apply",
-        headers=owner,
-        json={"message": "共同学习", "accept_sharing": True},
-    ).json()["data"]
-    assert (
-        client.post(
-            path + f"/applies/{applied['id']}/review",
-            headers=admin,
-            json={"approve": True},
-        ).status_code
-        == 200
-    )
+    assert client.post(path+'/apply',headers=owner,json={'accept_sharing':True}).status_code==410
+    assert client.post(path+'/join',headers=owner,json={'accept_sharing':True,'code':room['code']}).status_code==200
     assert (
         client.post(
             "/api/v1/group/presence",

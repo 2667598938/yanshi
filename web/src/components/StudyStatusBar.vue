@@ -13,6 +13,6 @@ const route=useRoute(),timer=useTimerStore(),studyRoom=useStudyRoomStore()
  </div>
 </template>
 <style scoped>
-.study-status-bar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 16px;padding:7px 12px;background:var(--card,#fff);border-bottom:1px solid var(--line);color:var(--ink);font-size:12px;line-height:1.5}
+.study-status-bar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 16px;padding:7px 12px;background:var(--card,#fff);border-bottom:1px solid var(--line);color:var(--ink);font-size: 14px;line-height:1.5}
 a{color:inherit;text-decoration:none;overflow-wrap:anywhere}button{border:0;background:transparent;color:var(--sub);text-decoration:underline;font:inherit;cursor:pointer}.tnum{font-weight:600}
 </style>

@@ -11,6 +11,7 @@ import { useSchoolsStore } from '../stores/schools'
 import { roomApi } from '../api'
 import { ROOM_SHARING_NOTICE } from '../utils/roomSharing'
 import BlobImage from '../components/BlobImage.vue'
+import RoomMedia from '../components/RoomMedia.vue'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import CopyFallback from '../components/CopyFallback.vue'
@@ -86,20 +87,21 @@ function presenceText(m) {
   if (p.status === 'private') return { label: '隐私中', color: '#8d7fa3' }
   if (p.status === 'unshared') return { label: '未确认本房间共享', color: '#8d7fa3' }
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
-  if (p.status === 'resting') return { label: '休息中', color: '#8b5cf6' }
+  if (p.status === 'resting') return { label: '休息中', color: '#46845b' }
   if (p.status === 'away') return { label: '暂离 · 后台', color: '#8d8f96' }
   if (p.status === 'idle') return { label: '空闲', color: '#f59e0b' }
   if (p.status === 'focusing') {
     return { label: `专注中 · ${p.subject_name || '学习'}${p.focus_sec ? ' ' + fmtSec(p.focus_sec) : ''}`, color: '#10b981' }
   }
-  return { label: '在线', color: '#4f46e5' }
+  return { label: '在线', color: '#32734b' }
 }
 
-// Unlimited rooms show current members and one invitation placeholder.
+const showAllMembers=ref(false)
+// Keep the first screen compact; the full member list remains available on demand.
 const seats = computed(() => {
-  const filled = members.value.map(m => ({ ...m, empty: false }))
-  const empties = room.value?.capacity > 0 ? Math.max(0, room.value.capacity - filled.length) : 1
-  return [...filled, ...Array.from({ length: Math.min(empties, 8) }, () => ({ empty: true }))]
+  const filled = (showAllMembers.value?members.value:members.value.slice(0,4)).map(m => ({ ...m, empty: false }))
+  const empties = room.value?.capacity > 0 ? Math.max(0, room.value.capacity - members.value.length) : 1
+  return [...filled, ...Array.from({ length: Math.min(empties, 1) }, () => ({ empty: true }))]
 })
 
 const todayTotal = computed(() => members.value.reduce((a, m) => a + (m.today_sec || 0), 0))
@@ -569,15 +571,15 @@ onBeforeUnmount(() => {
       <div v-if="!joined" class="full-banner">
         <component :is="joinRequired ? Lock : Users" :size="18" />
         <div v-if="isFull">
-          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || '不限' }}）</div>
+          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || 50 }}）</div>
           <div class="fb-sub">暂时没有座位，可以换一个自习室，或等成员退出后再加入。</div>
         </div>
         <div v-else-if="joinRequired">
-          <div class="fb-title">好友自习室 · 凭邀请或审批加入</div><p v-if="room?.legacy_member" class="field-hint">旧成员资格不自动开放学习共享，请联系房主获取新的房间码，或重新提交申请。</p>
+          <div class="fb-title">{{room?.visibility==='private'?'私密自习室 · 凭房间码加入':'公开自习室 · 凭邀请或审批加入'}}</div><p v-if="room?.legacy_member" class="field-hint">旧成员资格不自动开放学习共享，请联系房主获取新的房间码，或重新提交申请。</p>
           <div class="fb-sub">
-            <template v-if="myApply?.status === 'pending' && myApply?.accept_sharing">申请已提交，等待房主审批，通过后自动进入。</template>
+            <template v-if="room?.visibility==='public' && myApply?.status === 'pending' && myApply?.accept_sharing">申请已提交，等待房主审批，通过后自动进入。</template>
             <template v-else-if="myApply?.status === 'rejected'">上次申请未通过，可以补充说明后再次申请。</template>
-            <template v-else>有房间码可直接加入；没有房间码可提交申请，由房主审核。</template>
+            <template v-else>{{room?.visibility==='private'?'请向房主获取房间码，确认共享后加入。':'有房间码可直接加入；也可提交申请，由房主审核。'}}</template>
           </div>
         </div>
         <div v-else>
@@ -595,15 +597,15 @@ onBeforeUnmount(() => {
           <button class="cc-btn" :disabled="joining" @click="join">{{ joining ? '加入中…' : '确认共享并加入' }}</button>
         </div>
         <div class="ac-divider"></div>
-        <div class="ac-title">没有房间码？申请加入</div><p class="field-hint">加入后与本房间已确认的成员默认互看历史学习数据；隐私模式可一键隐藏。账号密码、AI 密钥和聊天、个人备注不共享。</p>
-        <template v-if="myApply?.status === 'pending' && myApply?.accept_sharing">
+        <div v-if="room?.visibility==='public'" class="ac-title">申请加入公开房间</div><p class="field-hint">加入后与本房间已确认的成员默认互看历史学习数据；隐私模式可一键隐藏。账号密码、AI 密钥和聊天、个人备注不共享。</p>
+        <template v-if="room?.visibility==='public' && myApply?.status === 'pending' && myApply?.accept_sharing">
           <div class="ac-pending">
             <span class="ac-dot"></span>
             申请已提交（{{ fmtTime(myApply.created_at) }}），等待房主审批
           </div>
           <div v-if="myApply.message" class="ac-quote">「{{ myApply.message }}」</div>
         </template>
-        <template v-else>
+        <template v-else-if="room?.visibility==='public'">
           <textarea
             v-model="applyDraft"
             maxlength="200"
@@ -618,6 +620,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 座位 -->
+      <RoomMedia v-if="joined && room?.room_type==='av_room' && room?.media_mode==='mesh'" :room-id="room.id" />
       <div v-if="joined || !joinRequired" class="seat-grid">
         <div
           v-for="(seat, i) in seats"
@@ -658,6 +661,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <button v-if="members.length>4" class="btn btn-outline btn-block mt8" @click="showAllMembers=!showAllMembers">{{showAllMembers?'收起成员列表':`查看全部 ${members.length} 位成员`}}</button>
       <!-- 排行榜 -->
       <div v-if="joined || !joinRequired" class="card rank-card">
         <div class="rank-head">
@@ -816,7 +820,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .seat-identity { position: relative; flex-shrink: 0; }.seat-figure { position: absolute; right: -6px; bottom: -3px; border-radius: 50%; width: 25px; height: 25px; display: grid; place-items: center; font-size: 16px; border: 2px solid #fff; }
 .room-head {
-  background: linear-gradient(150deg, #4f46e5, #312e81 65%);
+  background: linear-gradient(150deg, #32734b, #312e81 65%);
   border-radius: var(--radius);
   padding: 16px;
   color: #fff;
@@ -841,16 +845,16 @@ onBeforeUnmount(() => {
   color: #92400e;
 }
 .fb-title { font-size: 14px; font-weight: 800; }
-.fb-sub { font-size: 12px; line-height: 1.6; margin-top: 4px; }
-.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 8px; background: #b45309; color: #fff; font-size: 12px; font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.fb-sub { font-size: 14px; line-height: 1.6; margin-top: 4px; }
+.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 8px; background: #b45309; color: #fff; font-size: 14px; font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .nav .back { border: none; background: rgba(255, 255, 255, 0.72); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.switch-btn { margin-left: auto; border: 1px solid rgba(79, 70, 229, 0.14); background: rgba(255, 255, 255, 0.72); color: var(--sub); border-radius: 8px; padding: 8px 16px; font-size: 12px; cursor: pointer; }
-.room-code { margin-top: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 12px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.room-private { display: flex; align-items: center; gap: 4px; font-size: 12px; color: rgba(255,255,255,.72); margin-top: 4px; }
+.switch-btn { margin-left: auto; border: 1px solid rgba(50, 115, 75, 0.14); background: rgba(255, 255, 255, 0.72); color: var(--sub); border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+.room-code { margin-top: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 14px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.room-private { display: flex; align-items: center; gap: 4px; font-size: 14px; color: rgba(255,255,255,.72); margin-top: 4px; }
 .room-stat { display: flex; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.14); }
 .room-stat > div { flex: 1; text-align: center; }
 .rs-num { font-size: 20px; font-weight: 800; }
-.rs-label { font-size: 12px; color: rgba(255,255,255,.68); margin-top: 4px; }
+.rs-label { font-size: 14px; color: rgba(255,255,255,.68); margin-top: 4px; }
 .rs-line { flex: 0 0 1px; width: 1px; height: 30px; align-self: center; background: rgba(255,255,255,.2); }
 
 .seat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
@@ -862,99 +866,99 @@ onBeforeUnmount(() => {
 .seat-info { flex: 1; min-width: 0; }
 .seat-name { font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .seat-card.filled .seat-name { justify-content: center; }
-.me-tag { font-size: 11px; background: var(--primary-grad); color: #fff; border-radius: 6px; padding: 2px 8px; font-weight: 600; }
-.admin-tag { font-size: 11px; background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); border-radius: 6px; padding: 2px 8px; }
-.seat-school { font-size: 12px; color: var(--sub); margin-top: 4px; }
-.seat-state { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--sub); margin-top: 4px; }
+.me-tag { font-size: 12px; background: var(--primary-grad); color: #fff; border-radius: 6px; padding: 2px 8px; font-weight: 600; }
+.admin-tag { font-size: 12px; background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); border-radius: 6px; padding: 2px 8px; }
+.seat-school { font-size: 14px; color: var(--sub); margin-top: 4px; }
+.seat-state { display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--sub); margin-top: 4px; }
 .seat-card.filled .seat-state { justify-content: center; }
 .state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.seat-min { font-size: 12px; font-weight: 700; color: var(--primary); }
+.seat-min { font-size: 14px; font-weight: 700; color: var(--primary); }
 .seat-card { position: relative; }
 .kick-btn { position: absolute; right: 8px; bottom: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.9); color: var(--faint); width: 24px; height: 24px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .switch-btn.gear { margin-left: auto; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
 .switch-btn.gear + .switch-btn { margin-left: 8px; }
 .vis-row { display: flex; gap: 8px; }
-.vis-row button { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: var(--sub); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.24s ease, color 0.24s ease; }
+.vis-row button { flex: 1; height: 40px; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: var(--sub); font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.24s ease, color 0.24s ease; }
 .vis-row button.on { border-color: transparent; background: var(--primary-grad); color: #fff; }
-.seat-card.empty { border: 1px dashed rgba(79, 70, 229, 0.22); box-shadow: none; background: rgba(255, 255, 255, 0.5); backdrop-filter: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+.seat-card.empty { border: 1px dashed rgba(50, 115, 75, 0.22); box-shadow: none; background: rgba(255, 255, 255, 0.5); backdrop-filter: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
 .seat-empty-ic { color: #c3c8dd; margin-bottom: 8px; }
 .seat-empty-txt { font-size: 14px; font-weight: 700; color: var(--faint); }
-.seat-empty-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+.seat-empty-sub { font-size: 14px; color: var(--faint); margin-top: 4px; }
 
 .rank-card, .goal-wall, .msg-card { margin-top: 16px; }
 .rank-head, .wall-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .rank-title { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
-.rank-tabs { display: flex; background: rgba(79, 70, 229, 0.06); border-radius: 8px; padding: 4px; }
-.rank-tabs button { border: none; background: transparent; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: var(--sub); cursor: pointer; }
+.rank-tabs { display: flex; background: rgba(50, 115, 75, 0.06); border-radius: 8px; padding: 4px; }
+.rank-tabs button { border: none; background: transparent; padding: 4px 8px; border-radius: 6px; font-size: 14px; color: var(--sub); cursor: pointer; }
 .rank-tabs button.on { background: #fff; color: var(--primary); font-weight: 700; box-shadow: var(--shadow-soft); }
 .rank-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
-.rank-no { width: 24px; height: 24px; border-radius: 50%; background: rgba(79, 70, 229, 0.08); color: var(--faint); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rank-no { width: 24px; height: 24px; border-radius: 50%; background: rgba(50, 115, 75, 0.08); color: var(--faint); font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .rank-no.top { background: var(--primary-grad); color: #fff; }
-.rank-name { width: 56px; font-size: 12px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rank-bar { flex: 1; height: 8px; background: rgba(79, 70, 229, 0.08); border-radius: 999px; overflow: hidden; }
+.rank-name { width: 56px; font-size: 14px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-bar { flex: 1; height: 8px; background: rgba(50, 115, 75, 0.08); border-radius: 999px; overflow: hidden; }
 .rank-bar i { display: block; height: 100%; background: var(--primary-grad); border-radius: 999px; }
-.rank-sec { font-size: 12px; font-weight: 700; color: var(--primary); width: 52px; text-align: right; }
-.rank-empty { text-align: center; color: var(--faint); font-size: 12px; padding: 16px 0; }
+.rank-sec { font-size: 14px; font-weight: 700; color: var(--primary); width: 52px; text-align: right; }
+.rank-empty { text-align: center; color: var(--faint); font-size: 14px; padding: 16px 0; }
 
-.link-btn { border: none; background: none; color: var(--primary); font-size: 12px; cursor: pointer; }
+.link-btn { border: none; background: none; color: var(--primary); font-size: 14px; cursor: pointer; }
 .goal-row { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .goal-row:last-child { border-bottom: none; }
-.g-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: rgba(79, 70, 229, 0.08); flex-shrink: 0; }
+.g-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: rgba(50, 115, 75, 0.08); flex-shrink: 0; }
 .g-meta { flex: 1; min-width: 0; }
 .g-name { font-size: 14px; font-weight: 700; }
-.g-target { font-size: 12px; color: var(--sub); margin-top: 2px; }
+.g-target { font-size: 14px; color: var(--sub); margin-top: 2px; }
 .g-score { color: var(--faint); margin-left: 8px; }
-.g-words { font-size: 12px; color: var(--accent-deep); margin-top: 4px; }
+.g-words { font-size: 14px; color: var(--accent-deep); margin-top: 4px; }
 
 .msg-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; max-height: 320px; overflow-y: auto; }
 .msg { display: flex; }
 .msg.mine { justify-content: flex-end; }
-.msg-bubble { max-width: 78%; background: rgba(79, 70, 229, 0.06); border-radius: 12px; padding: 8px 16px; }
-.msg.mine .msg-bubble { background: rgba(79, 70, 229, 0.14); }
-.msg-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--faint); }
+.msg-bubble { max-width: 78%; background: rgba(50, 115, 75, 0.06); border-radius: 12px; padding: 8px 16px; }
+.msg.mine .msg-bubble { background: rgba(50, 115, 75, 0.14); }
+.msg-meta { display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--faint); }
 .msg-del { border: none; background: none; color: var(--faint); cursor: pointer; padding: 0; display: flex; }
 .msg-content { font-size: 14px; color: var(--ink); margin-top: 4px; line-height: 1.6; word-break: break-word; }
 .msg-input { display: flex; gap: 8px; }
-.msg-input input { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 999px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); transition: border-color 0.24s ease, box-shadow 0.24s ease; }
-.msg-input input:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.msg-input button { width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.24); }
+.msg-input input { flex: 1; height: 40px; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 999px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); transition: border-color 0.24s ease, box-shadow 0.24s ease; }
+.msg-input input:focus { outline: none; border-color: rgba(50, 115, 75, 0.5); box-shadow: 0 0 0 3px rgba(50, 115, 75, 0.12); }
+.msg-input button { width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 6px 16px rgba(50, 115, 75, 0.24); }
 
 .mask { position: fixed; inset: 0; background: rgba(30, 27, 75, 0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
 .sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 24px 24px 0 0; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
 .sheet-title { font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 16px; }
 .sf { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
-.sf span { font-size: 12px; color: var(--sub); }
-.sf input, .sf select { height: 44px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); }
-.sf input:focus, .sf select:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.sf span { font-size: 14px; color: var(--sub); }
+.sf input, .sf select { height: 44px; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); }
+.sf input:focus, .sf select:focus { outline: none; border-color: rgba(50, 115, 75, 0.5); box-shadow: 0 0 0 3px rgba(50, 115, 75, 0.12); }
 
 /* 私密房：房间码 / 入房申请 */
 .apply-card { margin-top: 16px; padding: 16px; }
 .ac-title { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
 .ac-code-row { display: flex; gap: 8px; margin-top: 8px; }
-.ac-code-row input { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); letter-spacing: 2px; min-width: 0; }
-.ac-code-row input:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.cc-btn { border: none; background: var(--primary-grad); color: #fff; border-radius: 8px; padding: 0 16px; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.2); }
+.ac-code-row input { flex: 1; height: 40px; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); letter-spacing: 2px; min-width: 0; }
+.ac-code-row input:focus { outline: none; border-color: rgba(50, 115, 75, 0.5); box-shadow: 0 0 0 3px rgba(50, 115, 75, 0.12); }
+.cc-btn { border: none; background: var(--primary-grad); color: #fff; border-radius: 8px; padding: 0 16px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(50, 115, 75, 0.2); }
 .ac-divider { height: 1px; background: var(--line); margin: 16px 0; }
-.apply-card textarea { width: 100%; margin-top: 8px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 8px 16px; font-size: 14px; font-family: inherit; resize: vertical; background: rgba(255, 255, 255, 0.9); box-sizing: border-box; }
-.apply-card textarea:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.ac-pending { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #92400e; background: #fff7ed; border-radius: 8px; padding: 8px 16px; }
+.apply-card textarea { width: 100%; margin-top: 8px; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 8px; padding: 8px 16px; font-size: 14px; font-family: inherit; resize: vertical; background: rgba(255, 255, 255, 0.9); box-sizing: border-box; }
+.apply-card textarea:focus { outline: none; border-color: rgba(50, 115, 75, 0.5); box-shadow: 0 0 0 3px rgba(50, 115, 75, 0.12); }
+.ac-pending { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: #92400e; background: #fff7ed; border-radius: 8px; padding: 8px 16px; }
 .ac-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.ac-quote { margin-top: 8px; font-size: 12px; color: var(--sub); }
-.ac-reject { margin-top: 8px; font-size: 12px; color: var(--red); }
+.ac-quote { margin-top: 8px; font-size: 14px; color: var(--sub); }
+.ac-reject { margin-top: 8px; font-size: 14px; color: var(--red); }
 
 /* 房主待审列表 */
-.am-box { background: rgba(79, 70, 229, 0.04); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.am-box { background: rgba(50, 115, 75, 0.04); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .am-head { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
-.am-count { background: var(--primary-grad); color: #fff; border-radius: 999px; font-size: 11px; padding: 2px 8px; }
-.am-empty { font-size: 12px; color: var(--faint); margin-top: 8px; }
+.am-count { background: var(--primary-grad); color: #fff; border-radius: 999px; font-size: 12px; padding: 2px 8px; }
+.am-empty { font-size: 14px; color: var(--faint); margin-top: 8px; }
 .am-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .am-row:last-child { border-bottom: none; }
 .am-info { flex: 1; min-width: 0; }
 .am-name { font-size: 14px; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
-.am-time { font-size: 12px; color: var(--faint); font-weight: 400; }
-.am-school { font-size: 12px; color: var(--sub); margin-top: 2px; }
-.am-msg { font-size: 12px; color: var(--sub); margin-top: 2px; word-break: break-word; }
-.am-btn { border: none; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.am-time { font-size: 14px; color: var(--faint); font-weight: 400; }
+.am-school { font-size: 14px; color: var(--sub); margin-top: 2px; }
+.am-msg { font-size: 14px; color: var(--sub); margin-top: 2px; word-break: break-word; }
+.am-btn { border: none; border-radius: 8px; font-size: 14px; font-weight: 600; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
 .am-btn.ok { background: var(--primary-grad); color: #fff; }
 .am-btn.no { background: #fff; color: var(--sub); border: 1px solid var(--line); }
 .am-btn:disabled { opacity: .6; cursor: default; }
@@ -962,9 +966,9 @@ onBeforeUnmount(() => {
 /* 加载骨架 / 同步失败 */
 .page-skeleton { display: flex; flex-direction: column; gap: 16px; }
 .sk-head { background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: var(--radius); padding: 16px; display: flex; gap: 8px; align-items: center; box-shadow: var(--shadow); }
-.sk-ic { width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); flex-shrink: 0; }
+.sk-ic { width: 44px; height: 44px; border-radius: 12px; background: rgba(50, 115, 75, 0.1); flex-shrink: 0; }
 .sk-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.sk-lines i, .sk-block i { display: block; height: 12px; border-radius: 6px; background: rgba(79, 70, 229, 0.08); width: 100%; }
+.sk-lines i, .sk-block i { display: block; height: 12px; border-radius: 6px; background: rgba(50, 115, 75, 0.08); width: 100%; }
 .sk-lines i.w60, .sk-block i.w60 { width: 60%; height: 8px; }
 .sk-block i.w40 { width: 40%; }
 .sk-seats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -976,23 +980,23 @@ onBeforeUnmount(() => {
 
 .load-error { margin-top: 8px; padding: 24px 16px; text-align: center; }
 .le-title { font-size: 14px; font-weight: 800; }
-.le-sub { font-size: 12px; color: var(--sub); line-height: 1.6; margin: 8px 0 16px; }
-.sync-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 16px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); color: var(--accent-deep); font-size: 12px; }
+.le-sub { font-size: 14px; color: var(--sub); line-height: 1.6; margin: 8px 0 16px; }
+.sync-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 16px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); color: var(--accent-deep); font-size: 14px; }
 .sync-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sync-bar button { border: none; background: none; color: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; }
+.sync-bar button { border: none; background: none; color: var(--primary); font-size: 14px; font-weight: 700; cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* 留言：乐观发送、向上翻看不被抢滚动 */
 .msg-wrap { position: relative; }
 .msg.pending { opacity: .6; }
-.msg-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); border: none; border-radius: 999px; background: var(--primary-grad); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.28); transition: transform 0.2s ease; }
+.msg-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); border: none; border-radius: 999px; background: var(--primary-grad); color: #fff; font-size: 14px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; box-shadow: 0 6px 16px rgba(50, 115, 75, 0.28); transition: transform 0.2s ease; }
 .msg-new:active { transform: translateX(-50%) scale(0.96); }
 .msg-input button:disabled { opacity: .45; cursor: default; box-shadow: none; }
 
 /* 排行榜高亮自己 */
 .rank-name { width: 64px; }
-.rank-row.me { background: rgba(79, 70, 229, 0.05); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
-.rank-me-tag { font-style: normal; font-size: 10px; background: rgba(79, 70, 229, 0.12); color: var(--primary); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
+.rank-row.me { background: rgba(50, 115, 75, 0.05); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+.rank-me-tag { font-style: normal; font-size: 12px; background: rgba(50, 115, 75, 0.12); color: var(--primary); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
 
 /* 专注中的状态点轻微呼吸，表示实时同步中；关闭动画偏好时静止 */
 .state-dot.live { animation: dot-breathe 2.4s ease-in-out infinite; }

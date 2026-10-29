@@ -45,8 +45,6 @@ class ImageStorage:
 
     def save(self, key, src, size):
         if self.s.image_storage != 'qiniu':
-            if self.s.environment == 'production':
-                raise ApiError(503, 50301, '生产环境图片尚未配置七牛存储')
             path = self.path(key)
             path.parent.mkdir(parents=True, exist_ok=True)
             src.seek(0)

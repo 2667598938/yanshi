@@ -50,7 +50,7 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.9;
   color: var(--sub);
 }

@@ -48,7 +48,12 @@ def client(tmp_path):
             RoomMember(room_id=room.id, user_id=1, role="owner", sharing_confirmed=True)
         )
         db.commit()
-    return TestClient(app)
+    test_client = TestClient(app)
+    try:
+        yield test_client
+    finally:
+        test_client.close()
+        app.state.engine.dispose()
 
 
 def read_latest_code(mail_dir) -> str:

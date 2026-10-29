@@ -20,7 +20,7 @@ export function useGroupPresence(){
    focus_elapsed_sec:status==='focusing'?Math.min(10800,Math.max(0,Math.floor(timer.elapsedSec||0))):null}
  }
  async function beat(){
-  if(!auth.isLoggedIn)return
+  if(!auth.isLoggedIn||auth.isSuperAdmin)return
   const body=payload(),owner=auth.user?.id
   try{
    const result=await groupApi.presence(body)

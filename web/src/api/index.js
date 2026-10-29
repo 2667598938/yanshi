@@ -68,18 +68,23 @@ export const roomApi = {
   dissolve: (id) => http.del(`/rooms/${id}`),
 }
 
+import { cacheImage } from '../db/imageCache'
+import { localAccountScope } from '../db'
+
 // ------------------------------------------------------------ 附件 / 图片
 export const attachmentApi = {
   viewUrl: (key) => `/api/v1/attachments/view?key=${encodeURIComponent(key)}`,
   uploadAvatar: (file) => {
     const fd = new FormData()
     fd.append('file', file)
-    return http.post('/attachments/avatar', fd)
+    const scope = localAccountScope()
+    return http.post('/attachments/avatar', fd).then(async result => { await cacheImage(result.key,file,scope); return result })
   },
   uploadImage: (file, biz) => {
     const fd = new FormData()
     fd.append('file', file)
-    return http.post('/attachments/image', fd, { query: { biz } })
+    const scope = localAccountScope()
+    return http.post('/attachments/image', fd, { query: { biz } }).then(async result => { await cacheImage(result.key,file,scope); return result })
   },
   remove: (key) => http.del('/attachments', { query: { key } }),
   storage: () => http.get('/attachments/storage'),

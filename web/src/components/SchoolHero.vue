@@ -145,7 +145,7 @@ async function setDream() {
   color: #fff;
   overflow: hidden;
   /* 与蓝紫主题同源的深靛色，避免藏青割裂 */
-  background: linear-gradient(160deg, #312e81, #1e1b4b);
+  background: linear-gradient(160deg, #213f2d, #1e1b4b);
   border-radius: 0 0 24px 24px;
 }
 .hero-bg {
@@ -206,12 +206,12 @@ async function setDream() {
   min-width: 0;
 }
 .school-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.5px;
 }
 .school-motto {
-  font-size: 12px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.86);
   margin-top: 1px;
 }
@@ -219,7 +219,7 @@ async function setDream() {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.72);
   margin-top: 2px;
 }
@@ -232,7 +232,7 @@ async function setDream() {
   color: #fff;
   border-radius: 999px;
   padding: 7px 12px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   backdrop-filter: blur(4px);
@@ -253,7 +253,7 @@ async function setDream() {
   margin-top: 18px;
 }
 .cd-label {
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
   letter-spacing: 1px;
 }
@@ -272,19 +272,19 @@ async function setDream() {
   letter-spacing: -2px;
 }
 .cd-unit {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
 }
 .cd-date {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.72);
 }
 
 .quote {
   text-align: center;
-  font-size: 13.5px;
+  font-size: 14px;
   color: #ffe9c4;
   margin: 12px 0 16px;
   letter-spacing: 0.5px;
@@ -344,7 +344,7 @@ async function setDream() {
 }
 .album-count {
   margin-right: 2px;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   letter-spacing: 0.3px;
 }

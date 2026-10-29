@@ -89,6 +89,7 @@ def diagnostics(request: Request):
                 settings.wechat_app_id and settings.wechat_app_secret
             ),
             "qq_configured": bool(settings.qq_app_id and settings.qq_app_secret),
+            "github_configured": bool(settings.github_client_id and settings.github_client_secret),
             "server_ai_configured": False,
             "ai_key_policy": "byok_required",
         }
@@ -815,6 +816,9 @@ def update_config(
 ):
     if request.app.state.settings.auth_password_only and body.registration_open is True:
         raise ApiError(403, 40301, "内测期间仅支持账号密码登录，账号请由管理员创建")
+    settings=request.app.state.settings
+    if settings.environment=='production' and body.registration_open is True and not (settings.smtp_host and settings.smtp_user and settings.smtp_password):
+        raise ApiError(400,40001,'请先配置SMTP再开放注册')
     with sync_write_lock:
         db.scalar(select(User).where(User.id == admin.id).with_for_update())
         current = config_payload(db)

@@ -879,9 +879,9 @@ async function importTasks(){
 </template>
 
 <style scoped>
-.context-warning {padding:10px 16px;margin:4px 12px;border-radius:12px;background:var(--ai-panel,rgba(140,130,90,.15));font-size:12px;line-height:1.7;color:inherit}
+.context-warning {padding:10px 16px;margin:4px 12px;border-radius:12px;background:var(--ai-panel,rgba(140,130,90,.15));font-size: 14px;line-height:1.7;color:inherit}
 .context-warning button {margin-left:8px;color:inherit;text-decoration:underline;background:transparent;border:0;cursor:pointer}
-.import-task-editor {padding:14px;margin:10px 0}.import-task-editor label {display:block;margin:8px 0;font-size:13px}
-.import-load {font-size:12px;line-height:1.7}.import-load strong{color:var(--tomato)}
+.import-task-editor {padding:14px;margin:10px 0}.import-task-editor label {display:block;margin:8px 0;font-size: 14px}
+.import-load {font-size: 14px;line-height:1.7}.import-load strong{color:var(--tomato)}
 </style>
 <style src="../assets/styles/ai-neural.css"></style>

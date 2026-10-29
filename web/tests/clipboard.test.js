@@ -33,7 +33,7 @@ beforeEach(() => {
   originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand')
   clipboard(undefined) // 模拟局域网 HTTP 下没有现代 Clipboard API
   Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) })
-  roomApi.list.mockResolvedValue([room])
+  roomApi.list.mockResolvedValue([{...room,visibility:'public'}])
   roomApi.get.mockResolvedValue({ room, joined: true, members: [], messages: [], ranking: {} })
   roomApi.heartbeat.mockResolvedValue({})
   roomApi.putGoal.mockResolvedValue({})
