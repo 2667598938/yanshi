@@ -4,7 +4,7 @@ set -Eeuo pipefail
 [[ ${GITHUB_ACTIONS:-} == true ]] || { echo 'This smoke script is for GitHub CI only.' >&2; exit 1; }
 export API_IMAGE=yanshi-api:ci WEB_IMAGE=yanshi-web:ci
 export DATA_VOLUME_NAME="yanshi-ci-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
-dc() { docker compose -p yanshi-ci -f deploy/azure/compose.yaml "$@"; }
+dc() { sudo --preserve-env=API_IMAGE,WEB_IMAGE,DATA_VOLUME_NAME docker compose -p yanshi-ci -f deploy/azure/compose.yaml "$@"; }
 cleanup() { dc logs --tail 60 api web; dc down; }
 trap cleanup EXIT
 sudo install -d -m 0700 /etc/yanshi
@@ -23,8 +23,7 @@ ADMIN_PASSWORD=CI-only-Password-2026!
 IMAGE_STORAGE=qiniu
 MAIL_CONSOLE=false
 ENV
-# Dummy CI values only; the unprivileged hosted runner must read this file.
-sudo chmod 0644 /etc/yanshi/server.env
+sudo chmod 0600 /etc/yanshi/server.env
 dc config --quiet
 docker build -f deploy/azure/Dockerfile.api -t "$API_IMAGE" .
 docker build -f deploy/azure/Dockerfile.web -t "$WEB_IMAGE" .
