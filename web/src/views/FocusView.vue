@@ -12,7 +12,7 @@ import { useTimerStore } from '../stores/timer'
 import { useAppStore } from '../stores/app'
 import { useSubjectsStore } from '../stores/subjects'
 import { useLearningSettingsStore } from '../stores/learningSettings'
-import { useProfileStore } from '../stores/profile'
+import { useNotificationPreference } from '../composables/useNotificationPreference'
 import { useTasksStore } from '../stores/tasks'
 import {
   DURATIONS, MIN_DURATION, MAX_DURATION, ACTIVITIES,
@@ -27,7 +27,7 @@ const { toast } = useToast()
 const router = useRouter()
 const route = useRoute()
 const settings = useLearningSettingsStore()
-const profile = useProfileStore()
+const { toggle: toggleNotify, busy: notifyBusy } = useNotificationPreference()
 const tasks = useTasksStore()
 const linkedTask = computed(() => tasks.list.find(t=>t.id===(timer.current?.taskId || route.query.taskId || timer.lastFinished?.session?.taskId)))
 const completingTask = ref(false)
@@ -160,26 +160,6 @@ function applyCustom() {
   customOpen.value = false
 }
 
-async function toggleNotify() {
-  if (!('Notification' in window)) {
-    toast('当前浏览器不支持通知')
-    return
-  }
-  if (Notification.permission === 'granted') {
-    const enabled = !app.notifyEnabled
-    try { await profile.save({notify_enabled:enabled}); app.setNotifyEnabled(enabled); toast(enabled ? '已开启到点通知' : '已关闭通知') }
-    catch(e){toast(e.message || '通知设置保存失败')}
-    return
-  }
-  const p = await Notification.requestPermission()
-  if (p === 'granted') {
-    try { await profile.save({notify_enabled:true}); app.setNotifyEnabled(true); toast('已开启到点通知') }
-    catch(e){toast(e.message || '通知设置保存失败')}
-  } else {
-    toast('未获得通知权限')
-  }
-}
-
 let lastAt = 0
 watch(
   () => timer.lastFinished?.at,
@@ -198,7 +178,7 @@ watch(
         <div class="nav-title">专注</div>
         <div class="nav-sub">沉潜一刻，静水流深</div>
       </div>
-      <button class="notify-btn" @click="toggleNotify">
+      <button class="notify-btn" :disabled="notifyBusy" :aria-pressed="app.notifyEnabled" aria-label="到点浏览器通知" @click="toggleNotify">
         <component :is="app.notifyEnabled ? Bell : BellOff" :size="18" :stroke-width="2.2" />
       </button>
       <button class="notify-btn" aria-label="专注与休息设置" @click="router.push('/settings/learning')"><Settings2 :size="18" /></button>

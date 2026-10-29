@@ -34,3 +34,24 @@ it('计时完成只提供成果确认，必须用户点击后才完成关联任�
   expect(wrapper.text()).toContain('此任务已完成')
  }finally{wrapper.unmount();timer.lastFinished=null}
 })
+it('本机未获通知授权时仍可关闭已同步偏好，保存中阻止重复提交',async()=>{
+ const requestPermission=vi.fn()
+ vi.stubGlobal('Notification',{permission:'denied',requestPermission})
+ const app=useAppStore();app.notifyEnabled=true
+ let finishSave
+ mocks.save.mockImplementationOnce(()=>new Promise(resolve=>{finishSave=resolve}))
+ const callsBefore=mocks.save.mock.calls.length
+ const wrapper=mount(FocusView)
+ try{
+  const button=wrapper.get('.notify-btn')
+  await button.trigger('click');await button.trigger('click')
+  expect(requestPermission).not.toHaveBeenCalled()
+  expect(mocks.save.mock.calls.length).toBe(callsBefore+1)
+  expect(mocks.save).toHaveBeenLastCalledWith({notify_enabled:false})
+  expect(button.attributes('disabled')).toBeDefined()
+  expect(app.notifyEnabled).toBe(true)
+  finishSave();await flushPromises()
+  expect(app.notifyEnabled).toBe(false)
+  expect(button.attributes('disabled')).toBeUndefined()
+ }finally{wrapper.unmount();vi.unstubAllGlobals()}
+})

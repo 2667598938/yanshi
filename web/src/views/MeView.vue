@@ -26,12 +26,14 @@ import { useSchoolsStore } from '../stores/schools'
 import BlobImage from '../components/BlobImage.vue'
 import { useLearningSettingsStore } from '../stores/learningSettings'
 import { useToast } from '../composables/useToast'
+import { useNotificationPreference } from '../composables/useNotificationPreference'
 
 const router = useRouter()
 const timer = useTimerStore()
 const app = useAppStore()
 const auth = useAuthStore()
 const profile = useProfileStore()
+const { toggle: toggleNotify, busy: notifyBusy } = useNotificationPreference()
 const learningSettings = useLearningSettingsStore()
 const phoneAvailable = ref(false)
 onMounted(async()=>{try{phoneAvailable.value=(await publicApi.config()).enabled_auth_channels?.includes('phone') || false}catch{/* Closed by default. */}})
@@ -318,25 +320,6 @@ async function clearData() {
   finally { resumeSyncAfterAccountSwitch() }
 }
 
-async function toggleNotify() {
-  if (!('Notification' in window)) return toast('当前浏览器不支持通知')
-  let enabled = app.notifyEnabled
-  if (Notification.permission === 'granted') {
-    enabled = !enabled
-  } else {
-    const p = await Notification.requestPermission()
-    if (p !== 'granted') return toast('未获得通知权限')
-    enabled = true
-  }
-  try {
-    await profile.save({ notify_enabled: enabled })
-    app.setNotifyEnabled(enabled)
-    toast(enabled ? '已开启到点通知' : '已关闭通知')
-  } catch (e) {
-    toast(e.message)
-  }
-}
-
 async function togglePrivacy() {
   const next = !auth.user?.is_private_mode
   if (next && !confirm('开启隐私模式后，小组内其他成员将无法查看你的自习状态、错题、任务、番茄记录、学习热力等全部学习数据；仅管理员仍可管理你的账号（管理员后台用于运维，不展示学习明细）。')) return
@@ -433,7 +416,7 @@ onMounted(() => {
             <span class="row-ic c-orange"><Clock3 :size="18" /></span>
             <span class="row-label">专注与休息设置</span><ChevronRight :size="17" class="row-arrow" />
           </button>
-          <button type="button" class="row" role="switch" :aria-checked="app.notifyEnabled" @click="toggleNotify">
+          <button type="button" class="row" role="switch" :disabled="notifyBusy" :aria-checked="app.notifyEnabled" @click="toggleNotify">
             <span class="row-ic c-purple"><Bell :size="18" /></span>
             <span class="row-label">到点浏览器通知</span>
             <span class="switch" :class="{ on: app.notifyEnabled }"><span class="knob"></span></span>
