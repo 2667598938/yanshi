@@ -1,11 +1,48 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useSchoolsStore } from '../stores/schools'
+import SchoolBullets from '../components/SchoolBullets.vue'
+import BlobImage from '../components/BlobImage.vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, MapPin, Quote, ChevronRight } from 'lucide-vue-next'
-import { SCHOOLS } from '../data/schools'
+import { SCHOOL_MAP } from '../data/schools'
 
 const router = useRouter()
+const route = useRoute()
+const schools = ref([])
+const catalog = useSchoolsStore()
 const active = ref(null)
+const albumIndex = ref(0)
+const image = computed(() => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view)
+let interval
+let alive = true
+let lastManual = 0
+function pickSchool(school) { active.value = school; albumIndex.value = 0; lastManual = Date.now() }
+function pickAlbum(index) { albumIndex.value = index; lastManual = Date.now() }
+function merge(rows) {
+  if (!Array.isArray(rows)) return
+  schools.value = rows.map((row) => {
+    const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
+    return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
+      logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
+      album: row.album_keys?.length ? row.album_keys : [local.view] }
+  })
+}
+watch(() => catalog.rows, (rows) => {
+  merge(rows)
+  if (active.value) active.value = schools.value.find(row => row.key === active.value.key) || null
+})
+onMounted(async () => {
+  interval = setInterval(() => {
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && active.value && document.visibilityState === 'visible' && Date.now() - lastManual >= 10000) albumIndex.value += 1
+  }, 5000)
+  await catalog.load()
+  if (!alive) return
+  merge(catalog.rows)
+  const requested=schools.value.find(row=>row.key===route.query.school)
+  if(requested)pickSchool(requested)
+})
+onBeforeUnmount(() => { alive = false; clearInterval(interval) })
 </script>
 
 <template>
@@ -18,20 +55,23 @@ const active = ref(null)
     <div class="page">
       <div class="wall-hero">
         <div class="wh-title">把想去的地方，贴在每天看得见的地方</div>
-        <div class="wh-sub">七所梦校 · 总有一个名字让你坐直</div>
+        <div class="wh-sub">我的自由梦校墙 · 随时新增、删除与排序</div>
       </div>
 
+      <SchoolBullets />
+      <button class="btn btn-primary mb16" @click="router.push('/schools/manage')">管理我的梦校</button>
+      <p v-if="!schools.length">还没有梦校，点击上方按钮添加。</p>
       <div class="school-grid">
         <button
-          v-for="s in SCHOOLS"
+          v-for="s in schools"
           :key="s.key"
           class="school-card"
           :style="{ '--sc': s.color }"
-          @click="active = s"
+          @click="pickSchool(s)"
         >
-          <img class="sc-view" :src="s.view" :alt="s.name" />
+          <BlobImage class="sc-view" :src="s.view" :alt="s.name" />
           <div class="sc-body">
-            <img class="sc-logo" :src="s.logo" :alt="s.name" />
+            <BlobImage class="sc-logo" :src="s.logo" :alt="s.name" />
             <div class="sc-main">
               <div class="sc-name">{{ s.name }}</div>
               <div class="sc-city"><MapPin :size="11" />{{ s.city }}</div>
@@ -44,14 +84,18 @@ const active = ref(null)
 
     <div v-if="active" class="mask" @click.self="active = null">
       <div class="sheet" :style="{ '--sc': active.color }">
-        <img class="big-view" :src="active.view" :alt="active.name" />
+        <BlobImage :key="image" class="big-view" :src="image" :alt="active.name" />
         <div class="big-body">
-          <img class="big-logo" :src="active.logo" :alt="active.name" />
+          <BlobImage class="big-logo" :src="active.logo" :alt="active.name" />
           <div>
             <div class="big-name">{{ active.name }}</div>
             <div class="big-city"><MapPin :size="12" />{{ active.city }}</div>
           </div>
         </div>
+        <div v-if="active.album?.length > 1" class="motto">
+          <button v-for="(key, i) in active.album" :key="key" class="btn btn-outline btn-sm" @click="pickAlbum(i)">{{ i + 1 }}</button>
+        </div>
+        <p v-if="active.description || active.info?.description">{{ active.description || active.info?.description }}</p>
         <div class="motto"><Quote :size="15" />{{ active.motto }}</div>
         <button class="btn btn-ghost btn-block" @click="active = null">收好，继续学</button>
       </div>

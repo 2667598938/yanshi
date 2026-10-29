@@ -85,8 +85,9 @@ def test_ai_key_vip_only_and_encrypted(client):
     member = login(client, 'byok@test.com', 'Friend2028')
     mh = h(member['access_token'])
 
-    # 非 VIP 无法读写
-    assert client.get('/api/v1/ai/key', headers=mh).status_code == 403
+    # Owner metadata/deletion remain available; saving/calling still requires access.
+    assert client.get('/api/v1/ai/key', headers=mh).json()['data']['configured'] is False
+    assert client.get('/api/v1/ai/key').status_code == 401
     assert client.put('/api/v1/ai/key', headers=mh, json={
         'provider': 'deepseek', 'api_key': 'sk-test-1234567890'}).status_code == 403
 
@@ -138,7 +139,7 @@ def test_phone_login_when_channel_enabled(client, monkeypatch):
     assert client.post('/api/v1/auth/phone/send-code',
                        json={'phone': phone}).status_code == 200
     r = client.post('/api/v1/auth/phone/verify-code',
-                    json={'phone': phone, 'code': '123456'})
+                    json={'phone': phone, 'code': '123456', 'accepted_terms': True})
     assert r.status_code == 200, r.text
     data = r.json()['data']
     assert data['user']['phone'] == phone
@@ -149,6 +150,6 @@ def test_phone_login_when_channel_enabled(client, monkeypatch):
     from app.services.transient import digest
     client.app.state.transient.set('phone-code:' + digest(phone), digest('123456'), 300)
     again = client.post('/api/v1/auth/phone/verify-code',
-                        json={'phone': phone, 'code': '123456'})
+                        json={'phone': phone, 'code': '123456', 'accepted_terms': True})
     assert again.status_code == 200
     assert again.json()['data']['user']['id'] == data['user']['id']

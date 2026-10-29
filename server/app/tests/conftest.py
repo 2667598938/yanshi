@@ -15,6 +15,7 @@ def client(tmp_path):
     settings = Settings(
         database_url='sqlite:///' + (tmp_path / 'test.sqlite').as_posix(),
         environment='test',
+        auth_password_only=False,  # 旧渠道回归显式开放；默认内测策略有独立边界测试。
         mail_console=True,
         mail_directory=tmp_path / 'mail',
         image_directory=tmp_path / 'uploads',
@@ -22,6 +23,8 @@ def client(tmp_path):
         admin_email='admin@test.com',
         admin_password='Admin2028',
         auth_email_domains='',   # 测试环境不限制邮箱域名
+        registration_open=True,  # 注册用例显式启用；产品首次初始化默认关闭。
+        account_max_users=0,  # 房间用例需构造第5个账号；账号名额另有独立验收用例。
     )
     app = create_app(settings)
     Base.metadata.create_all(bind=app.state.engine)

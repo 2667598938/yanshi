@@ -6,8 +6,11 @@
 # 只保留示例文件，真实配置一律不进仓库
 .env
 .env.*
+*.env
+*.env.*
 !.env.example
 !**/.env.example
+!**/*.env.example
 
 # 证书 / 本地密钥
 *.pem

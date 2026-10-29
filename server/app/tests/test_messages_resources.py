@@ -1,4 +1,8 @@
 """站内消息 + 资料区。"""
+from sqlalchemy import select
+
+from app.models import Message, User
+from app.services.messages import create_message
 from app.tests.conftest import login
 
 ADMIN = {'email': 'admin@test.com', 'password': 'Admin2028'}
@@ -49,6 +53,34 @@ def test_apply_and_vip_notifications(client):
     assert any(x['kind'] == 'vip' for x in msgs2)
 
 
+def test_message_pagination_before_id_and_read_all_covers_all(client):
+    admin = login(client, **ADMIN)
+    ah = h(admin['access_token'])
+    make_member(client, ah, 'msg-page@test.com', '消息分页')
+    mh = h(login(client, 'msg-page@test.com', 'Friend2028')['access_token'])
+    with client.app.state.session_factory() as db:
+        user = db.scalar(select(User).where(User.email == 'msg-page@test.com'))
+        for i in range(55):
+            create_message(db, user, 'system', f'消息{i}', f'内容{i}')
+        db.commit()
+
+    newest = client.get('/api/v1/messages?limit=50', headers=mh).json()['data']
+    assert len(newest) == 50
+    assert newest[0]['title'] == '消息54' and newest[-1]['title'] == '消息5'
+    older = client.get(
+        f"/api/v1/messages?limit=50&before_id={newest[-1]['id']}", headers=mh
+    ).json()['data']
+    assert [m['title'] for m in older] == ['消息4', '消息3', '消息2', '消息1', '消息0']
+    assert not ({m['id'] for m in newest} & {m['id'] for m in older})
+    assert client.get('/api/v1/messages/unread-count', headers=mh).json()['data']['count'] == 55
+    assert client.post('/api/v1/messages/read-all', headers=mh).status_code == 200
+    assert client.get('/api/v1/messages/unread-count', headers=mh).json()['data']['count'] == 0
+    with client.app.state.session_factory() as db:
+        user = db.scalar(select(User).where(User.email == 'msg-page@test.com'))
+        assert db.scalars(select(Message).where(
+            Message.user_id == user.id, Message.is_read.is_(False))).all() == []
+
+
 def test_resource_vip_masking_like_favorite(client):
     admin = login(client, **ADMIN)
     ah = h(admin['access_token'])
@@ -67,6 +99,7 @@ def test_resource_vip_masking_like_favorite(client):
     created = client.post('/api/v1/resources', headers=h1, json=payload)
     assert created.status_code == 200, created.text
     rid = created.json()['data']['id']
+    assert client.post(f'/api/v1/admin/resources/{rid}/review',headers=ah,json={'action':'approve','expected_revision':1}).status_code==200
 
     # 普通用户看到脱敏链接且没有提取码
     masked = client.get(f'/api/v1/resources/{rid}', headers=h2).json()['data']

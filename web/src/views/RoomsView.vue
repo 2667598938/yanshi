@@ -2,27 +2,40 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ArrowLeft, Plus, Users, Lock, Globe2, KeyRound, Copy, ChevronRight, Check,
+  ArrowLeft, Plus, Users, Lock, Globe2, KeyRound, Copy, ChevronRight, Check, RefreshCw,
 } from 'lucide-vue-next'
-import { roomApi } from '../api'
+import { roomApi, publicApi } from '../api'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 
 const router = useRouter()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
 const rows = ref([])
 const loading = ref(true)
+const loadError = ref('')
 const sheet = ref(null)
-const form = ref({ name: '', intro: '', visibility: 'public' })
+const features = ref([])
+const roomTypes = [
+  { key: 'checkin_room', name: '打卡自习室' },
+  { key: 'video_small_room', name: '视频小房间' },
+  { key: 'cloud_video_room', name: '云端自习室' },
+]
+const form = ref({ name: '', intro: '', visibility: 'public', room_type: 'checkin_room' })
 const codeInput = ref('')
 const saving = ref(false)
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
+    const config = await publicApi.config().catch(() => ({ features: [] }))
+    features.value = config.features || []
     rows.value = await roomApi.list()
   } catch (e) {
-    toast(e.message)
+    loadError.value = e.message || '自习室列表加载失败'
   } finally {
     loading.value = false
   }
@@ -32,8 +45,9 @@ function openRoom(row) {
   router.push(`/rooms/${row.id}`)
 }
 
-function openCreate() {
-  form.value = { name: '', intro: '', visibility: 'public' }
+function openCreate(type = 'checkin_room') {
+  if (!features.value.includes(type)) return toast('该房间类型暂未开放')
+  form.value = { name: '', intro: '', visibility: 'public', room_type: type }
   sheet.value = 'create'
 }
 
@@ -45,6 +59,7 @@ async function create() {
       name: form.value.name.trim(),
       intro: form.value.intro.trim(),
       visibility: form.value.visibility,
+      room_type: form.value.room_type,
     })
     toast('自习室已创建')
     sheet.value = null
@@ -73,12 +88,7 @@ async function joinByCode() {
 }
 
 async function copyCode(code) {
-  try {
-    await navigator.clipboard.writeText(code)
-    toast('房间码已复制')
-  } catch {
-    toast('复制失败')
-  }
+  await copyToClipboard(code, '房间码已复制')
 }
 
 onMounted(load)
@@ -86,13 +96,14 @@ onMounted(load)
 
 <template>
   <div>
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">自习室</div>
       <button class="icon-btn" title="凭房间码加入" @click="codeInput = ''; sheet = 'join'">
         <KeyRound :size="17" />
       </button>
-      <button class="create-btn" @click="openCreate"><Plus :size="16" />创建</button>
+      <button class="create-btn" @click="openCreate()"><Plus :size="16" />创建</button>
     </div>
 
     <div class="page">
@@ -101,8 +112,32 @@ onMounted(load)
         <div class="hero-sub">公开房间可直接加入；私密房间凭 6 位房间码进入</div>
       </div>
 
-      <div v-if="loading" class="empty">读取中…</div>
-      <div v-else-if="!rows.length" class="empty">还没有自习室，创建一个</div>
+      <!-- 房间类型快捷入口：两列等宽，避免参差换行 -->
+      <div class="card type-card">
+        <button v-for="type in roomTypes.filter(t=>features.includes(t.key))" :key="type.key" class="type-btn" @click="openCreate(type.key)">
+          {{ type.name }} · {{ features.includes(type.key) ? '创建' : '暂未开放' }}
+        </button>
+        <button v-if="features.some(type=>type==='video_small_room'||type==='cloud_video_room')" class="type-btn ghost" @click="router.push('/requests?feature=room')">申请房间权限</button>
+      </div>
+      <div v-if="loading" class="sk-list" role="status">
+        <span class="sr-only">正在读取自习室列表，请稍候…</span>
+        <div v-for="i in 3" :key="i" class="sk-room">
+          <i class="sk-ic"></i>
+          <div class="sk-lines"><i></i><i class="w60"></i></div>
+        </div>
+      </div>
+      <div v-else-if="loadError" class="empty-block">
+        <div class="empty-ic"><RefreshCw :size="22" /></div>
+        <div class="empty-title">列表没有加载出来</div>
+        <div class="empty-sub">{{ loadError }}</div>
+        <button class="btn btn-primary btn-sm" @click="load">重新加载</button>
+      </div>
+      <div v-else-if="!rows.length" class="empty-block">
+        <div class="empty-ic"><Users :size="22" /></div>
+        <div class="empty-title">还没有自习室</div>
+        <div class="empty-sub">创建一间，或凭 6 位房间码加入研友的自习室</div>
+        <button class="btn btn-primary btn-sm" @click="openCreate()"><Plus :size="14" />创建自习室</button>
+      </div>
       <div v-else class="room-list">
         <button v-for="r in rows" :key="r.id" class="room-card" @click="openRoom(r)">
           <div class="rc-top">
@@ -115,8 +150,8 @@ onMounted(load)
               </div>
               <div class="rc-sub">
                 {{ r.visibility === 'private' ? '私密房间' : '公开房间' }}
-                · {{ r.member_count }}/{{ r.capacity }} 人
-                <span v-if="r.online_count"> · {{ r.online_count }} 在线</span>
+                · 固定成员 {{ r.member_count }}/{{ r.capacity }}
+                <span> · {{ r.online_count || 0 }} 连接</span>
               </div>
             </div>
             <ChevronRight :size="17" class="rc-arrow" />
@@ -140,7 +175,7 @@ onMounted(load)
     <div v-if="sheet" class="mask" @click.self="sheet = null">
       <div class="sheet">
         <template v-if="sheet === 'create'">
-          <div class="sheet-title">创建自习室</div>
+          <div class="sheet-title">创建{{ roomTypes.find(t => t.key === form.room_type)?.name }}</div>
           <label class="sf">
             <span>房间名</span>
             <input v-model="form.name" maxlength="20" placeholder="如：冲刺 408 小组" />
@@ -177,39 +212,77 @@ onMounted(load)
 </template>
 
 <style scoped>
-.back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.icon-btn { margin-left: auto; border: 1px solid var(--line); background: #fff; width: 34px; height: 34px; border-radius: 10px; color: var(--sub); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.create-btn { border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 12.5px; font-weight: 600; padding: 9px 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.hero { border-radius: 16px; padding: 18px; background: linear-gradient(140deg, #0f1f3a, #31547f); color: #eef4ff; margin-bottom: 14px; }
-.hero-title { font-size: 16.5px; font-weight: 700; }
-.hero-sub { font-size: 11.5px; color: rgba(238,244,255,.62); margin-top: 5px; }
-.room-list { display: flex; flex-direction: column; gap: 10px; }
-.room-card { text-align: left; background: #fff; border: none; border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-soft); color: var(--ink); cursor: pointer; }
-.rc-top { display: flex; align-items: center; gap: 10px; }
-.rc-icon { width: 38px; height: 38px; border-radius: 12px; background: #eef4fb; color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.back { border: none; background: rgba(255, 255, 255, 0.72); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); backdrop-filter: blur(10px); transition: transform 0.24s ease, color 0.24s ease; }
+.back:active { transform: scale(0.96); }
+.icon-btn { margin-left: auto; border: 1px solid rgba(79, 70, 229, 0.14); background: rgba(255, 255, 255, 0.72); width: 40px; height: 40px; border-radius: 12px; color: var(--sub); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(10px); transition: transform 0.24s ease, color 0.24s ease, box-shadow 0.24s ease; }
+.icon-btn:active { transform: scale(0.96); }
+.create-btn { border: none; border-radius: 12px; background: var(--primary-grad); color: #fff; font-size: 12px; font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.24); transition: transform 0.24s ease, filter 0.24s ease; }
+@media (hover: hover) and (pointer: fine) {
+  .back:hover, .icon-btn:hover { color: var(--primary); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(79, 70, 229, 0.16); }
+  .create-btn:hover { transform: translateY(-2px) scale(1.03); filter: brightness(1.06); }
+}
+
+/* 页首说明卡：与主色同源的蓝紫渐变 */
+.hero { border-radius: 12px; padding: 16px; background: var(--primary-grad); color: #fff; margin-bottom: 16px; box-shadow: 0 10px 24px rgba(79, 70, 229, 0.22); }
+.hero-title { font-size: 20px; font-weight: 800; letter-spacing: 0.2px; }
+.hero-sub { font-size: 12px; color: rgba(255, 255, 255, 0.78); margin-top: 4px; line-height: 1.6; }
+
+.room-list { display: flex; flex-direction: column; gap: 8px; }
+/* 快捷入口：两列等宽网格 */
+.type-card { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.type-btn { height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.7); color: var(--primary); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; transition: background 0.24s ease, box-shadow 0.24s ease, transform 0.24s ease; }
+.type-btn.ghost { background: rgba(79, 70, 229, 0.06); border-color: transparent; color: var(--sub); }
+.type-btn:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) {
+  .type-btn:hover { background: rgba(79, 70, 229, 0.08); box-shadow: 0 6px 16px rgba(79, 70, 229, 0.12); }
+}
+/* 空态：虚线占位卡 + 主按钮 */
+.empty-block { text-align: center; padding: 24px 16px; border: 1px dashed rgba(79, 70, 229, 0.2); border-radius: 12px; background: rgba(255, 255, 255, 0.5); }
+.empty-ic { width: 40px; height: 40px; margin: 0 auto 8px; border-radius: 12px; background: rgba(79, 70, 229, 0.08); color: var(--primary); display: flex; align-items: center; justify-content: center; }
+.empty-title { font-size: 14px; font-weight: 700; }
+.empty-sub { font-size: 12px; color: var(--faint); margin: 4px 0 16px; line-height: 1.6; }
+/* 列表骨架：先给出结构，避免"读取中"空等 */
+.sk-list { display: flex; flex-direction: column; gap: 8px; }
+.sk-room { display: flex; align-items: center; gap: 8px; padding: 16px; border-radius: 12px; background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); box-shadow: var(--shadow); }
+.sk-ic { width: 40px; height: 40px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); flex-shrink: 0; }
+.sk-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.sk-lines i { display: block; width: 100%; height: 12px; border-radius: 6px; background: rgba(79, 70, 229, 0.08); }
+.sk-lines i.w60 { width: 60%; height: 8px; }
+.sk-list i { animation: sk-breathe 1.6s ease-in-out infinite; }
+@keyframes sk-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sk-list i { animation: none; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.room-card { text-align: left; background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); color: var(--ink); cursor: pointer; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: transform 0.24s ease, box-shadow 0.24s ease; }
+.room-card:active { transform: scale(0.995); }
+@media (hover: hover) and (pointer: fine) {
+  .room-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(79, 70, 229, 0.14); }
+}
+.rc-top { display: flex; align-items: center; gap: 8px; }
+.rc-icon { width: 40px; height: 40px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .rc-main { flex: 1; min-width: 0; }
-.rc-name { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
-.rc-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
-.rc-arrow { color: #cad2de; }
-.rc-intro { margin-top: 9px; font-size: 12.5px; color: var(--sub); line-height: 1.6; }
-.rc-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 10.5px; color: var(--faint); }
-.rc-vis { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); }
-.rc-code { display: inline-flex; align-items: center; gap: 3px; color: var(--accent-deep); font-weight: 700; }
+.rc-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.rc-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+.rc-arrow { color: #c3c8dd; }
+.rc-intro { margin-top: 8px; font-size: 12px; color: var(--sub); line-height: 1.6; }
+.rc-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--faint); }
+.rc-vis { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); }
+.rc-code { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-deep); font-weight: 700; }
 .rc-owner { margin-left: auto; }
-.tag { font-size: 9.5px; padding: 1px 6px; border-radius: 6px; font-weight: 700; }
-.tag-owner { background: #fff3df; color: var(--accent-deep); }
-.tag-joined { background: #e7f6f0; color: #1f9d63; }
-.mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
-.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
-.sheet-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 6px; }
-.sheet-tip { font-size: 12px; color: var(--faint); text-align: center; margin: 0 0 12px; }
-.sf { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.sf > span { font-size: 12.5px; color: var(--sub); }
-.sf input { height: 44px; border: 1.5px solid var(--line); border-radius: 11px; padding: 0 13px; font-size: 14px; outline: none; }
-.sf input:focus { border-color: var(--primary); }
+.tag { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 700; }
+.tag-owner { background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); }
+.tag-joined { background: rgba(16, 185, 129, 0.1); color: var(--green); }
+
+.mask { position: fixed; inset: 0; background: rgba(30, 27, 75, 0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
+.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 24px 24px 0 0; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); }
+.sheet-title { font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 8px; }
+.sheet-tip { font-size: 12px; color: var(--faint); text-align: center; margin: 0 0 16px; }
+.sf { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.sf > span { font-size: 12px; color: var(--sub); }
+.sf input { height: 44px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; outline: none; background: rgba(255, 255, 255, 0.9); transition: border-color 0.24s ease, box-shadow 0.24s ease; }
+.sf input:focus { border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
 .vis-row { display: flex; gap: 8px; }
-.vis-row button { flex: 1; height: 42px; border: 1.5px solid var(--line); border-radius: 11px; background: #fff; color: var(--sub); font-size: 12.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
-.vis-row button.on { border-color: transparent; background: var(--primary); color: #fff; }
-.code-input { width: 100%; box-sizing: border-box; height: 52px; border: 1.5px solid var(--line); border-radius: 12px; padding: 0 14px; font-size: 20px; font-weight: 700; letter-spacing: 3px; text-align: center; text-transform: uppercase; outline: none; }
-.code-input:focus { border-color: var(--primary); }
+.vis-row button { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: var(--sub); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; transition: background 0.24s ease, color 0.24s ease, box-shadow 0.24s ease; }
+.vis-row button.on { border-color: transparent; background: var(--primary-grad); color: #fff; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.22); }
+.code-input { width: 100%; box-sizing: border-box; height: 52px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 20px; font-weight: 700; letter-spacing: 3px; text-align: center; text-transform: uppercase; outline: none; transition: border-color 0.24s ease, box-shadow 0.24s ease; }
+.code-input:focus { border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
 </style>

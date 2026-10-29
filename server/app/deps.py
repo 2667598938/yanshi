@@ -9,6 +9,7 @@ from .time import utcnow
 
 def get_db(request: Request):
     db = request.app.state.session_factory()
+    db.info['settings'] = request.app.state.settings
     try:
         yield db
     finally:
@@ -26,9 +27,9 @@ def decode(request: Request, token: str, kind: str):
             token, request.app.state.secret,
             audience=settings.jwt_audience, issuer=settings.jwt_issuer, algorithms=['HS256'])
     except ExpiredSignatureError:
-        raise ApiError(401, 40102, '登录已过期')
+        raise ApiError(401, 40102, '登录已过期') from None
     except InvalidTokenError:
-        raise ApiError(401, 40101, '请先登录')
+        raise ApiError(401, 40101, '请先登录') from None
     for key in ('exp', 'iat', 'sub', 'jti', 'kind', 'ver'):
         if key not in data:
             raise ApiError(401, 40101, '请先登录')
@@ -45,6 +46,7 @@ def get_current_user(request: Request, db=Depends(get_db)):
     user = db.get(User, int(data['sub']))
     if not user or user.token_version != data.get('ver') or user.status in ('banned', 'deleted'):
         raise ApiError(401, 40101, '请重新登录')
+    request.state.actor_id=user.id
     return user
 
 
@@ -54,8 +56,16 @@ def get_admin(user=Depends(get_current_user)):
     return user
 
 
+def require_enabled_feature(feature):
+    def check(request: Request):
+        if feature not in request.app.state.settings.enabled_features:
+            raise ApiError(403, 40310, '该功能暂未开放')
+    return check
+
+
 def audit(db, request: Request, action: str, user_id=None, detail=''):
     db.add(Audit(
+        actor_id=getattr(request.state,'actor_id',None),
         user_id=user_id,
         action=action,
         ip=request.client.host if request.client else '',

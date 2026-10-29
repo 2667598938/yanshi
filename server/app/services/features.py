@@ -7,7 +7,7 @@ from ..time import utcnow
 
 
 def is_vip(user) -> bool:
-    return bool(user.vip_until and user.vip_until > utcnow())
+    return bool(user is not None and (user.vip_permanent or (user.vip_until and user.vip_until > utcnow())))
 
 
 def has_feature(db, user, feature: str) -> bool:
@@ -42,10 +42,10 @@ def grant_feature(db, user_id: int, feature: str, admin_id=None, request_id=None
         row.granted_at = utcnow()
 
 
-def revoke_feature(db, user_id: int, feature: str):
+def revoke_feature(db, user_id: int, feature: str, request_id=None):
     row = db.scalar(select(UserFeatureGrant).where(
         UserFeatureGrant.user_id == user_id,
         UserFeatureGrant.feature == feature,
         UserFeatureGrant.revoked_at.is_(None)))
-    if row is not None:
+    if row is not None and (request_id is None or row.source_request_id == request_id):
         row.revoked_at = utcnow()

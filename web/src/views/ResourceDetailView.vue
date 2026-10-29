@@ -7,6 +7,8 @@ import {
 import { resourceApi } from '../api'
 import { fmtDate } from '../utils/time'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import CopyFallback from '../components/CopyFallback.vue'
 import { useAuthStore } from '../stores/auth'
 import { queueFavorite } from '../sync/community'
 import { scheduleSync } from '../sync/engine'
@@ -15,6 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { toast } = useToast()
+const { copy: copyToClipboard, manualCopy } = useClipboard(toast)
 
 const row = ref(null)
 const loading = ref(true)
@@ -33,12 +36,7 @@ async function load() {
 }
 
 async function copy(text, label = '链接') {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(`已复制${label}`)
-  } catch {
-    toast('复制失败，请手动选择')
-  }
+  await copyToClipboard(text, `已复制${label}`)
 }
 
 async function toggleLike() {
@@ -53,27 +51,12 @@ async function toggleLike() {
 
 async function toggleFav() {
   const next = !row.value.favorited
-  row.value.favorited = next
-  if (!navigator.onLine) {
-    await queueFavorite(id.value, next)
+  try {
+    await queueFavorite(id.value, next, { ...row.value })
+    row.value.favorited = next
     toast(next ? '已收藏，联网后同步' : '已取消收藏，联网后同步')
     scheduleSync(0)
-    return
-  }
-  try {
-    await resourceApi.setFavorite(id.value, next)
-    toast(next ? '已收藏' : '已取消收藏')
-  } catch (e) {
-    if (!e.status || e.status >= 500) {
-      // 断网/服务不可用：写入离线队列，联网后自动同步
-      await queueFavorite(id.value, next)
-      toast(next ? '已收藏，联网后同步' : '已取消收藏，联网后同步')
-      scheduleSync(0)
-      return
-    }
-    row.value.favorited = !next
-    toast(e.message)
-  }
+  } catch (e) { toast(e.message) }
 }
 
 function edit() {
@@ -101,12 +84,13 @@ onMounted(load)
 
 <template>
   <div>
+    <CopyFallback v-model="manualCopy" />
     <div class="nav">
       <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">资料详情</div>
-      <div v-if="row?.can_edit" class="nav-actions">
-        <button class="mini" @click="edit"><Pencil :size="16" /></button>
-        <button class="mini danger" @click="remove"><Trash2 :size="16" /></button>
+      <div v-if="row?.can_edit || row?.can_delete" class="nav-actions">
+        <button v-if="row.can_edit" class="mini" @click="edit"><Pencil :size="16" /></button>
+        <button v-if="row.can_delete" class="mini danger" @click="remove"><Trash2 :size="16" /></button>
       </div>
     </div>
 
@@ -122,6 +106,8 @@ onMounted(load)
             </div>
           </div>
 
+          <p v-if="row.review_status !== 'approved'">{{row.review_status==='pending'?'当前版本待审核':'当前版本未通过审核'}}{{row.has_published_version?'，其他人仍可查看上次批准的版本':'，尚未公开'}}<span v-if="row.review_note"> · {{row.review_note}}</span></p>
+          <p v-if="row.personal_note">我的个人备注：{{row.personal_note}}</p>
           <div v-if="row.intro" class="intro">{{ row.intro }}</div>
 
           <div class="link-box" :class="{ masked: row.masked }">
@@ -129,9 +115,10 @@ onMounted(load)
               <Lock :size="18" />
               <div class="mask-main">
                 <div class="mask-url">{{ row.url }}</div>
-                <div class="mask-tip">完整链接与提取码仅 VIP 可见</div>
+                <div class="mask-tip">VIP 或经资料权限审批授权可查看完整链接与提取码</div>
               </div>
               <button class="btn btn-accent btn-sm" @click="router.push('/vip')">开通 VIP</button>
+              <button class="btn btn-outline btn-sm" @click="router.push('/requests?feature=materials')">申请查看</button>
             </template>
             <template v-else>
               <div class="link-main">

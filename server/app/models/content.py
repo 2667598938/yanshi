@@ -1,5 +1,5 @@
 """资料区：网盘资料、点赞、收藏。"""
-from sqlalchemy import (Column, DateTime, ForeignKey, Integer, String, Text,
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, Text,
                         UniqueConstraint)
 from ..database import Base
 from ..time import utcnow
@@ -19,6 +19,13 @@ class Resource(Base):
     code = Column(String(20), default='', server_default='')
     category = Column(String(20), default='', server_default='', index=True)
     intro = Column(String(300), default='', server_default='')
+    review_status = Column(String(12), nullable=False, default='pending', server_default='pending')
+    revision = Column(Integer, nullable=False, default=1, server_default='1')
+    approved_snapshot = Column(Text, nullable=True)
+    review_note = Column(String(500), nullable=False, default='', server_default='')
+    reviewed_by = Column(ForeignKey('users.id'), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    personal_note = Column(String(1000), nullable=False, default='', server_default='')
     created_at = Column(DateTime, default=now, nullable=False, index=True)
     updated_at = Column(DateTime, default=now, nullable=False)
     deleted_at = Column(DateTime, nullable=True)
@@ -43,4 +50,6 @@ class ResourceFavorite(Base):
     id = Column(Integer, primary_key=True)
     resource_id = Column(ForeignKey('resources.id'), nullable=False, index=True)
     user_id = Column(ForeignKey('users.id'), nullable=False, index=True)
+    active = Column(Boolean, nullable=False, default=True, server_default='1')
+    revision = Column(Integer, nullable=False, default=1, server_default='1')
     created_at = Column(DateTime, default=now, nullable=False)

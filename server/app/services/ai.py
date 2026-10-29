@@ -1,4 +1,7 @@
-"""AI 助教服务：VIP 用户自填 Key（OpenAI 兼容），保留服务端兜底 Key。"""
+"""AI 助教服务：VIP 用户自填 Key（OpenAI 兼容）为唯一主路径。
+
+`call_ark` / `stream_ark` 仅为历史/测试占位，生产聊天路由不会调用，也不会回退平台 Key。
+"""
 import json
 import time
 
@@ -19,6 +22,13 @@ PROVIDERS = {
                'default_model': 'gpt-4o-mini'},
     'custom': {'label': '自定义', 'base_url': '', 'default_model': ''},
 }
+
+
+def check_finish_reason(reason):
+    if reason == 'length':
+        raise ApiError(502, 50202, '回答达到模型输出上限，内容未完整生成。请缩短问题或分步生成计划后重试')
+    if reason and reason != 'stop':
+        raise ApiError(502, 50202, '模型未完整返回回答，请调整问题后重试')
 
 BASE_PERSONA = """你是「研时」为考研学生打造的 AI 助教，服务于一个 4 人互助学习小组。
 职责：
@@ -111,10 +121,12 @@ async def call_openai(base_url: str, api_key: str, model: str, messages: list,
         raise ApiError(502, 50201, hint or 'AI 服务暂时不可用，请稍后重试')
     try:
         data = resp.json()
-        content = data['choices'][0]['message']['content'].strip()
+        choice = data['choices'][0]
+        content = choice['message']['content'].strip()
         usage = data.get('usage') or {}
     except Exception:
         raise ApiError(502, 50201, 'AI 返回内容解析失败') from None
+    check_finish_reason(choice.get('finish_reason'))
     return {
         'content': content,
         'prompt_tokens': usage.get('prompt_tokens'),
@@ -133,6 +145,9 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
     headers = {'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'}
     base_payload = {**payload, 'stream': True}
     usage = None
+    finished = False
+    finish_reason = None
+    saw_content = False
     for attempt in (0, 1):
         body = dict(base_payload)
         if attempt == 0:
@@ -156,6 +171,7 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
                             continue
                         data = line[5:].strip()
                         if data == '[DONE]':
+                            finished = True
                             break
                         try:
                             obj = json.loads(data)
@@ -165,17 +181,25 @@ async def stream_openai_compat(url: str, api_key: str, payload: dict,
                             usage = obj['usage']
                         choices = obj.get('choices') or []
                         if choices:
+                            if choices[0].get('finish_reason'):
+                                finish_reason = choices[0]['finish_reason']
+                                finished = True
                             delta = (choices[0].get('delta') or {}).get('content')
                             if delta:
+                                if not isinstance(delta, str): raise ApiError(502, 50201, '模型流式内容格式无效')
+                                saw_content = True
                                 yield {'delta': delta}
                     break
         except httpx.HTTPError:
             raise ApiError(502, 50201, f'{label}连接失败，请稍后重试') from None
+    check_finish_reason(finish_reason)
+    if not finished or not saw_content:
+        raise ApiError(502, 50201, '模型连接提前结束或未返回有效回答，请重试')
     yield {'usage': usage or {}, 'latency_ms': int((time.monotonic() - started) * 1000)}
 
 
 async def stream_ark(settings, messages):
-    """服务端兜底 Key（火山方舟）流式输出。"""
+    """历史测试占位（火山方舟），生产聊天不调用。"""
     if not settings.ai_enabled:
         raise ApiError(503, 50301, 'AI 尚未配置（服务端未填写火山方舟 Key）')
     url = settings.volc_base_url.rstrip('/') + '/chat/completions'
@@ -195,24 +219,57 @@ async def stream_openai(base_url: str, api_key: str, model: str, messages: list,
         yield chunk
 
 
+class ModelCatalog(list):
+    def __init__(self):
+        super().__init__()
+        self.details = []
+
+
 async def fetch_models(base_url: str, api_key: str) -> list:
     """用用户 Key 实时拉取模型列表；失败由调用方降级为手填。"""
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=8),
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=5),
                                      trust_env=False) as client:
             resp = await client.get(base_url + '/models',
                                     headers={'Authorization': 'Bearer ' + api_key})
         if resp.status_code != 200:
-            return []
+            status=resp.status_code
+            code={401:'AI_KEY_INVALID',403:'AI_KEY_INVALID',402:'AI_NO_QUOTA',404:'AI_NO_MODELS_API',405:'AI_NO_MODELS_API',429:'AI_RATE_LIMITED'}.get(status,'AI_UPSTREAM_ERROR')
+            return failed_catalog(code,resp.headers.get('Retry-After'))
         data = resp.json()
         rows = data.get('data') if isinstance(data, dict) else None
         if not isinstance(rows, list):
-            return []
-        models = []
-        for row in rows:
+            return failed_catalog('AI_MODELS_EMPTY')
+        models = ModelCatalog()
+        for row in rows[:1000]:
             mid = row.get('id') if isinstance(row, dict) else None
-            if mid and mid not in models:
+            if isinstance(mid, str) and 0 < len(mid) <= 120 and mid not in models:
                 models.append(mid)
-        return models[:200]
+                capabilities = row.get('capabilities') if isinstance(row.get('capabilities'), dict) else {}
+                context = row.get('context_length') or row.get('context_window') or row.get('max_model_len')
+                vision = capabilities.get('vision', row.get('supports_vision'))
+                models.details.append({'id': mid,
+                    'context_length': context if isinstance(context, int) and not isinstance(context, bool) and 0 < context <= 10000000 else None,
+                    'supports_images': vision if isinstance(vision, bool) else None})
+                if len(models) >= 200: break
+        return models if models else failed_catalog('AI_MODELS_EMPTY')
+    except httpx.TimeoutException:
+        return failed_catalog('AI_UPSTREAM_TIMEOUT')
     except (httpx.HTTPError, ValueError):
-        return []
+        return failed_catalog('AI_UPSTREAM_ERROR')
+
+
+CATALOG_ERRORS={
+ 'AI_KEY_INVALID':'API密钥无效，或该账号无权读取模型列表，可手动填写模型ID',
+ 'AI_NO_QUOTA':'供应商报告额度不足，请检查账单，也可手动填写模型ID',
+ 'AI_NO_MODELS_API':'该服务商不支持模型目录接口，请手动填写模型ID',
+ 'AI_MODELS_EMPTY':'供应商返回空目录，请手动填写模型ID',
+ 'AI_UPSTREAM_TIMEOUT':'供应商响应超时，可重试或手动填写模型ID',
+ 'AI_RATE_LIMITED':'供应商请求限流，请稍后重试或手动填写模型ID',
+ 'AI_UPSTREAM_ERROR':'供应商暂不可用，可重试或手动填写模型ID'}
+
+def failed_catalog(code,retry=None):
+    result=ModelCatalog()
+    result.error={'code':code,'message':CATALOG_ERRORS[code]}
+    if retry and str(retry).isdigit():result.error['retry_after']=min(int(retry),3600)
+    return result

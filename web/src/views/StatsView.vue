@@ -13,6 +13,7 @@ import { useSubjectsStore } from '../stores/subjects'
 import { useTasksStore } from '../stores/tasks'
 import { useMistakesStore } from '../stores/mistakes'
 import { useAppStore } from '../stores/app'
+import { useClockStore } from '../stores/clock'
 import { ACTIVITIES } from '../data/subjects'
 import {
   fmtMinutes, todayKey, addDaysKey, diffDayKeys, mdLabel,
@@ -21,8 +22,10 @@ import {
   filterSessions, sumMin, weeklySeries, subjectBreakdown,
   buildYearWeeks, buildMonthWeeks, buildWeekDays, monthLabels,
   daySubjectDetail, firstDate, weekStartKey,
+  periodBounds, contentBreakdown,
 } from '../utils/stats'
 import { useToast } from '../composables/useToast'
+import { buildSessionsCsv } from '../utils/csv'
 
 const router = useRouter()
 const timer = useTimerStore()
@@ -30,23 +33,34 @@ const subjects = useSubjectsStore()
 const tasks = useTasksStore()
 const mistakes = useMistakesStore()
 const app = useAppStore()
+const clock = useClockStore()
 const { toast } = useToast()
 
 const rows = computed(() => timer.effectiveSessions)
-const today = todayKey()
-const thisMonday = weekStartKey(today)
+const today = computed(() => clock.today)
+const thisMonday = computed(() => weekStartKey(today.value))
 const isEmpty = computed(() => timer.totalMin === 0)
+const contentPeriod = ref('day')
+const contentDate = ref(today.value)
+const contentStats = computed(() => contentBreakdown(filterSessions(rows.value, periodBounds(contentPeriod.value, contentDate.value || today.value))))
+const contentTotal = computed(() => contentStats.value.reduce((sum, row) => sum + row.sec, 0))
+const totalLabel = computed(() => `${Math.round(contentTotal.value / 60)} 分钟`)
+const pieStyle = computed(() => {
+  let offset = 0
+  const slices = contentStats.value.map((row) => { const start = offset; offset += row.pct; return `${row.color} ${start}% ${offset}%` })
+  return { background: slices.length ? `conic-gradient(${slices.join(',')})` : '#e2e8f0' }
+})
 
 // ===== 本周 =====
-const weekRows = computed(() => filterSessions(rows.value, { start: thisMonday, end: today }))
+const weekRows = computed(() => filterSessions(rows.value, { start: thisMonday.value, end: today.value }))
 const weekMin = computed(() => sumMin(weekRows.value))
-const weekDaysPassed = diffDayKeys(thisMonday, today) + 1
-const weekAvg = computed(() => Math.round(weekMin.value / weekDaysPassed))
+const weekDaysPassed = computed(() => diffDayKeys(thisMonday.value, today.value) + 1)
+const weekAvg = computed(() => Math.round(weekMin.value / weekDaysPassed.value))
 const weekGoal = computed(() => app.dailyGoalMin * 7)
 const weekRate = computed(() =>
   Math.min(100, Math.round((weekMin.value / weekGoal.value) * 100)))
-const weekTaskRate = computed(() => tasks.rangeRate(thisMonday, today))
-const weekMistakes = computed(() => mistakes.countByDateRange(thisMonday, today))
+const weekTaskRate = computed(() => tasks.rangeRate(thisMonday.value, today.value))
+const weekMistakes = computed(() => mistakes.countByDateRange(thisMonday.value, today.value))
 
 // ===== 科目占比 =====
 const breakdown = computed(() =>
@@ -87,13 +101,13 @@ const trend = computed(() =>
 const trendMax = computed(() => Math.max(60, ...trend.value.map((x) => x.min)))
 
 // ===== 热力图 =====
-const view = ref('year')
+const view = ref('month')
 const heatSub = ref('')
-const now = new Date()
+const now = new Date(today.value + 'T00:00:00')
 const yCursor = ref(now.getFullYear())
 const mCursor = ref({ year: now.getFullYear(), month: now.getMonth() })
-const wCursor = ref(weekStartKey(today))
-const selected = ref(today)
+const wCursor = ref(weekStartKey(today.value))
+const selected = ref(today.value)
 const heatShotRef = ref(null)
 
 const minYear = computed(() => Number(firstDate(rows.value).slice(0, 4)))
@@ -129,11 +143,11 @@ function canPrev() {
   return wCursor.value > minWeek.value
 }
 function canNext() {
-  if (view.value === 'year') return yCursor.value < now.getFullYear()
+  if (view.value === 'year') return yCursor.value < Number(today.value.slice(0,4))
   if (view.value === 'month') {
-    return mCursor.value.year * 12 + mCursor.value.month < now.getFullYear() * 12 + now.getMonth()
+    return mCursor.value.year * 12 + mCursor.value.month < Number(today.value.slice(0,4)) * 12 + Number(today.value.slice(5,7)) - 1
   }
-  return wCursor.value < weekStartKey(today)
+  return wCursor.value < weekStartKey(today.value)
 }
 function prev() {
   if (!canPrev()) return
@@ -207,18 +221,15 @@ async function exportPng() {
   }
 }
 function exportCsv() {
-  const head = ['日期', '开始时间', '模式', '科目', '学习类型', '时长(分钟)', '备注']
-  const lines = rows.value.map((s) => {
-    const subj = subjects.byId[s.subjectId]?.name || ''
-    const act = ACTIVITIES.find((a) => a.id === s.activityType)?.name || ''
-    const mode = s.mode === 'stopwatch' ? '正向计时' : '番茄钟'
-    const start = (s.startedAt || '').slice(11, 16)
-    const note = '"' + (s.note || '').replace(/"/g, '""') + '"'
-    return [s.date, start, mode, subj, act, Math.round(s.actualSec / 60), note].join(',')
-  })
-  const csv = '﻿' + head.join(',') + '\n' + lines.join('\n')
-  downloadFile(csv, '研时学习记录.csv', 'text/csv')
-  toast('已导出 CSV 明细')
+  // 导出范围：当前科目筛选下的全部有效计时；年/月/周定位只影响热力图展示。
+  const csv = buildSessionsCsv(
+    heatRows.value,
+    (s) => subjects.byId[s.subjectId]?.name || '',
+    (s) => ACTIVITIES.find((a) => a.id === s.activityType)?.name || '',
+  )
+  const suffix = heatSub.value ? (subjects.byId[heatSub.value]?.name || '所选科目') : '全部'
+  downloadFile(csv, `研时学习记录_${suffix}.csv`, 'text/csv')
+  toast(`已导出 ${heatRows.value.length} 条（当前科目筛选，全部日期）`)
 }
 </script>
 
@@ -231,7 +242,39 @@ function exportCsv() {
       </div>
     </div>
 
-    <div class="page">
+    <div class="page stats-layout">
+      <p v-if="timer.sessions.some(row=>row.conflict_flag||row.validation_issue)" class="card">有 {{timer.sessions.filter(row=>row.conflict_flag||row.validation_issue).length}} 条计时记录待本人处理，暂不计入统计。请联网后通过计时冲突提示处理。</p>
+      <div class="card content-summary">
+        <div class="card-title">学习内容分布</div>
+        <div class="pill-row"><button v-for="[key, label] in [['day','日'],['week','周'],['month','月'],['year','年']]" :key="key" class="pill" :class="{ active: contentPeriod === key }" @click="contentPeriod = key">{{ label }}</button></div>
+        <div class="date-field">
+          <CalendarDays :size="16" />
+          <input v-model="contentDate" aria-label="统计日期" type="date" class="input" />
+          <button type="button" class="date-today" @click="contentDate = today">今天</button>
+        </div>
+        <div class="content-chart">
+          <div class="content-pie-wrap">
+            <div
+              class="content-pie"
+              :class="{ empty: !contentStats.length }"
+              role="img"
+              :aria-label="`本周期专注${Math.round(contentTotal / 60)}分钟`"
+              :style="contentStats.length ? pieStyle : {}"
+            />
+            <div class="content-pie-center">
+              <strong>{{ contentStats.length ? totalLabel : '暂无' }}</strong>
+              <small>{{ contentStats.length ? '总专注' : '本周期' }}</small>
+            </div>
+          </div>
+          <div v-if="contentStats.length" class="content-legend">
+            <div v-for="item in contentStats" :key="item.name" class="legend-row">
+              <span class="legend-name"><i :style="{ background: item.color }"></i>{{ item.name }}</span>
+              <small>{{ (item.sec / 60).toFixed(1) }} 分钟 · {{ item.pct.toFixed(1) }}%</small>
+            </div>
+          </div>
+          <p v-else class="content-empty">本周期还没有专注记录</p>
+        </div>
+      </div>
       <!-- 空态 -->
       <div v-if="isEmpty" class="card empty-block">
         <TimerIcon :size="40" :stroke-width="1.5" class="empty-ic" />
@@ -303,7 +346,7 @@ function exportCsv() {
         </div>
 
         <!-- 热力图 -->
-        <div class="card">
+        <div class="card heatmap-card">
           <div class="heat-toolbar">
             <div class="seg">
               <button :class="{ on: view === 'year' }" @click="view = 'year'">年</button>
@@ -330,6 +373,7 @@ function exportCsv() {
               <SubjectIcon :name="s.icon" :size="12" />{{ s.name }}
             </button>
           </div>
+          <p class="export-scope">CSV 导出当前科目筛选下的全部有效计时（不受年/月/周定位影响）。</p>
 
           <!-- 截图区域 -->
           <div ref="heatShotRef" class="heat-shot">
@@ -441,6 +485,25 @@ function exportCsv() {
 </template>
 
 <style scoped>
+.content-summary { padding: 18px; }
+.date-field { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--primary); }
+.date-field .input { flex: 1; min-width: 0; margin-top: 0; height: 44px; }
+.date-today { flex-shrink: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(79, 70, 229, 0.06); color: var(--primary); font-size: 12px; font-weight: 600; cursor: pointer; }
+.content-chart { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 18px; }
+.content-pie-wrap { position: relative; width: 144px; height: 144px; flex-shrink: 0; }
+.content-pie { width: 100%; height: 100%; border-radius: 50%; position: relative; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04); }
+.content-pie::after { content: ''; position: absolute; inset: 26%; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08); }
+.content-pie.empty { background: #eef2f7; }
+.content-pie.empty::after { inset: 24%; border: 1px dashed #cbd5e1; background: #fff; }
+.content-pie-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.content-pie-center strong { font-size: 16px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
+.content-pie-center small { margin-top: 2px; font-size: 10px; color: var(--faint); }
+.content-legend { flex: 1; min-width: 160px; display: grid; gap: 10px; font-size: 13px; }
+.legend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 10px; background: #f8faff; }
+.legend-name { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-weight: 600; }
+.legend-name i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.legend-row small { flex-shrink: 0; color: var(--sub); font-variant-numeric: tabular-nums; }
+.content-empty { margin: 0; color: var(--faint); font-size: 12px; }
 .empty-block {
   text-align: center;
   padding: 44px 20px;
@@ -630,6 +693,12 @@ function exportCsv() {
 }
 .filter-row::-webkit-scrollbar {
   display: none;
+}
+.export-scope {
+  margin: -4px 0 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--faint);
 }
 .fpill {
   display: inline-flex;

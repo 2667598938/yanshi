@@ -144,6 +144,7 @@ def test_private_room_apply_and_owner_review(client):
     # 房主待审列表
     pending = client.get(f'/api/v1/rooms/{rid}/applies', headers=ah).json()['data']['items']
     assert len(pending) == 1
+    assert 'target_school' not in pending[0]  # 入房审批不泄露私人学习目标
     assert pending[0]['nickname'] == '申请同学' and pending[0]['message'] == '想一起冲刺'
 
     # 通过后立即成为成员，可正常进入

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   ArrowLeft, Send, Sparkles, BookOpen, Users, Ellipsis, Crown, ChevronRight,
 } from 'lucide-vue-next'
@@ -10,13 +10,14 @@ import { fmtDateTime } from '../utils/time'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const { toast } = useToast()
 
 const FEATURES = [
   { id: 'ai', label: 'AI 问答权限', icon: Sparkles },
   { id: 'materials', label: '资料区完整链接', icon: BookOpen },
-  { id: 'room', label: '云端自习室', icon: Users },
+  { id: 'room', label: '房间类型权限（未开放）', icon: Users },
   { id: 'other', label: '其他功能', icon: Ellipsis },
 ]
 const STATUS = {
@@ -24,9 +25,10 @@ const STATUS = {
   approved: { label: '已通过', cls: 'tag-approved' },
   rejected: { label: '已驳回', cls: 'tag-rejected' },
   withdrawn: { label: '已撤回', cls: 'tag-withdrawn' },
+  revoked: { label: '已撤销', cls: 'tag-rejected' },
 }
 
-const feature = ref('ai')
+const feature = ref(FEATURES.some(f => f.id === route.query.feature) ? route.query.feature : 'ai')
 const reason = ref('')
 const submitting = ref(false)
 const rows = ref([])
@@ -56,7 +58,7 @@ async function submit() {
     const row = await requestApi.create({ feature: feature.value, reason: text })
     rows.value.unshift(row)
     reason.value = ''
-    toast(row.status === 'approved' ? 'VIP 免审核，已自动开通' : '已提交，等待管理员审批')
+    toast(row.status === 'approved' ? '权限已通过，功能以站点开放状态为准' : '已提交，等待管理员审批')
   } catch (e) {
     toast(e.message)
   } finally {
@@ -88,7 +90,7 @@ onMounted(load)
       <!-- VIP 提示 -->
       <button v-if="isVip" class="vip-banner on" @click="router.push('/vip')">
         <Crown :size="17" />
-        <span class="vb-txt">VIP 免审核：提交后立即开通</span>
+        <span class="vb-txt">VIP 免人工审批，功能以站点开放状态为准</span>
         <ChevronRight :size="16" />
       </button>
       <button v-else class="vip-banner" @click="router.push('/vip')">
@@ -102,7 +104,7 @@ onMounted(load)
         <div class="form-title">申请开通</div>
         <div class="feature-grid">
           <button
-            v-for="f in FEATURES"
+            v-for="f in FEATURES.filter(item=>item.id!=='room')"
             :key="f.id"
             class="feature-pill"
             :class="{ on: feature === f.id }"

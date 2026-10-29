@@ -10,16 +10,18 @@ export const publicApi = {
 
 // ------------------------------------------------------------ 认证 / 账号
 export const authApi = {
+  bindPhoneCode: (phone) => http.post('/users/me/phone/send-code', { phone }),
+  bindPhone: (phone, code) => http.put('/users/me/phone', { phone, code }),
   sendCode: (email, scene = 'register') =>
     http.post('/auth/email-code', { email, scene }, { auth: false }),
   emailLogin: (body) => http.post('/auth/email-login', body, { auth: false }),
-  oauthAuthorize: (provider) =>
-    http.get(`/auth/oauth/${provider}/authorize`, { auth: false }),
+  oauthAuthorize: (provider, accepted = false) =>
+    http.get(`/auth/oauth/${provider}/authorize`, { auth: false, query: { accepted_terms: accepted } }),
   oauthExchange: (ticket) =>
     http.post('/auth/oauth/exchange', { ticket }, { auth: false }),
   phoneSendCode: (phone) => http.post('/auth/phone/send-code', { phone }, { auth: false }),
-  phoneVerify: (phone, code) =>
-    http.post('/auth/phone/verify-code', { phone, code }, { auth: false }),
+  phoneVerify: (phone, code, accepted = false) =>
+    http.post('/auth/phone/verify-code', { phone, code, accepted_terms: accepted }, { auth: false }),
   register: (body) => http.post('/auth/register', body, { auth: false }),
   login: (email, password) => http.post('/auth/login', { email, password }, { auth: false }),
   refresh: () => http.post('/auth/refresh', {}, { auth: false }),
@@ -33,7 +35,7 @@ export const authApi = {
 
 // ------------------------------------------------------------ 数据同步
 export const syncApi = {
-  records: () => http.get('/sync/records'),
+  records: (query) => http.get('/sync/records', { query }),
   commands: (operationId, changes) =>
     http.post('/sync/commands', { operationId, changes }),
 }
@@ -79,10 +81,22 @@ export const attachmentApi = {
     return http.post('/attachments/image', fd, { query: { biz } })
   },
   remove: (key) => http.del('/attachments', { query: { key } }),
+  storage: () => http.get('/attachments/storage'),
+  reclaim: () => http.post('/attachments/reclaim', {}),
 }
 
 // ------------------------------------------------------------ 院校
+export const groupApi = {
+  members: () => http.get('/group/members'),
+  changes: (id, since) => http.get(`/group/members/${id}/learning/changes`, { query: { since } }),
+  learning: (id, after = '') => http.get(`/group/members/${id}/learning`, { query: { after } }),
+  presence: (body) => http.post('/group/presence', body),
+}
+export const timeNodeApi = { list: () => http.get('/time-nodes') }
 export const schoolApi = {
+  create: (body) => http.post('/schools', body),
+  update: (key, body) => http.put(`/schools/${key}`, body),
+  remove: (key) => http.del(`/schools/${key}`),
   list: () => http.get('/schools'),
   get: (key) => http.get(`/schools/${key}`),
   adminCreate: (body) => http.post('/admin/schools', body),
@@ -91,6 +105,10 @@ export const schoolApi = {
 
 // ------------------------------------------------------------ AI
 export const aiApi = {
+  importTasks: (id, selected, edits) => http.post(`/ai/messages/${id}/import-tasks`, { confirmed: true, ...(selected ? {selected} : {}), ...(edits ? {edits} : {}) }),
+  undoTasks: (id) => http.post(`/ai/messages/${id}/undo-tasks`, {confirmed:true}),
+  usage: () => http.get('/ai/usage'),
+  preferences: (body) => http.put('/ai/preferences', body),
   enabled: () => http.get('/ai/enabled'),
   scenes: () => http.get('/ai/scenes'),
   chat: (body) => http.post('/ai/chat', body),
@@ -126,7 +144,7 @@ export const errorTypeApi = {
 }
 
 export const messageApi = {
-  list: (limit = 50) => http.get('/messages', { query: { limit } }),
+  list: (limit = 50, beforeId = null) => http.get('/messages', { query: { limit, ...(beforeId ? { before_id: beforeId } : {}) } }),
   unread: () => http.get('/messages/unread-count'),
   read: (id) => http.post(`/messages/${id}/read`, {}),
   readAll: () => http.post('/messages/read-all', {}),
@@ -142,31 +160,44 @@ export const resourceApi = {
   remove: (id, reason = '') => http.del('/resources/' + id, { query: { reason } }),
   like: (id) => http.post(`/resources/${id}/like`, {}),
   favorite: (id) => http.post(`/resources/${id}/favorite`, {}),
-  setFavorite: (id, favorited) => http.put(`/resources/${id}/favorite`, { favorited }),
+  favoriteMirror: (afterId = 0) => http.get('/resources/favorite-mirror', { query: { after_id: afterId } }),
+  setFavorite: (id, favorited, revision) => http.put(`/resources/${id}/favorite`, { favorited, expected_revision: revision }),
 }
 
 export const postApi = {
+  mirror: (afterId = 0) => http.get('/posts/mirror', { query: { after_id: afterId } }),
+  update: (id, content, revision) => http.put(`/posts/${id}`, { content, expected_revision: revision }),
   list: () => http.get('/posts'),
   mine: () => http.get('/posts/mine'),
   get: (id) => http.get(`/posts/${id}`),
   create: (content, clientId = '') =>
     http.post('/posts', clientId ? { content, client_id: clientId } : { content }),
-  remove: (id, reason = '') => http.del('/posts/' + id, { query: { reason } }),
+  remove: (id, reason = '', revision) => http.del('/posts/' + id, { query: { reason, expected_revision: revision } }),
   comments: (id) => http.get(`/posts/${id}/comments`),
   comment: (id, body) => http.post(`/posts/${id}/comments`, body),
   deleteComment: (id, reason = '') => http.del('/comments/' + id, { query: { reason } }),
 }
 
 export const inspirationApi = {
+  bullets: () => http.get('/inspirations/bullets', { auth: false }),
   list: () => http.get('/inspirations', { auth: false }),
   mine: () => http.get('/inspirations/mine'),
   submit: (body) => http.post('/inspirations', body),
   adminList: (status = 'pending') => http.get('/admin/inspirations', { query: { status } }),
   adminReview: (id, body) => http.post(`/admin/inspirations/${id}/review`, body),
+  withdraw: (id, note = '') => http.post(`/inspirations/${id}/withdraw`, { note }),
+  takedown: (id, note) => http.post(`/admin/inspirations/${id}/takedown`, { note }),
 }
 
 // ------------------------------------------------------------ 后台
 export const adminApi = {
+  resourceQueue: (status='pending',after_id=0) => http.get('/admin/resources',{query:{status,after_id}}),
+  reviewResource: (id,body) => http.post(`/admin/resources/${id}/review`,body),
+  config: () => http.get('/admin/config'),
+  diagnostics: () => http.get('/admin/diagnostics'),
+  batchInvites: (body) => http.post('/admin/invites/batch',body),
+  emailJobs: (status = 'all') => http.get('/admin/email-jobs', { query: { status } }),
+  retryEmail: (id) => http.post(`/admin/email-jobs/${id}/retry`, {}),
   overview: () => http.get('/admin/overview'),
   members: () => http.get('/admin/members'),
   createMember: (body) => http.post('/admin/members', body),
@@ -184,7 +215,27 @@ export const adminApi = {
   createAnnouncement: (content) => http.post('/admin/announcements', { content }),
   updateAnnouncement: (id, body) => http.put(`/admin/announcements/${id}`, body),
   deleteAnnouncement: (id) => http.del(`/admin/announcements/${id}`),
-  auditLogs: (limit = 100) => http.get('/admin/audit-logs', { query: { limit } }),
+  auditLogs: (limit = 100, filters = {}) => http.get('/admin/audit-logs', { query: { limit, ...filters } }),
   updateConfig: (body) => http.put('/admin/config', body),
   exportData: () => http.get('/admin/export'),
+}
+
+export const timerApi = {
+ current:()=>http.get('/timer/current'),
+ start:(body)=>http.post('/timer/start',body),
+ heartbeat:(body)=>http.put('/timer/heartbeat',body),
+ release:(body)=>http.post('/timer/release',body),
+ conflicts:()=>http.get('/timer/conflicts'),
+ resolve:(body)=>http.post('/timer/resolve',body),
+}
+
+export const groupAdmissionApi={
+ mine:()=>http.get('/group-admission/mine'),
+ apply:(body)=>http.post('/group-admission/applications',body),
+ withdraw:(id,revision)=>http.post(`/group-admission/applications/${id}/withdraw`,{expected_revision:revision}),
+ createInvite:(body)=>http.post('/group-admission/invites',body),
+ invites:()=>http.get('/group-admission/invites'),
+ revoke:(id)=>http.post(`/group-admission/invites/${id}/revoke`,{}),
+ queue:()=>http.get('/group-admission/applications'),
+ review:(id,body)=>http.post(`/group-admission/applications/${id}/review`,body),
 }

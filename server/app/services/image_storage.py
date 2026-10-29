@@ -8,12 +8,18 @@ import shutil
 
 from ..errors import ApiError
 
-KEY_RE = re.compile(r'(avatar|mistake|school)/[0-9]+/[a-f0-9]{32}\.jpg')
+KEY_RE = re.compile(r'(avatar|mistake|school|inspiration|ai)/[0-9]+/[a-f0-9]{32}\.jpg')
 
 
 class ImageStorage:
     def __init__(self, settings):
         self.s = settings
+
+    @classmethod
+    def for_attachment(cls, settings, row):
+        if row.storage_backend not in {'local', 'qiniu'}:
+            raise ApiError(503, 50301, '附件存储类型不可用')
+        return cls(settings.model_copy(update={'image_storage': row.storage_backend}))
 
     def path(self, key):
         if not KEY_RE.fullmatch(key):
@@ -62,6 +68,19 @@ class ImageStorage:
         finally:
             client.close()
 
+    def delete(self, key):
+        self.path(key)  # 先校验对象标识，避免删除任意路径
+        if self.s.image_storage != 'qiniu':
+            self.path(key).unlink(missing_ok=True)
+            return
+        client = self._s3_client()
+        try:
+            client.delete_object(Bucket=self.s.qiniu_bucket, Key=key)
+        except Exception:
+            raise ApiError(502, 50201, '图片删除失败，请稍后重试') from None
+        finally:
+            client.close()
+
     def presigned_url(self, key):
         client = self._s3_client()
         try:
@@ -72,4 +91,19 @@ class ImageStorage:
         except Exception:
             raise ApiError(502, 50201, '图片存储暂时不可用') from None
         finally:
+            client.close()
+
+    def read_private(self, key):
+        self.path(key)  # 校验对象标识，不接受任意对象路径。
+        client = self._s3_client()
+        body = None
+        try:
+            body = client.get_object(Bucket=self.s.qiniu_bucket, Key=key)['Body']
+            data = body.read(self.s.image_max_bytes + 1)
+            if len(data) > self.s.image_max_bytes: raise ValueError('oversized')
+            return data
+        except Exception:
+            raise ApiError(502,50201,'图片读取失败') from None
+        finally:
+            if body: body.close()
             client.close()

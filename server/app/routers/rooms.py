@@ -25,7 +25,7 @@ def list_rooms(db=Depends(get_db), user: User = Depends(get_current_user)):
 def create_room(body: RoomCreate, request: Request, db=Depends(get_db),
                 user: User = Depends(get_current_user)):
     request.app.state.transient.limit(f'room-create:{user.id}', 5, 3600)
-    room = room_service.create_room(db, user, body.name, body.intro, body.visibility)
+    room = room_service.create_room(db, user, body.name, body.intro, body.visibility, body.room_type)
     audit(db, request, 'room.create', user_id=user.id, detail=f'{room.id} {room.name}')
     db.commit()
     return ok(room_service.room_summary(db, room, user))

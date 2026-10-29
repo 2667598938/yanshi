@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Send, Trash2, MessageCircle } from 'lucide-vue-next'
 import { postApi } from '../api'
+import { queuePostEdit, queuePostDelete, cachedPosts } from '../sync/community'
+import { scheduleSync } from '../sync/engine'
 import { fmtShort } from '../utils/time'
 import BlobImage from '../components/BlobImage.vue'
 import { useToast } from '../composables/useToast'
@@ -19,6 +21,19 @@ const loading = ref(true)
 const input = ref('')
 const replyTo = ref(null)
 const sending = ref(false)
+const editing = ref(false)
+const editText = ref('')
+async function saveEdit() {
+  if (!editText.value.trim()) return toast('请填写内容')
+  try {
+    await queuePostEdit(post.value, editText.value)
+    post.value.content = editText.value.trim()
+    post.value.pending = true
+    editing.value = false
+    scheduleSync(0)
+    toast('修改已保存在本机，联网后同步')
+  } catch (e) { toast(e.message) }
+}
 
 const id = computed(() => Number(route.params.id))
 const roots = computed(() => comments.value.filter((c) => !c.parent_id))
@@ -31,11 +46,13 @@ function fmtTime(v) {
 async function load() {
   try {
     const [p, cs] = await Promise.all([postApi.get(id.value), postApi.comments(id.value)])
-    post.value = p
+    const cached = (await cachedPosts()).find((x) => x.id === p.id)
+    post.value = cached?.pending ? { ...p, ...cached } : p
     comments.value = cs
   } catch (e) {
-    toast(e.message)
-    router.replace('/posts')
+    const cached = !e.status ? (await cachedPosts()).find((p) => p.id === id.value) : null
+    if (cached) { post.value = cached; toast('离线中，显示本机帖子') }
+    else { toast(e.message); router.replace('/posts') }
   } finally {
     loading.value = false
   }
@@ -70,7 +87,7 @@ async function removeComment(c) {
   let reason = ''
   if (auth.isAdmin && !c.mine) {
     reason = (prompt('删除原因（必填，会通知作者）') || '').trim()
-    if (!reason) return toast('管理员删除内容必须填写原因')
+    if (reason.length < 5) return toast('删除原因至少5字')
   }
   if (!confirm('删除这条评论？')) return
   try {
@@ -86,11 +103,12 @@ async function removePost() {
   let reason = ''
   if (auth.isAdmin && !post.value?.mine) {
     reason = (prompt('删除原因（必填，会通知作者）') || '').trim()
-    if (!reason) return toast('管理员删除内容必须填写原因')
+    if (reason.length < 5) return toast('删除原因至少5字')
   }
   if (!confirm('删除这条动态？')) return
   try {
-    await postApi.remove(id.value, reason)
+    if (post.value.mine) { await queuePostDelete(post.value); scheduleSync(0) }
+    else await postApi.remove(id.value, reason)
     toast('已删除')
     router.replace('/posts')
   } catch (e) {
@@ -121,6 +139,13 @@ onMounted(load)
             </div>
           </div>
           <div class="p-content">{{ post.content }}</div>
+          <div v-if="post.pending" class="p-time">本机修改待同步</div>
+          <button v-if="post.mine && !editing" class="btn btn-outline btn-sm mt8" @click="editText = post.content; editing = true">编辑动态</button>
+          <div v-if="editing">
+            <textarea v-model="editText" class="input mt8" rows="5" maxlength="2000"></textarea>
+            <button class="btn btn-primary mt8" @click="saveEdit">保存修改</button>
+            <button class="btn btn-outline mt8" @click="editing = false">取消</button>
+          </div>
         </div>
 
         <div class="section-title">评论 {{ comments.length }}</div>

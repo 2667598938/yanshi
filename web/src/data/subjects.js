@@ -28,8 +28,8 @@ export const SUBJECT_COLORS = [
 // 学习类型（用于区分听课 / 刷题 / 复盘 / 背诵，防止只听课不做题）
 export const ACTIVITIES = [
   { id: 'listen', name: '听课', color: '#0ea5e9', icon: 'Headphones' },
-  { id: 'practice', name: '刷题', color: '#f2705b', icon: 'PenLine' },
-  { id: 'review', name: '复盘', color: '#f0a830', icon: 'RotateCcw' },
+  { id: 'practice', name: '刷题', color: '#4f46e5', icon: 'PenLine' },
+  { id: 'review', name: '复盘', color: '#f59e0b', icon: 'RotateCcw' },
   { id: 'recite', name: '背诵', color: '#7c3aed', icon: 'BookMarked' },
 ]
 export const ACTIVITY_MAP = Object.fromEntries(ACTIVITIES.map((a) => [a.id, a]))

@@ -204,7 +204,7 @@ def test_email_domain_restriction(client):
                         json={'email': 'not-qq@test.com', 'scene': 'register'})
         assert r.status_code == 400
         r = client.post('/api/v1/auth/email-code',
-                        json={'email': 'ok@qq.com', 'scene': 'register'})
+                        json={'email': '12345678@qq.com', 'scene': 'register'})
         assert r.status_code == 200
     finally:
         settings.auth_email_domains = ''

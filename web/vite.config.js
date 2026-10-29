@@ -1,9 +1,10 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
+import { offlinePlugin } from './build/offline.js'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), offlinePlugin()],
   server: {
     port: 27341,
     strictPort: true,

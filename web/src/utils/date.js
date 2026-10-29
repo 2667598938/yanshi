@@ -1,40 +1,37 @@
-// 日期与计时工具（统一按本地时区，避免 UTC 跨零点问题）
+// 学习业务日期统一 UTC+8，与后端 session、房间和 AI 摘要一致。
+import { clockNow } from './clock'
 
 // 本地日期 key：YYYY-MM-DD
 export function dayKey(d = new Date()) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
+  const cn = new Date(d.getTime() + 8 * 3600000)
+  const y = cn.getUTCFullYear()
+  const m = String(cn.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(cn.getUTCDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
 
 export function todayKey() {
-  return dayKey(new Date())
+  return dayKey(new Date(clockNow()))
 }
 
 // 两个日期 key 相差天数（b - a）
 export function diffDayKeys(a, b) {
-  const da = new Date(a + 'T00:00:00')
-  const db = new Date(b + 'T00:00:00')
+  const da = new Date(a + 'T00:00:00Z')
+  const db = new Date(b + 'T00:00:00Z')
   return Math.round((db - da) / 86400000)
 }
 
 // 距目标日期还有多少个完整自然日（今天到目标日 0 点）
 export function daysUntil(targetStr) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const target = new Date(targetStr + 'T00:00:00')
-  return Math.round((target - today) / 86400000)
+  return diffDayKeys(todayKey(), targetStr)
 }
 
 // 取最近 n 天的日期 key（含今天，旧 -> 新）
 export function lastNDays(n) {
   const arr = []
-  const base = new Date()
-  base.setHours(0, 0, 0, 0)
+  const base = todayKey()
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(base - i * 86400000)
-    arr.push(dayKey(d))
+    arr.push(addDaysKey(base, -i))
   }
   return arr
 }
@@ -61,45 +58,43 @@ export function fmtMinutes(min) {
 
 // 计算连续打卡天数：给定有记录的日期 key 集合，从今天（或昨天）向前连续
 export function calcStreak(activeDaySet) {
-  let cursor = new Date()
-  cursor.setHours(0, 0, 0, 0)
+  let cursor = todayKey()
   // 今天还没打卡时，从昨天起算（不中断已有 streak）
-  if (!activeDaySet.has(dayKey(cursor))) {
-    cursor = new Date(cursor - 86400000)
+  if (!activeDaySet.has(cursor)) {
+    cursor = addDaysKey(cursor, -1)
   }
   let streak = 0
-  while (activeDaySet.has(dayKey(cursor))) {
+  while (activeDaySet.has(cursor)) {
     streak++
-    cursor = new Date(cursor - 86400000)
+    cursor = addDaysKey(cursor, -1)
   }
   return streak
 }
 
 // 星期几（中文）
 export function weekLabel(d = new Date()) {
-  return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
+  return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(d.getTime()+8*3600000).getUTCDay()]
 }
 
 // 友好日期 M月D日
 export function mdLabel(key) {
-  const d = new Date(key + 'T00:00:00')
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+  return `${Number(key.slice(5,7))}月${Number(key.slice(8,10))}日`
 }
 
 // 日期 key 加 n 天
 export function addDaysKey(key, n) {
-  const d = new Date(key + 'T00:00:00')
-  d.setDate(d.getDate() + n)
-  return dayKey(d)
+  const d = new Date(key + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0,10)
 }
 
 // 今天加 n 天的 key
 export function todayAddDays(n) {
-  return addDaysKey(dayKey(new Date()), n)
+  return addDaysKey(todayKey(), n)
 }
 
 // 中文完整日期：M月D日 周X
 export function mdWeekLabel(key) {
-  const d = new Date(key + 'T00:00:00')
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekLabel(d)}`
+  const d = new Date(key + 'T00:00:00Z')
+  return `${mdLabel(key)} ${weekLabel(d)}`
 }
