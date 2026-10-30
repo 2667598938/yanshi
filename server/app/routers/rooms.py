@@ -166,7 +166,10 @@ def update_room(
 ):
     room = room_service.get_room(db, room_id)
     return ok(
-        room_service.update_room(db, user, room, body.name, body.intro, body.visibility)
+        room_service.update_room(
+            db, user, room, body.name, body.intro, body.visibility,
+            room_type=body.room_type, capacity=body.capacity, media_mode=body.media_mode,
+        )
     )
 
 

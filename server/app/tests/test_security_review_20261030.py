@@ -37,7 +37,7 @@ def test_repeated_upload_delete_cannot_bypass_physical_disk_quota(client):
     physical=sum(path.stat().st_size for path in client.app.state.settings.image_directory.rglob('*.jpg'))
     assert physical<=client.app.state.settings.storage_quota_bytes
 
-@pytest.mark.parametrize('reason',['membership','logout','ban'])
+@pytest.mark.parametrize('reason',['membership','logout','ban','room_type'])
 def test_silent_media_peer_loses_access_after_revocation(client,monkeypatch,reason):
     session=login(client,**ADMIN);client.app.state.settings.features+=',av_room'
     with client.app.state.session_factory() as db:
@@ -62,6 +62,7 @@ def test_silent_media_peer_loses_access_after_revocation(client,monkeypatch,reas
         try:
             await asyncio.wait_for(socket.welcome.wait(),1)
             if reason=='logout':assert client.post('/api/v1/auth/logout').status_code==200
+            elif reason=='room_type':assert client.patch(f'/api/v1/rooms/{rid}',headers=headers(session['access_token']),json={'room_type':'text_room'}).status_code==200
             else:
                 with client.app.state.session_factory() as db:
                     if reason=='membership':db.execute(delete(RoomMember).where(RoomMember.room_id==rid,RoomMember.user_id==session['user']['id']))

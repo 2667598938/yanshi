@@ -74,6 +74,7 @@ const showGoal = ref(false)
 const goalDraft = ref({ target_school: '', target_score: '', words: '' })
 const showManage = ref(false)
 const manageForm = ref({ name: '', intro: '', visibility: 'public' })
+const manageSaving = ref(false)
 const isOwner = computed(() => room.value?.my_role === 'owner')
 const preview = ref(null)
 const joinCode = ref('')
@@ -414,24 +415,43 @@ function openManage() {
     name: room.value?.name || '',
     intro: room.value?.intro || '',
     visibility: room.value?.visibility || 'public',
+    room_type: room.value?.room_type || 'text_room',
+    capacity: room.value?.capacity ?? 50,
   }
   loadApplies()
   showManage.value = true
 }
 
+function changeManageType() {
+  manageForm.value.capacity = manageForm.value.room_type === 'av_room' ? 6 : 50
+}
+
 async function saveManage() {
+  if (manageSaving.value) return
+  if (manageForm.value.name.trim().length < 2) return toast('房间名至少 2 个字')
+  manageSaving.value = true
   try {
-    await roomApi.update(roomId.value, {
+    const body = {
       name: manageForm.value.name.trim(),
       intro: manageForm.value.intro.trim(),
       visibility: manageForm.value.visibility,
-    })
+    }
+    if (manageForm.value.room_type !== room.value.room_type) {
+      body.room_type = manageForm.value.room_type
+      body.capacity = manageForm.value.capacity
+      if (body.room_type === 'av_room') body.media_mode = 'mesh'
+    } else if (manageForm.value.room_type === 'text_room' && manageForm.value.capacity !== room.value.capacity) {
+      body.capacity = manageForm.value.capacity
+    }
+    const updated = await roomApi.update(roomId.value, body)
+    if (!alive) return
+    room.value = { ...room.value, ...updated }
     showManage.value = false
     toast('房间信息已更新')
     await fetchRoom()
   } catch (e) {
     toast(e.message)
-  }
+  } finally { manageSaving.value = false }
 }
 
 async function changeCode() {
@@ -768,7 +788,8 @@ onBeforeUnmount(() => {
 
     <!-- 房主管理 -->
     <div v-if="showManage" class="mask" @click.self="showManage = false">
-      <div class="sheet">
+      <div class="sheet room-manage-sheet">
+        <div class="manage-content">
         <div class="sheet-title">{{isOwner?'房间管理':'房间设置'}}</div>
         <p v-if="room?.code">房间码 {{room.code}}</p><button v-if="room?.code" class="btn btn-outline btn-block" aria-label="复制房间码" @click="copyCode">复制房间码</button>
         <button class="btn btn-outline btn-block mt8" @click="copyInvite">复制房间入口</button>
@@ -799,17 +820,34 @@ onBeforeUnmount(() => {
         <label class="sf"><span>简介</span>
           <input v-model="manageForm.intro" maxlength="200" />
         </label>
+        <label class="sf"><span>房间类型</span>
+          <select v-model="manageForm.room_type" aria-label="房间类型" :disabled="manageSaving" @change="changeManageType">
+            <option value="text_room">文字自习室</option>
+            <option value="av_room">音视频自习室</option>
+          </select>
+        </label>
+        <label v-if="manageForm.room_type === 'text_room'" class="sf"><span>成员上限</span>
+          <select v-model.number="manageForm.capacity" aria-label="成员上限" :disabled="manageSaving">
+            <option v-if="![20,50,100].includes(manageForm.capacity)" :value="manageForm.capacity" disabled>{{manageForm.capacity > 0 ? `当前 ${manageForm.capacity} 人` : '当前不限人数'}}</option>
+            <option :value="20">20 人</option><option :value="50">50 人</option><option :value="100">100 人</option>
+          </select>
+        </label>
+        <p v-if="manageForm.room_type === 'av_room'" class="manage-type-hint">音视频自习室最多 6 人，需 VIP 或房间授权；开启摄像头、麦克风仍由每位成员自行选择。</p>
+        <p v-if="manageForm.room_type !== room?.room_type" class="manage-type-hint">切换保留房间码、成员和留言。{{manageForm.room_type === 'text_room' ? '切回文字房会关闭当前音视频连接。' : '超过 6 位成员时，请先调整成员再保存。'}}</p>
         <label class="sf"><span>可见性</span>
           <div class="vis-row">
             <button :class="{ on: manageForm.visibility === 'public' }" @click="manageForm.visibility = 'public'">公开</button>
             <button :class="{ on: manageForm.visibility === 'private' }" @click="manageForm.visibility = 'private'">私密（凭码）</button>
           </div>
         </label>
-        <button class="btn btn-primary btn-block mt16" @click="saveManage">保存</button>
         <button class="btn btn-outline btn-block mt8" @click="changeCode">更换房间码</button>
         <button class="btn btn-danger btn-block mt8" @click="dissolve">解散自习室</button>
         </template>
-        <button class="btn btn-ghost btn-block mt8" @click="showManage = false">取消</button>
+        </div>
+        <div class="sheet-foot manage-footer">
+          <button v-if="isOwner" class="btn btn-primary" :disabled="manageSaving" @click="saveManage">{{manageSaving ? '保存中…' : '保存'}}</button>
+          <button class="btn btn-outline" :disabled="manageSaving" @click="showManage = false">取消</button>
+        </div>
       </div>
     </div>
 
@@ -948,6 +986,9 @@ onBeforeUnmount(() => {
 .sheet-title { font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 16px; }
 .sf { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
 .sf span { font-size: 14px; color: var(--sub); }
+.manage-type-hint { font-size: 14px; line-height: 1.6; color: var(--sub); margin: 0 0 16px; }
+.manage-footer { display: flex; gap: 8px; }
+.manage-footer .btn { flex: 1; }
 .sf input, .sf select { height: 44px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); }
 .sf input:focus, .sf select:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
 

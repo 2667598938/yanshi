@@ -293,9 +293,8 @@ def list_rooms(db, user):
     ]
 
 
-@room_write
-def create_room(db, user, name, intro, visibility, room_type="text_room", capacity=None, media_mode="mesh"):
-    settings = db.info.get("settings")
+def room_type_options(settings, room_type, capacity, media_mode):
+    """Creation and updates share the same capacity and media-mode rules."""
     if room_type == "text_room":
         capacity = 50 if capacity is None else capacity
         if capacity not in (20, 50, 100):
@@ -313,6 +312,12 @@ def create_room(db, user, name, intro, visibility, room_type="text_room", capaci
         capacity=expected_capacity
     else:
         raise ApiError(400,40001,"未知房间类型")
+    return capacity, media_mode
+
+
+@room_write
+def create_room(db, user, name, intro, visibility, room_type="text_room", capacity=None, media_mode="mesh"):
+    capacity, media_mode = room_type_options(db.info.get("settings"), room_type, capacity, media_mode)
     room = Room(
         name=name.strip(),
         intro=(intro or "").strip(),
@@ -555,9 +560,21 @@ def leave_room(db, user, room):
 
 
 @room_write
-def update_room(db, user, room, name=None, intro=None, visibility=None):
+def update_room(db, user, room, name=None, intro=None, visibility=None, *, room_type=None, capacity=None, media_mode=None):
     if room.owner_id != user.id:
         raise ApiError(403, 40301, "只有房主可以修改房间")
+    if room_type is not None or capacity is not None or media_mode is not None:
+        next_type = room_type or room.room_type
+        next_mode = media_mode if media_mode is not None else (room.media_mode or "mesh")
+        type_changed = next_type != room.room_type
+        mode_changed = next_type == "av_room" and next_mode != room.media_mode
+        next_capacity = capacity if capacity is not None else (None if type_changed or mode_changed else room.capacity)
+        next_capacity, next_mode = room_type_options(db.info.get("settings"), next_type, next_capacity, next_mode)
+        member_count = db.scalar(select(func.count()).select_from(RoomMember).where(RoomMember.room_id == room.id)) or 0
+        if member_count > next_capacity:
+            raise ApiError(409, 40901, f"当前已有{member_count}位成员，所选类型最多{next_capacity}人，请先调整成员")
+        room.room_type, room.capacity, room.media_mode = next_type, next_capacity, next_mode
+        guard_room_type(db, user, room)
     if name is not None:
         room.name = name.strip()
     if intro is not None:

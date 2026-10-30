@@ -49,6 +49,9 @@ class RoomUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=20)
     intro: Optional[str] = Field(default=None, max_length=200)
     visibility: Optional[Literal["public", "private"]] = None
+    room_type: Optional[Literal["text_room", "av_room"]] = None
+    capacity: Optional[Literal[6, 20, 25, 50, 100]] = None
+    media_mode: Optional[Literal["mesh", "sfu"]] = None
 
 
 class RoomJoin(BaseModel):
