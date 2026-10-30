@@ -42,4 +42,4 @@ async function saveMotto(){try{await profile.save({custom_motto:motto.value});to
     <div class="card mt16"><label>我的专属长寄语<textarea v-model="motto" class="input" maxlength="500" placeholder="留空只显示随机文案或节点寄语"></textarea></label><button class="btn btn-primary" @click="saveMotto">保存寄语</button></div>
   </div>
 </template>
-<style scoped>label{display:block;margin:12px 0} p{font-size:13px;line-height:1.7}button{margin:4px}</style>
+<style scoped>label{display:block;margin:12px 0} p{font-size: 14px;line-height:1.7}button{margin:4px}</style>

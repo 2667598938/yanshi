@@ -146,14 +146,14 @@ onMounted(load)
 .card-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
 .add-row { display: flex; gap: 8px; }
 .add-row .input { flex: 1; }
-.hint { font-size: 11.5px; color: var(--faint); margin-top: 9px; line-height: 1.6; }
+.hint { font-size: 12px; color: var(--faint); margin-top: 9px; line-height: 1.6; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip-static {
   background: #eef3f9;
   color: var(--sub);
   border-radius: 999px;
   padding: 6px 13px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
 }
 .list { padding: 2px 16px; }
@@ -165,7 +165,7 @@ onMounted(load)
   border-bottom: 1px solid var(--line);
 }
 .row:last-child { border-bottom: none; }
-.row-name { flex: 1; font-size: 14.5px; font-weight: 600; }
+.row-name { flex: 1; font-size: 14px; font-weight: 600; }
 .inline-input { flex: 1; padding: 8px 10px; font-size: 14px; }
 .mini {
   width: 34px;

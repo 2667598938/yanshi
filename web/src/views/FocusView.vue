@@ -437,7 +437,7 @@ watch(
 }
 .clock-phase {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.72);
   display: flex;
   align-items: center;
@@ -505,14 +505,14 @@ watch(
   transition: all 0.15s ease;
 }
 .mode-btn span {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .mode-btn small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
   font-weight: 500;
 }
@@ -536,7 +536,7 @@ watch(
   border: none;
   background: none;
   color: var(--faint);
-  font-size: 12px;
+  font-size: 14px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -573,23 +573,23 @@ watch(
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
 }
 .range-hint {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
 }
 .start-btn {
   margin-top: 14px;
-  font-size: 17px;
+  font-size: 16px;
   padding: 16px;
 }
 .focus-tip {
   text-align: center;
   color: var(--faint);
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 18px;
 }
 
@@ -647,14 +647,14 @@ watch(
   to { transform: translateY(0); }
 }
 .sheet-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   text-align: center;
 }
 .sheet-sub {
   text-align: center;
   color: var(--sub);
-  font-size: 13px;
+  font-size: 14px;
   margin: 8px 0 14px;
 }
 </style>

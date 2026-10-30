@@ -43,7 +43,7 @@ onUnmounted(() => {
   padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
   background: #3b3425;
   color: #f6e7c4;
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.2px;
 }
 </style>

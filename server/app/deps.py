@@ -46,6 +46,8 @@ def get_current_user(request: Request, db=Depends(get_db)):
     user = db.get(User, int(data['sub']))
     if not user or user.token_version != data.get('ver') or user.status in ('banned', 'deleted'):
         raise ApiError(401, 40101, '请重新登录')
+    from .services.session_security import require_active_session
+    require_active_session(request, db, data)
     request.state.actor_id=user.id
     return user
 

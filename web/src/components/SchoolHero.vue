@@ -190,9 +190,10 @@ async function setDream() {
 .hero-top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 .seal {
+  flex-shrink: 0;
   width: 50px;
   height: 50px;
   border-radius: 50%;
@@ -206,12 +207,15 @@ async function setDream() {
   min-width: 0;
 }
 .school-name {
-  font-size: 18px;
+  padding: 0;
+  text-align: left;
+  line-height: 24px;
+  font-size: 16px;
   font-weight: 800;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 .school-motto {
-  font-size: 12px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.86);
   margin-top: 1px;
 }
@@ -219,11 +223,14 @@ async function setDream() {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.72);
   margin-top: 2px;
 }
 .dream-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -231,7 +238,7 @@ async function setDream() {
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
   border-radius: 999px;
-  padding: 7px 12px;
+  padding: 8px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -253,7 +260,7 @@ async function setDream() {
   margin-top: 18px;
 }
 .cd-label {
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
   letter-spacing: 1px;
 }
@@ -272,19 +279,19 @@ async function setDream() {
   letter-spacing: -2px;
 }
 .cd-unit {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
 }
 .cd-date {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.72);
 }
 
 .quote {
   text-align: center;
-  font-size: 13.5px;
+  font-size: 14px;
   color: #ffe9c4;
   margin: 12px 0 16px;
   letter-spacing: 0.5px;
@@ -344,7 +351,7 @@ async function setDream() {
 }
 .album-count {
   margin-right: 2px;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   letter-spacing: 0.3px;
 }

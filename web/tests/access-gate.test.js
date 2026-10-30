@@ -12,7 +12,7 @@ function routerFor(auth) {
 const privateRoutes = routes.filter(route => !['/login', '/disclaimer'].includes(route.path) && !route.redirect)
 it.each(privateRoutes.map(route => [route.path]))('未登录直接输入 %s 也必须回登录页', async path => {
   const router = routerFor({ isLoggedIn: false, isAdmin: false })
-  const target = path.replace(':id', '1')
+  const target = path.replace(':id', '1').replace(':category(learning|content|account|group|data)', 'learning')
   await router.push(target)
   expect(router.currentRoute.value.path).toBe('/login')
   expect(router.currentRoute.value.query.redirect).toBe(target)

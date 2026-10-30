@@ -13,6 +13,7 @@ from .errors import install_errors, ok
 from .services.persistent_transient import PersistentTransientStore
 from .routers import (
     auth,
+    room_media,
     admin,
     public,
     sync,
@@ -112,7 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=()"
+            "camera=(self), microphone=(self), geolocation=()"
         )
         return response
 
@@ -139,6 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(timer.router)
     app.include_router(public.router)
     app.include_router(auth.router)
+    app.include_router(room_media.router)
     app.include_router(oauth.router)
     app.include_router(phone.router)
     app.include_router(group.router)

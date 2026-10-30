@@ -36,9 +36,9 @@ class RoomCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=2, max_length=20)
-    room_type: Literal["checkin_room", "video_small_room", "cloud_video_room"] = (
-        "checkin_room"
-    )
+    room_type: Literal["text_room", "av_room"] = "text_room"
+    capacity: Optional[Literal[6,20,25,50,100]] = None
+    media_mode: Literal["mesh","sfu"] = "mesh"
     intro: str = Field(default="", max_length=200)
     visibility: Literal["public", "private"] = "private"
 
@@ -49,6 +49,9 @@ class RoomUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=20)
     intro: Optional[str] = Field(default=None, max_length=200)
     visibility: Optional[Literal["public", "private"]] = None
+    room_type: Optional[Literal["text_room", "av_room"]] = None
+    capacity: Optional[Literal[6, 20, 25, 50, 100]] = None
+    media_mode: Optional[Literal["mesh", "sfu"]] = None
 
 
 class RoomJoin(BaseModel):

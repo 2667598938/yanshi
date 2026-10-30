@@ -168,11 +168,11 @@ def test_room_type_closed_open_authorized_and_all_api_gates(client):
     mh = h(login(client, "roomtype@test.com", "Friend2028")["access_token"])
     payload = {
         "name": "video room",
-        "room_type": "video_small_room",
+        "room_type": "av_room",
         "accept_sharing": True,
     }
     assert client.post("/api/v1/rooms", headers=mh, json=payload).status_code == 403
-    client.app.state.settings.features += ",video_small_room"
+    client.app.state.settings.features += ",av_room"
     assert client.post("/api/v1/rooms", headers=mh, json=payload).status_code == 403
     client.put(
         "/api/v1/admin/members/2",
@@ -180,9 +180,9 @@ def test_room_type_closed_open_authorized_and_all_api_gates(client):
         json={"vip_action": "permanent", "note": "room type test"},
     )
     row = client.post("/api/v1/rooms", headers=mh, json=payload).json()["data"]
-    assert row["room_type"] == "video_small_room"
+    assert row["room_type"] == "av_room"
     assert client.get(f"/api/v1/rooms/{row['id']}", headers=mh).status_code == 200
-    client.app.state.settings.features = "checkin_room"
+    client.app.state.settings.features = "text_room"
     assert client.get(f"/api/v1/rooms/{row['id']}", headers=mh).status_code == 403
     assert (
         client.post(

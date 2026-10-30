@@ -316,12 +316,12 @@ async function remove(id) {
   line-height: 1;
 }
 .rate-cap {
-  font-size: 12px;
+  font-size: 14px;
   opacity: 0.75;
   margin-top: 5px;
 }
 .rate-r {
-  font-size: 13px;
+  font-size: 14px;
   text-align: right;
   opacity: 0.9;
 }
@@ -331,7 +331,7 @@ async function remove(id) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .task-row {
@@ -368,7 +368,7 @@ async function remove(id) {
   cursor: pointer;
 }
 .task-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -376,7 +376,7 @@ async function remove(id) {
   color: var(--red);
 }
 .task-crit {
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--sub);
   margin-top: 3px;
   line-height: 1.5;
@@ -389,20 +389,20 @@ async function remove(id) {
   margin-top: 6px;
 }
 .meta-subj {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 .phase-tag {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
 }
 .due {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
 }
 .due.overdue-text {
@@ -432,7 +432,7 @@ async function remove(id) {
 }
 
 .f-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   margin: 14px 0 8px;
 }
@@ -469,7 +469,7 @@ async function remove(id) {
   overflow-y: auto;
 }
 .sheet-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   text-align: center;
   margin-bottom: 4px;

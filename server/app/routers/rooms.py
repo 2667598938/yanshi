@@ -38,7 +38,7 @@ def create_room(
     request.app.state.transient.limit(f"room-create:{user.id}", 5, 3600)
     require_sharing(body.accept_sharing)
     room = room_service.create_room(
-        db, user, body.name, body.intro, body.visibility, body.room_type
+        db, user, body.name, body.intro, body.visibility, body.room_type, body.capacity, body.media_mode
     )
     audit(db, request, "room.create", user_id=user.id, detail=f"{room.id} {room.name}")
     db.commit()
@@ -116,6 +116,8 @@ def apply_room(
     request.app.state.transient.limit(f"room-apply:{user.id}", 10, 3600)
     room = room_service.get_room(db, room_id)
     require_sharing(body.accept_sharing)
+    if room.visibility == 'private':
+        raise ApiError(410,41001,'私密房间请凭房间码加入')
     row = room_service.apply_join(db, user, room, body.message)
     audit(db, request, "room.apply", user_id=user.id, detail=f"{room_id} {row['id']}")
     db.commit()
@@ -164,7 +166,10 @@ def update_room(
 ):
     room = room_service.get_room(db, room_id)
     return ok(
-        room_service.update_room(db, user, room, body.name, body.intro, body.visibility)
+        room_service.update_room(
+            db, user, room, body.name, body.intro, body.visibility,
+            room_type=body.room_type, capacity=body.capacity, media_mode=body.media_mode,
+        )
     )
 
 

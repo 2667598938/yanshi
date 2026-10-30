@@ -39,8 +39,8 @@ watch(() => props.modelValue, async (value) => {
 <style scoped>
 .copy-mask { position: fixed; inset: 0; z-index: 2000; background: rgba(15, 23, 42, .5); display: flex; align-items: center; justify-content: center; padding: 20px; }
 .copy-dialog { width: 100%; max-width: 420px; padding: 22px; border-radius: 18px; background: #fff; color: var(--ink); }
-.copy-dialog h2 { margin: 0 0 10px; font-size: 18px; }
-.copy-dialog p { margin: 0 0 14px; font-size: 13px; line-height: 1.6; color: var(--sub); }
+.copy-dialog h2 { margin: 0 0 10px; font-size: 16px; }
+.copy-dialog p { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: var(--sub); }
 .copy-dialog textarea { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; font: inherit; font-size: 16px; user-select: text; -webkit-user-select: text; }
 .copy-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
 </style>

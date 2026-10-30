@@ -62,11 +62,13 @@ def room_write(fn):
 
 def guard_room_type(db, user, room):
     settings = db.info.get("settings")
-    if not settings and room.room_type == "checkin_room":
+    if not settings and room.room_type == "text_room":
         return
     if not settings or room.room_type not in settings.enabled_features:
         raise ApiError(403, 40310, "该房间类型暂未开放")
-    if user and room.room_type != "checkin_room":
+    if room.room_type == 'av_room' and room.media_mode == 'sfu' and (not settings.room_sfu_enabled or not settings.room_sfu_url):
+        raise ApiError(403,40310,"SFU服务尚未部署")
+    if user and room.room_type != "text_room":
         from .features import require_feature
 
         require_feature(db, user, "room", "该房间类型需要VIP或房间审批授权")
@@ -80,7 +82,7 @@ def get_default_room(db, user):
             RoomMember.user_id == user.id,
             ((RoomMember.sharing_confirmed.is_(True)) | (Room.owner_id == user.id)),
             Room.dissolved_at.is_(None),
-            Room.room_type == "checkin_room",
+            Room.room_type == "text_room",
         )
         .order_by(Room.id)
         .limit(1)
@@ -189,6 +191,7 @@ def room_summary(
         "sharing_confirmed": bool(membership and membership.sharing_confirmed),
         "legacy_member": legacy_member,
         "room_type": room.room_type,
+        "media_mode": room.media_mode or "",
         "member_count": int(member_count),
         "online_count": int(online_count) if membership else 0,
         "joined": membership is not None,
@@ -215,7 +218,7 @@ def list_rooms(db, user):
         select(Room).where(Room.dissolved_at.is_(None)).order_by(Room.id)
     ).all()
     settings = db.info.get("settings")
-    enabled = settings.enabled_features if settings else ["checkin_room"]
+    enabled = settings.enabled_features if settings else ["text_room"]
     visible = [
         r
         for r in rooms
@@ -290,14 +293,38 @@ def list_rooms(db, user):
     ]
 
 
+def room_type_options(settings, room_type, capacity, media_mode):
+    """Creation and updates share the same capacity and media-mode rules."""
+    if room_type == "text_room":
+        capacity = 50 if capacity is None else capacity
+        if capacity not in (20, 50, 100):
+            raise ApiError(400,40001,"文字房容量只能选择20、50或100人")
+        media_mode = ""
+    elif room_type == "av_room":
+        if media_mode == "sfu":
+            if not settings or not settings.room_sfu_enabled or not settings.room_sfu_url:
+                raise ApiError(403,40310,"SFU服务尚未部署")
+            expected_capacity=25
+        else:
+            expected_capacity=6
+        if capacity not in (None,expected_capacity):
+            raise ApiError(400,40001,"音视频房容量与传输模式不匹配")
+        capacity=expected_capacity
+    else:
+        raise ApiError(400,40001,"未知房间类型")
+    return capacity, media_mode
+
+
 @room_write
-def create_room(db, user, name, intro, visibility, room_type="checkin_room"):
+def create_room(db, user, name, intro, visibility, room_type="text_room", capacity=None, media_mode="mesh"):
+    capacity, media_mode = room_type_options(db.info.get("settings"), room_type, capacity, media_mode)
     room = Room(
         name=name.strip(),
         intro=(intro or "").strip(),
         code=_new_room_code(db),
         owner_id=user.id,
-        capacity=0,
+        capacity=capacity,
+        media_mode=media_mode,
         visibility=visibility,
         room_type=room_type,
     )
@@ -474,6 +501,8 @@ def review_apply(db, user, room, apply_id, approve):
     """房主通过/驳回；通过时立即写入成员，权限即时生效。"""
     if room.owner_id != user.id:
         raise ApiError(403, 40301, "只有房主可以审批入房申请")
+    if approve and room.visibility == 'private':
+        raise ApiError(410,41001,'私密房间请凭房间码加入')
     row = db.scalar(
         select(RoomJoinApply).where(RoomJoinApply.id == apply_id).with_for_update()
     )
@@ -531,9 +560,21 @@ def leave_room(db, user, room):
 
 
 @room_write
-def update_room(db, user, room, name=None, intro=None, visibility=None):
+def update_room(db, user, room, name=None, intro=None, visibility=None, *, room_type=None, capacity=None, media_mode=None):
     if room.owner_id != user.id:
         raise ApiError(403, 40301, "只有房主可以修改房间")
+    if room_type is not None or capacity is not None or media_mode is not None:
+        next_type = room_type or room.room_type
+        next_mode = media_mode if media_mode is not None else (room.media_mode or "mesh")
+        type_changed = next_type != room.room_type
+        mode_changed = next_type == "av_room" and next_mode != room.media_mode
+        next_capacity = capacity if capacity is not None else (None if type_changed or mode_changed else room.capacity)
+        next_capacity, next_mode = room_type_options(db.info.get("settings"), next_type, next_capacity, next_mode)
+        member_count = db.scalar(select(func.count()).select_from(RoomMember).where(RoomMember.room_id == room.id)) or 0
+        if member_count > next_capacity:
+            raise ApiError(409, 40901, f"当前已有{member_count}位成员，所选类型最多{next_capacity}人，请先调整成员")
+        room.room_type, room.capacity, room.media_mode = next_type, next_capacity, next_mode
+        guard_room_type(db, user, room)
     if name is not None:
         room.name = name.strip()
     if intro is not None:

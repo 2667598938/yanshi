@@ -174,7 +174,7 @@ onMounted(load)
   border-radius: 14px;
   background: #fff3df;
   color: var(--accent-deep);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 700;
   margin-bottom: 12px;
   cursor: pointer;
@@ -206,7 +206,7 @@ onMounted(load)
   border: 1.5px solid var(--line);
   background: #fff;
   color: var(--sub);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -240,7 +240,7 @@ onMounted(load)
   margin-top: 10px;
 }
 .count {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--faint);
 }
 .list-card {
@@ -260,12 +260,12 @@ onMounted(load)
 }
 .req-name {
   flex: 1;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 700;
 }
 .req-reason {
   margin-top: 6px;
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--sub);
   line-height: 1.65;
   background: #f6f9fd;
@@ -274,7 +274,7 @@ onMounted(load)
 }
 .req-note {
   margin-top: 7px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--primary-deep);
 }
 .req-foot {
@@ -282,7 +282,7 @@ onMounted(load)
   align-items: center;
   justify-content: space-between;
   margin-top: 8px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--faint);
 }
 .req-withdraw {
@@ -291,7 +291,7 @@ onMounted(load)
   font-weight: 600;
 }
 .tag {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 7px;
   border-radius: 6px;

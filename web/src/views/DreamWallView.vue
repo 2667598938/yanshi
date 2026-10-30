@@ -106,24 +106,24 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
 <style scoped>
 .back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
 .wall-hero { border-radius: 16px; padding: 20px; background: linear-gradient(140deg, #0f1f3a, #31547f); color: #eef4ff; margin-bottom: 14px; }
-.wh-title { font-size: 16.5px; font-weight: 700; line-height: 1.6; }
-.wh-sub { font-size: 11.5px; color: rgba(238,244,255,.62); margin-top: 7px; }
+.wh-title { font-size: 16px; font-weight: 700; line-height: 1.6; }
+.wh-sub { font-size: 12px; color: rgba(238,244,255,.62); margin-top: 7px; }
 .school-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .school-card { position: relative; border: none; padding: 0; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: var(--shadow-soft); cursor: pointer; text-align: left; }
 .sc-view { width: 100%; height: 88px; object-fit: cover; display: block; }
 .sc-body { display: flex; align-items: center; gap: 8px; padding: 9px 10px; background: #fff; }
 .sc-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--sc); }
 .sc-main { flex: 1; min-width: 0; }
-.sc-name { font-size: 12.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sc-city { display: flex; align-items: center; gap: 2px; font-size: 10px; color: var(--faint); margin-top: 1px; }
+.sc-name { font-size: 14px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-city { display: flex; align-items: center; gap: 2px; font-size: 12px; color: var(--faint); margin-top: 1px; }
 .sc-arrow { color: #c9d2df; flex-shrink: 0; }
 .mask { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
 .sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; overflow: hidden; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
 .big-view { width: 100%; height: 190px; object-fit: cover; display: block; }
 .big-body { display: flex; align-items: center; gap: 11px; padding: 16px 18px 0; }
 .big-logo { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; border: 2px solid var(--sc); }
-.big-name { font-size: 19px; font-weight: 800; }
-.big-city { display: flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+.big-name { font-size: 16px; font-weight: 800; }
+.big-city { display: flex; align-items: center; gap: 3px; font-size: 12px; color: var(--faint); margin-top: 2px; }
 .motto { display: flex; align-items: flex-start; gap: 6px; margin: 14px 18px; font-size: 14px; line-height: 1.7; color: var(--sc); font-weight: 600; }
 .sheet .btn { width: calc(100% - 36px); margin: 0 18px; }
 </style>

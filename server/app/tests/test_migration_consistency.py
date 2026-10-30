@@ -150,7 +150,7 @@ def test_room_upgrade_preserves_history_and_members_but_requires_new_sharing_con
     command.downgrade(config, "c2e4f6a8b0d2")
     command.upgrade(config, "head")
     with sessions() as db:
-        assert db.scalar(select(Room)).capacity == 0
+        assert db.scalar(select(Room)).capacity == 50
         assert db.scalar(select(Room)).code != "OLD001"
         assert (
             db.scalar(select(Room)).visibility == "public"

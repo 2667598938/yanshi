@@ -31,8 +31,8 @@ function distance(day) {
 /* 首屏紧凑：压低倒计时区高度，让今日数据更早出现 */
 .time-nodes { margin: 16px 0; padding: 16px; background: var(--card,#fff); border:1px solid var(--line); border-radius:18px; color:var(--ink); }
 .time-node { padding: 8px 0; border-bottom: 1px solid var(--line); }
-strong { font-size: 22px; display: block; margin-top: 4px; line-height: 1.2; }
-p { font-size: 12px; line-height: 1.6; margin: 4px 0; white-space: pre-wrap; color: var(--sub); }
-a { color: inherit; font-size: 12px; opacity: .78; }
+strong { font-size: 20px; display: block; margin-top: 4px; line-height: 1.2; }
+p { font-size: 14px; line-height: 1.6; margin: 4px 0; white-space: pre-wrap; color: var(--sub); }
+a { color: inherit; font-size: 14px; opacity: .78; }
 .motto { border-left: 2px solid var(--primary); padding-left: 8px; }
 </style>

@@ -33,7 +33,7 @@ beforeEach(() => {
   originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand')
   clipboard(undefined) // 模拟局域网 HTTP 下没有现代 Clipboard API
   Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) })
-  roomApi.list.mockResolvedValue([room])
+  roomApi.list.mockResolvedValue([{...room,visibility:'public'}])
   roomApi.get.mockResolvedValue({ room, joined: true, members: [], messages: [], ranking: {} })
   roomApi.heartbeat.mockResolvedValue({})
   roomApi.putGoal.mockResolvedValue({})
@@ -102,11 +102,12 @@ it('没有任一复制接口和空内容均不误报成功', async () => {
 
 it.each([
   ['房间列表', RoomsView, '.rc-code'],
-  ['房间详情', RoomView, '.room-code'],
+  ['房间详情', RoomView, '[aria-label="复制房间码"]'],
 ])('%s 在 HTTP 环境点击房间码可以走兼容复制', async (_name, component, selector) => {
   document.execCommand.mockReturnValue(true)
   wrapper = mount(component, { global: { stubs: { BlobImage: true } } })
   await flushPromises()
+  if(component===RoomView) await wrapper.get('[aria-label="房间设置"]').trigger('click')
   await wrapper.get(selector).trigger('click')
   await flushPromises()
   expect(document.execCommand).toHaveBeenCalledWith('copy')
@@ -117,10 +118,11 @@ it.each([
 
 it.each([
   ['房间列表', RoomsView, '.rc-code'],
-  ['房间详情', RoomView, '.room-code'],
+  ['房间详情', RoomView, '[aria-label="复制房间码"]'],
 ])('%s 复制受限时显示可选择的房间码，关闭后仍在原页面', async (_name, component, selector) => {
   wrapper = mount(component, { attachTo: document.body, global: { stubs: { BlobImage: true } } })
   await flushPromises()
+  if(component===RoomView) await wrapper.get('[aria-label="房间设置"]').trigger('click')
   await wrapper.get(selector).trigger('click')
   await flushPromises()
   expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('手动复制')
@@ -151,6 +153,7 @@ it('房间展示选定形象和休息状态，心跳也上报休息', async () =
 it('目标分数字段提交字符串，空字段不传null', async () => {
   wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
   await flushPromises()
+  await wrapper.findAll('button').find((button) => button.text() === '目标墙').trigger('click')
   await wrapper.findAll('button').find((button) => button.text() === '填写我的目标').trigger('click')
   await wrapper.get('input[placeholder="如 400"]').setValue('400')
   await wrapper.findAll('button').find((button) => button.text() === '保存').trigger('click')
@@ -161,7 +164,8 @@ it('目标分数字段提交字符串，空字段不传null', async () => {
 it('申请分享链接只暴露预览入口，不附带房间码', async () => {
   wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
   await flushPromises()
-  await wrapper.findAll('button').find((button) => button.text() === '入房申请链接').trigger('click')
+  await wrapper.get('[aria-label="房间设置"]').trigger('click')
+  await wrapper.findAll('button').find((button) => button.text() === '复制房间入口').trigger('click')
   await flushPromises()
   const value = wrapper.get('textarea[aria-label="待复制内容"]').element.value
   expect(new URL(value).pathname).toBe('/rooms/2')
@@ -174,7 +178,8 @@ it('普通成员可退出房间，立即停止以成员身份继续参与', asyn
     members: [], messages: [], ranking: {} })
   wrapper = mount(RoomView, { global: { stubs: { BlobImage: true } } })
   await flushPromises()
-  await wrapper.findAll('button').find((button) => button.text() === '退出房间').trigger('click')
+  await wrapper.get('[aria-label="房间设置"]').trigger('click')
+  await wrapper.findAll('button').find((button) => button.text() === '退出房间并停止同步').trigger('click')
   await flushPromises()
   expect(roomApi.leave).toHaveBeenCalledWith(2)
   expect(mocks.replace).toHaveBeenCalledWith('/rooms')

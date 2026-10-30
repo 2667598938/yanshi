@@ -27,16 +27,17 @@ class Room(Base):
     name = Column(String(80), nullable=False)
     intro = Column(String(500), default="", server_default="")
     owner_id = Column(ForeignKey("users.id"), nullable=True)
-    capacity = Column(Integer, default=0, server_default="0", nullable=False)
+    capacity = Column(Integer, default=50, server_default="50", nullable=False)
     visibility = Column(
         String(12), default="private", server_default="private", nullable=False
     )
     room_type = Column(
         String(24),
-        default="checkin_room",
-        server_default="checkin_room",
+        default="text_room",
+        server_default="text_room",
         nullable=False,
     )
+    media_mode = Column(String(12), default="", server_default="", nullable=False)
     created_at = Column(DateTime, default=now, nullable=False)
     dissolved_at = Column(DateTime)
 

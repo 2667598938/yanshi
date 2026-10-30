@@ -169,13 +169,13 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
 
 <style scoped>
 .back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.compose-btn { margin-left: auto; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 12.5px; font-weight: 600; padding: 9px 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.compose-btn { margin-left: auto; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 14px; font-weight: 600; padding: 9px 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .insp-banner { width: 100%; display: flex; align-items: center; gap: 10px; border: none; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; background: linear-gradient(135deg, #4f46e5, #312e81); color: #eef2ff; cursor: pointer; text-align: left; }
 .ib-main { flex: 1; }
-.ib-title { font-size: 13.5px; font-weight: 700; }
-.ib-sub { font-size: 11px; color: rgba(234, 241, 255, 0.66); margin-top: 2px; }
+.ib-title { font-size: 14px; font-weight: 700; }
+.ib-sub { font-size: 12px; color: rgba(234, 241, 255, 0.66); margin-top: 2px; }
 .tabs { display: flex; gap: 6px; background: #fff; border-radius: 12px; padding: 4px; margin-bottom: 12px; box-shadow: var(--shadow-soft); }
-.tabs button { flex: 1; border: none; background: transparent; padding: 9px 0; border-radius: 9px; font-size: 13px; color: var(--sub); cursor: pointer; }
+.tabs button { flex: 1; border: none; background: transparent; padding: 9px 0; border-radius: 9px; font-size: 14px; color: var(--sub); cursor: pointer; }
 .tabs button.on { background: var(--primary); color: #fff; font-weight: 600; }
 .post-list { display: flex; flex-direction: column; gap: 10px; }
 .post-card { text-align: left; background: #fff; border: none; border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-soft); color: var(--ink); cursor: pointer; }
@@ -183,18 +183,18 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
 .p-pending { color: #a5781f; font-weight: 600; }
 .post-head { display: flex; align-items: center; gap: 8px; }
 .p-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #eef3f9; flex-shrink: 0; }
-.p-name { font-size: 12.5px; font-weight: 700; }
-.p-time { margin-left: auto; font-size: 10.5px; color: var(--faint); }
+.p-name { font-size: 14px; font-weight: 700; }
+.p-time { margin-left: auto; font-size: 12px; color: var(--faint); }
 .p-content { margin-top: 9px; font-size: 14px; line-height: 1.72; white-space: pre-wrap; word-break: break-word; }
-.p-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; color: var(--faint); }
+.p-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--faint); }
 .p-foot span { display: inline-flex; align-items: center; gap: 3px; }
 .p-mine { color: var(--primary); }
 .mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
 .sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
-.sheet-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 12px; }
+.sheet-title { font-size: 16px; font-weight: 800; text-align: center; margin-bottom: 12px; }
 .ta { width: 100%; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14px; font-family: inherit; background: #fafbfe; resize: vertical; outline: none; }
 .ta:focus { border-color: var(--primary); }
-.compose-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 11.5px; color: var(--faint); }
-.compose-legal { margin-top: 10px; font-size: 11.5px; color: var(--faint); line-height: 1.6; }
+.compose-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 12px; color: var(--faint); }
+.compose-legal { margin-top: 10px; font-size: 12px; color: var(--faint); line-height: 1.6; }
 .compose-legal a { color: var(--primary); cursor: pointer; text-decoration: none; }
 </style>

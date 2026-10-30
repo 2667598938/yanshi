@@ -4,7 +4,7 @@ import { authorizeRoute } from './access'
 
 export const routes = [
   {path:'/group/admission',redirect:'/rooms'},
-  {path:'/admin/group',redirect:'/rooms'},
+  {path:'/admin/group',redirect:'/admin'},
   { path: '/group', component: () => import('../views/GroupLearningView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
   { path: '/schools/manage', component: () => import('../views/SchoolAdminView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
   { path: '/settings/time-nodes', component: () => import('../views/TimeNodesView.vue'), meta: { requiresAuth: true, hideTabbar: true } },
@@ -19,6 +19,7 @@ export const routes = [
   { path: '/rooms', name: 'rooms', component: () => import('../views/RoomsView.vue'), meta: { title: '自习室', requiresAuth: true } },
   { path: '/rooms/:id', name: 'room-detail', component: () => import('../views/RoomView.vue'), meta: { title: '自习室', requiresAuth: true } },
   { path: '/ai', name: 'ai', component: () => import('../views/AiView.vue'), meta: { title: 'AI', requiresAuth: true } },
+  { path: '/me/:category(learning|content|account|group|data)', name: 'settings-category', component: () => import('../views/SettingsCategoryView.vue'), meta: { title: '我的设置', requiresAuth:true, hideTabbar:true } },
   { path: '/me', name: 'me', component: () => import('../views/MeView.vue'), meta: { title: '我的', requiresAuth: true } },
 
   // 会员 / 功能申请（隐藏底部导航）

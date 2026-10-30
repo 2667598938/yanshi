@@ -15,8 +15,9 @@ it('跨页计时条展示有效专注；离开共学不会结束计时或保留�
  try{
   expect(wrapper.text()).toContain('10:00')
   expect(wrapper.get('a[href="/rooms/3"]').text()).toContain('数学共学')
-  await wrapper.get('button').trigger('click')
-  expect(room.room).toBeNull();expect(timer.current.id).toBe('focus-1')
+  expect(wrapper.find('button').exists()).toBe(false)
+  expect(room.room.id).toBe(3);expect(timer.current.id).toBe('focus-1')
+  room.leave();expect(room.room).toBeNull()
   room.enter({id:3,name:'数学共学'},2);room.load(9)
   expect(room.room).toBeNull();room.load(2);expect(room.room).toBeNull()
  }finally{wrapper.unmount();timer.current=null;room.leave()}

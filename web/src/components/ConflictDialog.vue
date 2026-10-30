@@ -68,7 +68,7 @@ function choose(entry, choice) {
   padding: 20px 18px 18px;
 }
 .cf-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--night);
   margin-bottom: 8px;
@@ -86,7 +86,7 @@ function choose(entry, choice) {
   flex-wrap: wrap;
 }
 .chip {
-  font-size: 12px;
+  font-size: 14px;
   padding: 4px 10px;
   border-radius: 999px;
   background: #eef4fb;
@@ -111,13 +111,13 @@ function choose(entry, choice) {
   padding: 11px 8px;
   border-radius: var(--radius-sm);
   border: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   line-height: 1.3;
 }
 .cf-btn small {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   opacity: 0.82;
 }
