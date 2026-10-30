@@ -24,6 +24,7 @@ import { fmtMinutes, todayKey } from '../utils/date'
 import { authApi, publicApi, attachmentApi, messageApi } from '../api'
 import { useSchoolsStore } from '../stores/schools'
 import BlobImage from '../components/BlobImage.vue'
+import ProfileCard from '../components/ProfileCard.vue'
 import { useLearningSettingsStore } from '../stores/learningSettings'
 import { useToast } from '../composables/useToast'
 import { useNotificationPreference } from '../composables/useNotificationPreference'
@@ -335,6 +336,7 @@ async function togglePrivacy() {
 
 onMounted(() => {
   auth.fetchMe().then(() => profile.load(true)).catch(() => {})
+  if(route.query.edit==='profile') open('profile')
   catalog.load()
   notifications.refresh()
   db.syncMeta.get('lastSyncAt').then((m) => { lastSyncAt.value = m?.value || 0 }).catch(() => {})
@@ -363,32 +365,7 @@ onMounted(() => {
 
     <div class="page settings-layout">
       <!-- 个人卡 -->
-      <div v-if="category === 'account'" class="profile">
-        <img class="watermark" :src="school.logo" alt="" />
-        <div class="pf-main">
-          <div class="avatar-wrap" @click="pickAvatar">
-            <BlobImage class="pf-avatar" :src="avatar" :fallback="school.logo" :alt="auth.user?.nickname" />
-            <span class="figure-chip" :style="{ background: figure.bg }">{{ figure.emoji }}</span>
-            <span class="cam"><Camera :size="15" /></span>
-          </div>
-          <div class="pf-meta">
-            <div class="pf-name" @click="open('profile')">
-              {{ auth.user?.nickname || app.nickname }}
-              <span v-if="auth.isVip" class="pf-vip"><Crown :size="11" />VIP</span>
-              <Pencil :size="14" class="edit-ic" />
-            </div>
-            <div class="pf-sign">{{ auth.user?.signature || '点此编辑昵称、签名与形象' }}</div>
-            <div class="pf-email">{{ auth.user?.email }}</div>
-            <div class="pf-school">{{ school.name }} · {{ school.motto }}</div>
-          </div>
-        </div>
-        <div class="pf-stats">
-          <div><div class="ps-num tnum">{{ fmtMinutes(timer.totalMin) }}</div><div class="ps-label">累计</div></div>
-          <div><div class="ps-num tnum">{{ timer.streak }}</div><div class="ps-label">连续(天)</div></div>
-          <div><div class="ps-num tnum">{{ timer.totalCount }}</div><div class="ps-label">番茄(颗)</div></div>
-        </div>
-        <input ref="fileInput" type="file" accept="image/*" style="display:none" @change="onAvatarChange" />
-      </div>
+      <ProfileCard v-if="category === 'account'" @edit="open('profile')" />
 
       <section v-if="category === 'learning'" class="group"><div class="card menu">
 <button class="row" role="switch" :aria-checked="learningSettings.value.bulletEnabled" @click="toggleBullets"><span class="row-ic c-gold"><Sparkles :size="18" /></span><span class="row-label">梦校励志弹幕</span><span class="row-val">{{ learningSettings.value.bulletEnabled ? '开启' : '关闭' }}</span></button>
@@ -696,7 +673,7 @@ onMounted(() => {
 <style scoped>
 .profile {
   position: relative;
-  background: linear-gradient(150deg, #32734b, #213f2d 70%);
+  background: linear-gradient(150deg, #4f46e5, #312e81 70%);
   border-radius: 20px;
   padding: 24px 16px 16px;
   color: #fff;
@@ -747,7 +724,7 @@ onMounted(() => {
 }
 .figure-cell.on {
   border-color: var(--primary);
-  box-shadow: 0 6px 16px rgba(50, 115, 75, 0.16);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.16);
 }
 .figure-emoji { font-size: 20px; line-height: 1; }
 .figure-name { font-size: 12px; color: var(--sub); }
@@ -786,7 +763,7 @@ onMounted(() => {
 .row { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .row:last-child { border-bottom: none; }
 .row-ic { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.c-blue { background: rgba(50, 115, 75, 0.08); color: var(--primary); }
+.c-blue { background: rgba(79, 70, 229, 0.08); color: var(--primary); }
 .c-orange { background: rgba(239, 68, 68, 0.08); color: var(--tomato); }
 .c-purple { background: rgba(139, 92, 246, 0.1); color: var(--purple); }
 .c-red { background: rgba(239, 68, 68, 0.1); color: var(--red); }
@@ -812,9 +789,9 @@ onMounted(() => {
 .row-arrow { color: var(--faint); flex-shrink: 0; }
 .row.danger .row-label { color: var(--red); }
 
-.switch { width: 44px; height: 26px; border-radius: 999px; background: rgba(50, 115, 75, 0.16); position: relative; transition: background 0.24s ease; margin-right: 2px; }
+.switch { width: 44px; height: 26px; border-radius: 999px; background: rgba(79, 70, 229, 0.16); position: relative; transition: background 0.24s ease; margin-right: 2px; }
 .switch.on { background: var(--primary-grad); }
-.knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(50, 115, 75, 0.24); transition: transform 0.24s ease; }
+.knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(79, 70, 229, 0.24); transition: transform 0.24s ease; }
 .switch.on .knob { transform: translateX(18px); }
 .version { text-align: center; color: var(--faint); font-size: 14px; margin-top: 24px; }
 
@@ -823,14 +800,14 @@ onMounted(() => {
 .sheet-title { font-size: 20px; font-weight: 800; text-align: center; }
 .sheet-sub { text-align: center; color: var(--sub); font-size: 14px; margin: 8px 0 16px; }
 .school-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
-.school-cell { position: relative; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 12px; padding: 16px 8px; text-align: center; cursor: pointer; transition: border-color 0.24s ease, background-color 0.24s ease, box-shadow 0.24s ease; }
-.school-cell.on { border-color: var(--primary); background: rgba(50, 115, 75, 0.06); box-shadow: 0 6px 16px rgba(50, 115, 75, 0.14); }
+.school-cell { position: relative; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 12px; padding: 16px 8px; text-align: center; cursor: pointer; transition: border-color 0.24s ease, background-color 0.24s ease, box-shadow 0.24s ease; }
+.school-cell.on { border-color: var(--primary); background: rgba(79, 70, 229, 0.06); box-shadow: 0 6px 16px rgba(79, 70, 229, 0.14); }
 .school-cell img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
 .school-cell span { display: block; font-size: 14px; font-weight: 600; margin-top: 8px; }
 .tick { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-grad); color: #fff; display: flex; align-items: center; justify-content: center; }
 .goal-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
-.goal-opt { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 1px solid rgba(50, 115, 75, 0.16); border-radius: 12px; background: rgba(255, 255, 255, 0.8); font-size: 14px; font-weight: 600; cursor: pointer; color: var(--ink); transition: border-color 0.24s ease, background-color 0.24s ease; }
-.goal-opt.on { border-color: var(--primary); background: rgba(50, 115, 75, 0.06); color: var(--primary); }
+.goal-opt { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 12px; background: rgba(255, 255, 255, 0.8); font-size: 14px; font-weight: 600; cursor: pointer; color: var(--ink); transition: border-color 0.24s ease, background-color 0.24s ease; }
+.goal-opt.on { border-color: var(--primary); background: rgba(79, 70, 229, 0.06); color: var(--primary); }
 .about-body { margin-top: 16px; font-size: 14px; color: var(--sub); line-height: 1.8; }
 .about-body p { margin: 0 0 8px; }
 .about-h { color: var(--ink); font-weight: 700; margin-bottom: 4px !important; }
@@ -839,7 +816,7 @@ onMounted(() => {
 .modal { background: #fff; border-radius: 12px; max-width: 560px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 24px 48px rgba(30, 27, 75, 0.24); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line); }
 .modal-head h3 { margin: 0; font-size: 16px; }
-.modal-head button { border: none; background: rgba(50, 115, 75, 0.08); color: var(--sub); border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+.modal-head button { border: none; background: rgba(79, 70, 229, 0.08); color: var(--sub); border-radius: 8px; padding: 8px 16px; cursor: pointer; }
 .modal-body { padding: 16px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 14px; line-height: 1.8; color: var(--sub); margin: 0; }
 </style>
 

@@ -33,7 +33,7 @@ body .mask.mask { z-index: 400; }
   .desktop-nav-group + .desktop-nav-group { margin-top: 20px; }
   .desktop-nav-caption { padding: 0 12px 6px; font-size: 12px; color: var(--faint); }
   .desktop-link { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 3px 0; padding: 8px 12px; color: var(--sub); border-radius: 10px; font-size: 14px; text-decoration: none; }
-  .desktop-link:hover, .desktop-link.active { color: var(--primary); background: rgba(50,115,75,.08); }
+  .desktop-link:hover, .desktop-link.active { color: var(--primary); background: rgba(79,70,229,.08); }
   .desktop-link.active { font-weight: 700; }
   .desktop-count { margin-left: auto; padding: 0 5px; border-radius: 8px; background: var(--tomato); color: white; font-size: 12px; }
   .with-desktop-nav .tabbar { display: none; }

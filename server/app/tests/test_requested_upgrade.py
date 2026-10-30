@@ -106,3 +106,8 @@ def test_mesh_signaling_uses_authenticated_identity_and_does_not_leak_to_nonmemb
                 first.send_json({'type':'answer','to':guest['user']['id'],'payload':{'type':'answer','sdp':'reply'}})
                 assert second.receive_json()['from']==session['user']['id']
             assert first.receive_json()=={'type':'left','id':guest['user']['id']}
+            first.send_json({'type':'auth','token':session['access_token']})
+            assert first.receive_json()=={'type':'auth-ok'}
+            first.send_json({'type':'auth','token':guest['access_token']})
+            from starlette.websockets import WebSocketDisconnect
+            with pytest.raises(WebSocketDisconnect):first.receive_json()

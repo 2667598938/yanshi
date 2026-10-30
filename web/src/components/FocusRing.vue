@@ -5,8 +5,8 @@ const props = defineProps({
   progress: { type: Number, default: 0 }, // 0 ~ 1
   size: { type: Number, default: 268 },
   stroke: { type: Number, default: 16 },
-  color: { type: String, default: '#32734b' },
-  startColor: { type: String, default: '#46845b' },
+  color: { type: String, default: '#4f46e5' },
+  startColor: { type: String, default: '#8b5cf6' },
   track: { type: String, default: 'rgba(255,255,255,0.14)' },
 })
 

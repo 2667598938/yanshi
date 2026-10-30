@@ -145,7 +145,7 @@ async function setDream() {
   color: #fff;
   overflow: hidden;
   /* 与蓝紫主题同源的深靛色，避免藏青割裂 */
-  background: linear-gradient(160deg, #213f2d, #1e1b4b);
+  background: linear-gradient(160deg, #312e81, #1e1b4b);
   border-radius: 0 0 24px 24px;
 }
 .hero-bg {
@@ -190,9 +190,10 @@ async function setDream() {
 .hero-top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 .seal {
+  flex-shrink: 0;
   width: 50px;
   height: 50px;
   border-radius: 50%;
@@ -206,9 +207,12 @@ async function setDream() {
   min-width: 0;
 }
 .school-name {
+  padding: 0;
+  text-align: left;
+  line-height: 24px;
   font-size: 16px;
   font-weight: 800;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 .school-motto {
   font-size: 14px;
@@ -224,6 +228,9 @@ async function setDream() {
   margin-top: 2px;
 }
 .dream-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -231,8 +238,8 @@ async function setDream() {
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
   border-radius: 999px;
-  padding: 7px 12px;
-  font-size: 14px;
+  padding: 8px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   backdrop-filter: blur(4px);

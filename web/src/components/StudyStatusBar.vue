@@ -9,7 +9,7 @@ const route=useRoute(),timer=useTimerStore(),studyRoom=useStudyRoomStore()
  <div v-if="(studyRoom.room || ((timer.current || timer.rest) && route.name!=='focus')) && route.name!=='login'" class="study-status-bar">
   <router-link v-if="(timer.current || timer.rest) && route.name!=='focus'" to="/focus">{{timer.rest?'休息':timer.isPaused?'已暂停':'本轮专注'}} <span class="tnum">{{fmtClock(timer.rest?timer.restRemainingSec:timer.elapsedSec)}}</span> · 返回计时</router-link>
   <router-link v-if="studyRoom.room" :to="`/rooms/${studyRoom.room.id}`">共学 · {{studyRoom.room.name}}</router-link>
-  <button v-if="studyRoom.room" @click="studyRoom.leave()">离开共学</button>
+
  </div>
 </template>
 <style scoped>

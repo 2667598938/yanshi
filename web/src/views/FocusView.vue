@@ -71,7 +71,7 @@ const isStopwatch = computed(() =>
 const ringColor = computed(() => {
   if (timer.rest) return '#10b981'
   if (phase.value === 'paused') return '#94a3b8'
-  return isStopwatch.value ? '#6366f1' : '#46845b'
+  return isStopwatch.value ? '#6366f1' : '#8b5cf6'
 })
 const ringStart = computed(() => (isStopwatch.value ? '#a5b4fc' : '#c4b5fd'))
 const ringProgress = computed(() => {
@@ -417,7 +417,7 @@ watch(
 }
 
 .focus-hero {
-  background: linear-gradient(160deg, #4c1d95 0%, #213f2d 55%, #1e1b4b 100%);
+  background: linear-gradient(160deg, #4c1d95 0%, #312e81 55%, #1e1b4b 100%);
   border-radius: 26px;
   padding: 26px 18px 22px;
   box-shadow: 0 16px 34px rgba(22, 27, 46, 0.3);
@@ -426,7 +426,7 @@ watch(
   align-items: center;
 }
 .focus-hero.sw {
-  background: linear-gradient(160deg, #4338ca 0%, #213f2d 55%, #1e1b4b 100%);
+  background: linear-gradient(160deg, #4338ca 0%, #312e81 55%, #1e1b4b 100%);
 }
 .clock {
   font-size: 56px;
@@ -466,7 +466,7 @@ watch(
   font-weight: 700;
   color: #fff;
   background: var(--primary-grad);
-  box-shadow: 0 8px 20px rgba(50, 115, 75, 0.32);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;

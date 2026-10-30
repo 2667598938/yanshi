@@ -48,7 +48,7 @@ const thirdProviders = [
   { id: 'github', label: 'GitHub', color: '#181717' },
   { id: 'wechat', label: '微信', color: '#07C160' },
   { id: 'qq', label: 'QQ', color: '#12B7F5' },
-  { id: 'phone', label: '手机号', color: '#32734b' },
+  { id: 'phone', label: '手机号', color: '#4f46e5' },
 ]
 const availableProviders = computed(() => passwordOnly.value ? [] : thirdProviders.filter(provider => hasChannel(provider.id)))
 const features = [

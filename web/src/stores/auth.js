@@ -20,6 +20,7 @@ export const useAuthStore = defineStore('auth', {
     accessToken: '',
     user: loadCachedUser(),
     vipNow: Date.now(),
+    avatarRevision:0,
   }),
   getters: {
     isLoggedIn: (s) => !!s.user,
@@ -95,12 +96,12 @@ export const useAuthStore = defineStore('auth', {
     // 用 refresh Cookie 换新 access，成功返回 true
     async tryRefresh() {
       if (!this.user) return false
-      const owner=this.user.id
+      const owner=this.user.id, avatarRevision=this.avatarRevision
       try {
         const data = await authApi.refresh()
         if(typeof owner!=='undefined' && this.user?.id!==owner)return false
         this.accessToken = data.access_token
-        if (data.user) this.user = data.user
+        if (data.user) this.mergeServerUser(data.user,avatarRevision)
         this.persist()
         return true
       } catch (e) {
@@ -109,10 +110,21 @@ export const useAuthStore = defineStore('auth', {
         return false
       }
     },
+    updateAvatar(key) {
+      if (!this.user) return
+      this.avatarRevision += 1
+      this.setUser({...this.user,avatar_key:key})
+    },
+    mergeServerUser(user, avatarRevision) {
+      if (!user || this.user?.id !== user.id) return
+      const value = avatarRevision === this.avatarRevision ? user : {...user,avatar_key:this.user.avatar_key}
+      this.setUser(value)
+    },
     async fetchMe() {
+      const owner=this.user?.id, revision=this.avatarRevision
       const data = await authApi.me()
-      this.setUser(data)
-      return data
+      if (this.user?.id===owner) this.mergeServerUser(data,revision)
+      return this.user
     },
     async logout() {
       const sync = await import('../sync/engine')

@@ -147,7 +147,7 @@ label .input { margin-top: 6px; }
 .album { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .album-item { position: relative; display: flex; flex-direction: column; gap: 4px; width: 96px; }
 .album-item .preview { width: 96px; height: 72px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
-.cover-tag { position: absolute; top: 4px; left: 4px; padding: 2px 6px; border-radius: 999px; background: rgba(50, 115, 75, 0.9); color: #fff; font-size: 12px; font-weight: 700; }
+.cover-tag { position: absolute; top: 4px; left: 4px; padding: 2px 6px; border-radius: 999px; background: rgba(79, 70, 229, 0.9); color: #fff; font-size: 12px; font-weight: 700; }
 .album-actions { display: flex; gap: 2px; flex-wrap: wrap; }
 .album-actions .btn { padding: 2px 4px; font-size: 12px; min-height: 0; }
 .save-hint { margin-top: 12px; }

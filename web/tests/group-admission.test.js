@@ -11,7 +11,7 @@ beforeEach(()=>{vi.clearAllMocks();vi.stubGlobal('confirm',vi.fn().mockReturnVal
 afterEach(()=>{wrapper?.unmount();vi.unstubAllGlobals()})
 it('默认私密创建好友房间，取消共享确认时不发送任何建房请求',async()=>{
  wrapper=mount(RoomsView);await flushPromises()
- await wrapper.get('.create-btn').trigger('click')
+ await wrapper.get('.room-top-actions .btn-primary').trigger('click')
  await wrapper.get('input[placeholder="如：冲刺 408 小组"]').setValue('我的考研搭子')
  const create=wrapper.findAll('button').find(b=>b.text()==='创建并进入')
  await create.trigger('click');expect(roomApi.create).not.toHaveBeenCalled()
@@ -24,7 +24,7 @@ it('凭码加入必须手动确认，取消时不会提交；列表不再显示�
  roomApi.list.mockResolvedValue([{id:7,name:'朋友的房间',member_count:12,capacity:50,visibility:'public'}])
  wrapper=mount(RoomsView);await flushPromises()
  expect(wrapper.text()).toContain('50人上限');expect(wrapper.text()).not.toContain('/4')
- await wrapper.get('[title="凭房间码加入"]').trigger('click')
+ await wrapper.get('.room-top-actions .btn-outline').trigger('click')
  await wrapper.get('.code-input').setValue('ABC123')
  const join=wrapper.findAll('button').find(b=>b.text()==='加入')
  await join.trigger('click');expect(roomApi.joinByCode).not.toHaveBeenCalled()

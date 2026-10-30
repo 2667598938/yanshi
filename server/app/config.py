@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     room_sfu_enabled: bool = False
     room_sfu_url: str = ""
     room_ice_servers: str = '[{"urls":"stun:stun.l.google.com:19302"}]'
+    room_turn_urls: str = ""
+    room_turn_secret: str = ""
+    room_turn_ttl: int = Field(default=43200, ge=600, le=86400)
 
     # 邮件（QQ SMTP 465 SSL；留空且 mail_console=true 时验证码打印到控制台）
     mail_console: bool = True

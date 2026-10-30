@@ -488,7 +488,7 @@ function exportCsv() {
 .content-summary { padding: 18px; }
 .date-field { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--primary); }
 .date-field .input { flex: 1; min-width: 0; margin-top: 0; height: 44px; }
-.date-today { flex-shrink: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(50, 115, 75, 0.06); color: var(--primary); font-size: 14px; font-weight: 600; cursor: pointer; }
+.date-today { flex-shrink: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(79, 70, 229, 0.06); color: var(--primary); font-size: 14px; font-weight: 600; cursor: pointer; }
 .content-chart { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 18px; }
 .content-pie-wrap { position: relative; width: 144px; height: 144px; flex-shrink: 0; }
 .content-pie { width: 100%; height: 100%; border-radius: 50%; position: relative; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04); }

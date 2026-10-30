@@ -119,7 +119,7 @@ onMounted(load)
   border-radius: 22px;
   padding: 20px 18px 18px;
   color: #fff;
-  background: linear-gradient(150deg, #32734b, #213f2d 70%);
+  background: linear-gradient(150deg, #4f46e5, #312e81 70%);
   box-shadow: var(--shadow);
   overflow: hidden;
 }

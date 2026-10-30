@@ -254,10 +254,10 @@ function dayNum(key) {
   background: #c7d2fe;
 }
 .l3 {
-  background: #46845b;
+  background: #8b5cf6;
 }
 .l4 {
-  background: #32734b;
+  background: #4f46e5;
 }
 .f {
   background: transparent;

@@ -65,7 +65,7 @@ async function resolve() {
   }
 }
 
-watch(() => [props.blob, props.src, auth.user?.id], resolve, { immediate: true })
+watch([() => props.blob, () => props.src, () => auth.user?.id], resolve, { immediate: true })
 onBeforeUnmount(() => { generation += 1; clearObject() })
 
 function onError() {

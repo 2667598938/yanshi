@@ -508,7 +508,7 @@ async function remove() {
   border: none;
   background: var(--primary-grad);
   color: #fff;
-  box-shadow: 0 12px 24px rgba(50, 115, 75, 0.34);
+  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.34);
   display: flex;
   align-items: center;
   justify-content: center;

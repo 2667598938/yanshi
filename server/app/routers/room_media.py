@@ -8,6 +8,7 @@ from ..deps import decode
 from ..models import Room, RoomMember, User
 from ..errors import ApiError
 from ..services.room import guard_room_type
+from ..services.room_ice import ice_servers
 
 router = APIRouter()
 # Signaling holds no media or long-lived credentials. Each room has at most six connections.
@@ -48,17 +49,24 @@ async def signaling(socket: WebSocket,room_id:int):
         peers=[{'id':key,'nickname':value[1]} for key,value in room_peers.items()]
         room_peers[uid]=(socket,nickname)
         # The peer list makes the newcomer the sole initiator for each connection, avoiding offer glare.
-        await socket.send_json({'type':'welcome','id':uid,'peers':peers,'iceServers':json.loads(settings.room_ice_servers)})
+        await socket.send_json({'type':'welcome','id':uid,'peers':peers,'iceServers':ice_servers(settings,uid)})
         window=time.monotonic();count=0
         while True:
             raw=await asyncio.wait_for(socket.receive_text(),timeout=60)
             if len(raw)>65536:raise ValueError('Oversized signal')
-            authorize(socket,room_id,token)  # Recheck removal, disabled features, expiry and token revocation.
             if time.monotonic()-window>10:window=time.monotonic();count=0
             count+=1
             if count>200:raise ValueError('Signaling rate exceeded')
             message=json.loads(raw)
             if not isinstance(message,dict):raise ValueError('Invalid signal')
+            if message.get('type')=='auth':
+                replacement=message.get('token','')
+                verified_uid,_=authorize(socket,room_id,replacement)
+                if verified_uid!=uid:raise ValueError('Cannot switch identity in a media connection')
+                token=replacement
+                await socket.send_json({'type':'auth-ok'})
+                continue
+            authorize(socket,room_id,token)  # Recheck removal, features, expiry and token revocation.
             if message.get('type')=='ping':
                 await socket.send_json({'type':'pong'});continue
             if message.get('type') not in ('offer','answer','candidate'):raise ValueError('Unknown signal')

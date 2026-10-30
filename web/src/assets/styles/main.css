@@ -9,14 +9,14 @@
   --ink: #111827;
   --sub: #4b5563;
   --faint: #9ca3af;
-  --line: rgba(50, 115, 75, 0.12);
+  --line: rgba(79, 70, 229, 0.12);
 
-  --primary: #32734b;
-  --primary-deep: #46845b;
-  --primary-grad: linear-gradient(135deg, #32734b, #46845b);
-  --night: #213f2d;
-  --night2: #32734b;
-  --hairline: rgba(50, 115, 75, 0.1);
+  --primary: #4f46e5;
+  --primary-deep: #8b5cf6;
+  --primary-grad: linear-gradient(135deg, #4f46e5, #8b5cf6);
+  --night: #312e81;
+  --night2: #4f46e5;
+  --hairline: rgba(79, 70, 229, 0.1);
 
   --accent: #f59e0b;
   --accent-deep: #d97706;
@@ -25,12 +25,12 @@
   --green: #10b981;
   --success-grad: linear-gradient(135deg, #10b981, #34d399);
   --red: #ef4444;
-  --purple: #46845b;
+  --purple: #8b5cf6;
 
   --radius: 12px;
   --radius-sm: 12px;
-  --shadow: 0 8px 24px rgba(50, 115, 75, 0.08), 0 2px 8px rgba(17, 24, 39, 0.04);
-  --shadow-soft: 0 4px 16px rgba(50, 115, 75, 0.06), 0 1px 4px rgba(17, 24, 39, 0.03);
+  --shadow: 0 8px 24px rgba(79, 70, 229, 0.08), 0 2px 8px rgba(17, 24, 39, 0.04);
+  --shadow-soft: 0 4px 16px rgba(79, 70, 229, 0.06), 0 1px 4px rgba(17, 24, 39, 0.03);
   --tabbar-h: 68px;
 }
 
@@ -73,7 +73,7 @@ button {
   min-height: 100vh;
   background: var(--shell);
   position: relative;
-  box-shadow: 0 0 60px rgba(50, 115, 75, 0.1);
+  box-shadow: 0 0 60px rgba(79, 70, 229, 0.1);
   overflow: hidden;
 }
 
@@ -244,7 +244,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 .btn-tomato {
   background: var(--primary-grad);
   color: #fff;
-  box-shadow: 0 8px 20px rgba(50, 115, 75, 0.26), 0 2px 8px rgba(50, 115, 75, 0.16);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.26), 0 2px 8px rgba(79, 70, 229, 0.16);
 }
 /* 暖金强调：低频使用，不与主色争抢 */
 .btn-accent {
@@ -259,11 +259,11 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 }
 .btn-outline {
   background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(50, 115, 75, 0.2);
+  border: 1px solid rgba(79, 70, 229, 0.2);
   color: var(--primary);
 }
 .btn-ghost {
-  background: rgba(50, 115, 75, 0.08);
+  background: rgba(79, 70, 229, 0.08);
   color: var(--sub);
 }
 .btn-danger {
@@ -286,7 +286,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
   .btn:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.03);
     filter: brightness(1.06);
-    box-shadow: 0 12px 28px rgba(50, 115, 75, 0.22);
+    box-shadow: 0 12px 28px rgba(79, 70, 229, 0.22);
   }
   .btn-accent:hover:not(:disabled) {
     box-shadow: 0 12px 28px rgba(245, 158, 11, 0.24);
@@ -301,7 +301,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
   padding: 8px 16px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(50, 115, 75, 0.16);
+  border: 1px solid rgba(79, 70, 229, 0.16);
   color: var(--sub);
   font-size: 14px;
   font-weight: 600;
@@ -322,7 +322,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
   color: #fff;
   border-color: transparent;
   background: var(--primary-grad);
-  box-shadow: 0 8px 20px rgba(50, 115, 75, 0.22);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.22);
 }
 
 .chip {
@@ -342,7 +342,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 .input,
 .select {
   width: 100%;
-  border: 1px solid rgba(50, 115, 75, 0.16);
+  border: 1px solid rgba(79, 70, 229, 0.16);
   border-radius: 8px;
   padding: 8px 16px;
   font-size: 14px;
@@ -354,8 +354,8 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 }
 .input:focus,
 .select:focus {
-  border-color: rgba(50, 115, 75, 0.5);
-  box-shadow: 0 0 0 3px rgba(50, 115, 75, 0.12);
+  border-color: rgba(79, 70, 229, 0.5);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
 }
 
 /* ---------- 工具 ---------- */
@@ -423,8 +423,8 @@ html.ai-neural-dark .privacy-banner {
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(16px) saturate(1.2);
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border-top: 1px solid rgba(50, 115, 75, 0.1);
-  box-shadow: 0 -8px 24px rgba(50, 115, 75, 0.06);
+  border-top: 1px solid rgba(79, 70, 229, 0.1);
+  box-shadow: 0 -8px 24px rgba(79, 70, 229, 0.06);
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   z-index: 100;
@@ -467,7 +467,7 @@ html.ai-neural-dark .privacy-banner {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 24px rgba(50, 115, 75, 0.35), 0 2px 8px rgba(50, 115, 75, 0.2);
+  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.35), 0 2px 8px rgba(79, 70, 229, 0.2);
   border: 4px solid #f8faff;
 }
 .tab-fab .run-dot {
@@ -534,6 +534,6 @@ html.ai-neural-dark .privacy-banner {
 
 /* 键盘可达性：统一柔和聚焦环 */
 :where(a, button, [tabindex], input, select, textarea):focus-visible {
-  outline: 2px solid rgba(50, 115, 75, 0.45);
+  outline: 2px solid rgba(79, 70, 229, 0.45);
   outline-offset: 2px;
 }
