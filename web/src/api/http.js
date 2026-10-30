@@ -48,7 +48,7 @@ async function request(method, path, { body, query, auth = true, raw = false } =
   if(auth)accountGuard(authStore,owner)
 
   // access 过期：用 refresh 换一次，重试原请求（只重试一次）
-  if (res.status === 401 && auth && authStore.canRefresh && !path.includes('/auth/refresh')) {
+  if (res.status === 401 && auth && authStore.canRefresh && !['/auth/refresh','/auth/logout'].includes(path)) {
     refreshPromise = refreshPromise || authStore.tryRefresh()
     const ok = await refreshPromise
     refreshPromise = null

@@ -23,3 +23,9 @@ it('私图请求不会把旧账号响应交给新账号页面',async()=>{
  const pending=fetchBlob('/api/v1/attachments/view?key=private');auth.user={id:2};done(new Response('private-bytes'))
  await expect(pending).rejects.toThrow('账号已切换')
 })
+it('退出请求保留当前访问凭证，且失败时不在Cookie锁内重新续期',async()=>{
+ const fetch=vi.fn().mockResolvedValue(new Response('{}',{status:401}));vi.stubGlobal('fetch',fetch)
+ await expect(http.post('/auth/logout',{})).rejects.toMatchObject({status:401})
+ expect(fetch).toHaveBeenCalledOnce();expect(auth.tryRefresh).not.toHaveBeenCalled()
+ expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer old-token')
+})

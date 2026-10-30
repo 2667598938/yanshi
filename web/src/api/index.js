@@ -1,6 +1,12 @@
 // 后端接口集中封装（统一前缀 /api/v1）。所有方法返回 data 部分。
 import { http, streamPost } from './http'
 
+// 多标签页共享 refresh Cookie，按顺序轮换，避免同时续期互相作废。
+function sessionCookieRequest(request) {
+  const locks=globalThis.navigator?.locks
+  return locks?.request ? locks.request('yanshi:auth-cookie',request) : request()
+}
+
 // ------------------------------------------------------------ 公共
 export const publicApi = {
   config: () => http.get('/config/public', { auth: false }),
@@ -14,18 +20,18 @@ export const authApi = {
   bindPhone: (phone, code) => http.put('/users/me/phone', { phone, code }),
   sendCode: (email, scene = 'register') =>
     http.post('/auth/email-code', { email, scene }, { auth: false }),
-  emailLogin: (body) => http.post('/auth/email-login', body, { auth: false }),
+  emailLogin: (body) => sessionCookieRequest(() => http.post('/auth/email-login', body, { auth: false })),
   oauthAuthorize: (provider, accepted = false) =>
     http.get(`/auth/oauth/${provider}/authorize`, { auth: false, query: { accepted_terms: accepted } }),
   oauthExchange: (ticket) =>
-    http.post('/auth/oauth/exchange', { ticket }, { auth: false }),
+    sessionCookieRequest(() => http.post('/auth/oauth/exchange', { ticket }, { auth: false })),
   phoneSendCode: (phone) => http.post('/auth/phone/send-code', { phone }, { auth: false }),
   phoneVerify: (phone, code, accepted = false) =>
-    http.post('/auth/phone/verify-code', { phone, code, accepted_terms: accepted }, { auth: false }),
-  register: (body) => http.post('/auth/register', body, { auth: false }),
-  login: (email, password) => http.post('/auth/login', { email, password }, { auth: false }),
-  refresh: () => http.post('/auth/refresh', {}, { auth: false }),
-  logout: () => http.post('/auth/logout', {}),
+    sessionCookieRequest(() => http.post('/auth/phone/verify-code', { phone, code, accepted_terms: accepted }, { auth: false })),
+  register: (body) => sessionCookieRequest(() => http.post('/auth/register', body, { auth: false })),
+  login: (email, password) => sessionCookieRequest(() => http.post('/auth/login', { email, password }, { auth: false })),
+  refresh: () => sessionCookieRequest(() => http.post('/auth/refresh', {}, { auth: false })),
+  logout: () => sessionCookieRequest(() => http.post('/auth/logout', {})),
   resetPassword: (body) => http.post('/auth/reset-password', body, { auth: false }),
   me: () => http.get('/auth/me'),
   updateMe: (body) => http.put('/users/me', body),

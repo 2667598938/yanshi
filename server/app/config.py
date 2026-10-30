@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     image_directory: Path = BASE_DIR / "data" / "uploads"
     image_max_avatar_bytes: int = 2 * 1024 * 1024
     image_max_bytes: int = 5 * 1024 * 1024
+    storage_min_free_bytes: int = Field(default=512 * 1024 * 1024, ge=0)
     storage_quota_bytes: int = (
         200 * 1024 * 1024
     )  # 每用户 200MiB；站点总对象存储容量需另行规划

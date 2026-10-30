@@ -112,7 +112,7 @@ def reclaim(request: Request, user: User = Depends(get_current_user),
         except ApiError:
             failures.append(row.object_key)
             continue
-        logic.mark_deleted(row)
+        db.delete(row)
         freed += int(row.size_bytes or 0)
         deleted.append(row.object_key)
     audit(db, request, 'image.reclaim', user_id=user.id,
@@ -135,6 +135,12 @@ def delete_attachment(key: str, request: Request, user: User = Depends(get_curre
     logic.mark_deleted(row)
     if user.avatar_key == key:
         user.avatar_key = ''
+    try:
+        ImageStorage.for_attachment(request.app.state.settings,row).delete(key)
+    except (ApiError,OSError):
+        pass  # Keep charged metadata for the maintenance retry.
+    else:
+        db.delete(row)
     audit(db, request, 'image.delete', user_id=user.id, detail=key)
     db.commit()
     return ok()

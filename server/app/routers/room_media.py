@@ -3,6 +3,7 @@ import asyncio
 import json
 import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import select
 from ..deps import decode
 from ..models import Room, RoomMember, User
@@ -13,6 +14,7 @@ from ..services.room_ice import ice_servers
 router = APIRouter()
 # Signaling holds no media or long-lived credentials. Each room has at most six connections.
 connections = {}
+RECHECK_INTERVAL=5
 
 def authorize(socket, room_id, token):
     claims = decode(socket, token, 'access')
@@ -22,6 +24,8 @@ def authorize(socket, room_id, token):
         room=db.get(Room,room_id)
         if not user or user.status != 'active' or user.token_version != claims['ver']:
             raise ApiError(401,40101,'请重新登录')
+        from ..services.session_security import require_active_session
+        require_active_session(socket,db,claims)
         if not room or room.dissolved_at or room.room_type != 'av_room' or room.media_mode != 'mesh':
             raise ApiError(403,40301,'房间不支持音视频连接')
         guard_room_type(db,user,room)
@@ -42,7 +46,7 @@ async def signaling(socket: WebSocket,room_id:int):
         authentication=json.loads(raw)
         if not isinstance(authentication,dict):raise ValueError('Invalid authentication')
         token=authentication.get('token','')
-        uid,nickname=authorize(socket,room_id,token)
+        uid,nickname=await run_in_threadpool(authorize,socket,room_id,token)
         room_peers=connections.setdefault(room_id,{})
         if uid in room_peers or len(room_peers)>=6:
             await socket.close(code=4409);return
@@ -50,9 +54,14 @@ async def signaling(socket: WebSocket,room_id:int):
         room_peers[uid]=(socket,nickname)
         # The peer list makes the newcomer the sole initiator for each connection, avoiding offer glare.
         await socket.send_json({'type':'welcome','id':uid,'peers':peers,'iceServers':ice_servers(settings,uid)})
-        window=time.monotonic();count=0
+        window=time.monotonic();count=0;last_message=window
         while True:
-            raw=await asyncio.wait_for(socket.receive_text(),timeout=60)
+            try:raw=await asyncio.wait_for(socket.receive_text(),timeout=RECHECK_INTERVAL)
+            except asyncio.TimeoutError:
+                await run_in_threadpool(authorize,socket,room_id,token)
+                if time.monotonic()-last_message>=60:raise ValueError('Media connection idle')
+                continue
+            last_message=time.monotonic()
             if len(raw)>65536:raise ValueError('Oversized signal')
             if time.monotonic()-window>10:window=time.monotonic();count=0
             count+=1
@@ -61,18 +70,19 @@ async def signaling(socket: WebSocket,room_id:int):
             if not isinstance(message,dict):raise ValueError('Invalid signal')
             if message.get('type')=='auth':
                 replacement=message.get('token','')
-                verified_uid,_=authorize(socket,room_id,replacement)
+                verified_uid,_=await run_in_threadpool(authorize,socket,room_id,replacement)
                 if verified_uid!=uid:raise ValueError('Cannot switch identity in a media connection')
                 token=replacement
                 await socket.send_json({'type':'auth-ok'})
                 continue
-            authorize(socket,room_id,token)  # Recheck removal, features, expiry and token revocation.
+            await run_in_threadpool(authorize,socket,room_id,token)
             if message.get('type')=='ping':
                 await socket.send_json({'type':'pong'});continue
             if message.get('type') not in ('offer','answer','candidate'):raise ValueError('Unknown signal')
             target=room_peers.get(int(message.get('to',0)))
             if target and target[0] is not socket:
-                await target[0].send_json({'type':message['type'],'from':uid,'nickname':nickname,'payload':message.get('payload')})
+                try:await target[0].send_json({'type':message['type'],'from':uid,'nickname':nickname,'payload':message.get('payload')})
+                except (RuntimeError,WebSocketDisconnect):pass
     except (ApiError,ValueError,KeyError,TypeError,asyncio.TimeoutError):
         await socket.close(code=4403)
     except WebSocketDisconnect:

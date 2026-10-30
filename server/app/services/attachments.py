@@ -93,10 +93,13 @@ def transform(upload, *, avatar, max_bytes):
         PROCESS_SLOTS.release()
 
 
-def used_bytes(db, user_id):
+def used_bytes(db, user_id, *, lock=False):
+    # Deleted metadata is charged until its physical object has been removed.
+    if lock:
+        return sum(db.scalars(select(Attachment.size_bytes).where(Attachment.uploader_id==user_id).with_for_update()).all())
     value = db.scalar(
         select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
-            Attachment.uploader_id == user_id, Attachment.deleted_at.is_(None)
+            Attachment.uploader_id == user_id
         )
     )
     return int(value or 0)
@@ -155,7 +158,11 @@ def can_view(row, user, db=None):
 
 
 def create_attachment(db, settings, user, biz_type, processed, size, width, height):
-    if used_bytes(db, user.id) + size > settings.storage_quota_bytes:
+    from ..database import begin_development_transaction
+    if db.get_bind().dialect.name=='sqlite' and not db.connection().connection.driver_connection.in_transaction:
+        begin_development_transaction(db)
+    db.scalar(select(User).where(User.id==user.id).with_for_update())
+    if used_bytes(db, user.id, lock=True) + size > settings.storage_quota_bytes:
         raise ApiError(403, 40301, "图片存储配额不足（每人 200MB）")
     key = f"{biz_type}/{user.id}/{secrets.token_hex(16)}.jpg"
     row = Attachment(
@@ -177,6 +184,20 @@ def create_attachment(db, settings, user, biz_type, processed, size, width, heig
 def mark_deleted(row):
     if not row.deleted_at:
         row.deleted_at = utcnow()
+
+
+def purge_deleted_attachments(session_factory, settings, limit=100):
+    """Retry physical deletion before releasing quota; active attachments are excluded."""
+    from .image_storage import ImageStorage
+    with session_factory() as db:
+        rows=db.scalars(select(Attachment).where(Attachment.deleted_at.is_not(None)).order_by(Attachment.id).limit(limit)).all()
+        purged=0
+        for row in rows:
+            try:ImageStorage.for_attachment(settings,row).delete(row.object_key)
+            except (ApiError,OSError):continue
+            db.delete(row);purged+=1
+        db.commit()
+        return purged
 
 
 ORPHAN_GRACE_HOURS = 24

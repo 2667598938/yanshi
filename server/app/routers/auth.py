@@ -371,6 +371,8 @@ def refresh(
         or user.status in ("banned", "deleted")
     ):
         raise ApiError(401, 40101, "请重新登录")
+    from ..services.session_security import require_active_session
+    require_active_session(request, db, data, allow_legacy=True)
     result = db.execute(
         update(RefreshToken)
         .where(
@@ -384,7 +386,7 @@ def refresh(
     if result.rowcount != 1:
         raise ApiError(401, 40101, "此刷新凭证已失效，请重新登录")
     db.commit()
-    tokens = issue_session(request, db, user, response, now)
+    tokens = issue_session(request, db, user, response, now, session_id=data.get('sid'))
     db.commit()
     return ok(tokens)
 
@@ -399,12 +401,19 @@ def logout(
     token = (
         body.refresh_token if body and body.refresh_token else ""
     ) or request.cookies.get(REFRESH_COOKIE, "")
-    try:
-        if token:
-            data = decode(request, token, "refresh")
+    from ..services.session_security import revoke_session
+    candidates=[(token,'refresh')]
+    header=request.headers.get('authorization','')
+    if header.startswith('Bearer '):candidates.append((header[7:],'access'))
+    revoked=set()
+    for candidate,kind in candidates:
+        if not candidate:continue
+        try:data=decode(request,candidate,kind)
+        except ApiError:continue
+        if kind=='refresh':
             db.execute(
                 update(RefreshToken)
-                .where(RefreshToken.id == digest(data["jti"]))
+                .where(RefreshToken.id == digest(data["jti"]),RefreshToken.user_id == int(data['sub']))
                 .values(revoked_at=clock(request))
             )
             from ..models import RoomPresence
@@ -420,9 +429,9 @@ def logout(
                     .where(RoomPresence.user_id == int(data["sub"]))
                     .values(status="offline", focus_started_at=None)
                 )
-            db.commit()
-    except ApiError:
-        pass
+        if data.get('sid') not in revoked:
+            revoke_session(request,db,data);revoked.add(data.get('sid'))
+    db.commit()
     clear_refresh_cookie(response)
     return ok()
 

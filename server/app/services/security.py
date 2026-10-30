@@ -43,18 +43,20 @@ def new_invite_code(n: int = 8) -> str:
     return ''.join(_secrets.choice(INVITE_ALPHABET) for _ in range(n))
 
 
-def issue_tokens(request, db, user, now=None):
+def issue_tokens(request, db, user, now=None, *, session_id=None):
     """签发 access + refresh（同属一个 family，refresh 落库以便旋转/吊销）。"""
     now = now or utcnow()
     settings = request.app.state.settings
     result = {}
     family = _secrets.token_hex(24)
+    session_id = session_id or _secrets.token_hex(24)
     for kind, duration in (('access', settings.access_seconds), ('refresh', settings.refresh_seconds)):
         token_id = family if kind == 'refresh' else _secrets.token_hex(24)
         payload = {
             'sub': str(user.id), 'ver': user.token_version, 'kind': kind, 'jti': token_id,
             'iat': now, 'exp': now + timedelta(seconds=duration),
             'iss': settings.jwt_issuer, 'aud': settings.jwt_audience, 'fid': digest(family),
+            'sid': session_id,
         }
         result[kind + '_token'] = jwt.encode(payload, request.app.state.secret, algorithm='HS256')
         if kind == 'refresh':
@@ -63,9 +65,9 @@ def issue_tokens(request, db, user, now=None):
     return result
 
 
-def issue_session(request, db, user, response, now=None):
+def issue_session(request, db, user, response, now=None, *, session_id=None):
     """签发会话：access 返回 JSON，refresh 写入 httpOnly Cookie。"""
-    tokens = issue_tokens(request, db, user, now)
+    tokens = issue_tokens(request, db, user, now, session_id=session_id)
     refresh_token = tokens.pop('refresh_token')
     set_refresh_cookie(response, refresh_token, request.app.state.settings)
     tokens['user'] = user_payload(user, request.app.state.settings)

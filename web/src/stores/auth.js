@@ -5,6 +5,7 @@ import { afterLogin, afterLogout } from '../sync/account'
 // 只缓存非敏感的展示资料；access token 常驻内存，refresh token 在 httpOnly Cookie
 const SESSION_KEY = 'yanshi:session'
 const LEGACY_KEY = 'yanshi:auth'
+const refreshRequests = new WeakMap()
 
 function loadCachedUser() {
   try {
@@ -97,18 +98,29 @@ export const useAuthStore = defineStore('auth', {
     async tryRefresh() {
       if (!this.user) return false
       const owner=this.user.id, avatarRevision=this.avatarRevision
-      try {
-        const data = await authApi.refresh()
-        if(typeof owner!=='undefined' && this.user?.id!==owner)return false
-        this.accessToken = data.access_token
-        if (data.user) this.mergeServerUser(data.user,avatarRevision)
-        this.persist()
-        return true
-      } catch (e) {
-        // 网络不可用时保留登录态，等联网后重试；只有明确失效才登出
-        if (this.user?.id===owner && e.status && e.status < 500) this.clear()
-        return false
-      }
+      const pending=refreshRequests.get(this)
+      if(pending?.owner===owner)return pending.promise
+      const entry={owner,promise:null}
+      entry.promise=(async()=>{
+        try {
+          const data = await authApi.refresh()
+          if(this.user?.id!==owner)return false
+          // Cookie 可能已在另一标签页切换账号；必须先核对身份，再接受凭证。
+          if(data.user?.id!==owner){this.clear();return false}
+          this.accessToken = data.access_token
+          this.mergeServerUser(data.user,avatarRevision)
+          this.persist()
+          return true
+        } catch (e) {
+          // 限流与网络错误可以重试；只有明确的认证失效才登出。
+          if (this.user?.id===owner && [401,403].includes(e.status)) this.clear()
+          return false
+        } finally {
+          if(refreshRequests.get(this)===entry)refreshRequests.delete(this)
+        }
+      })()
+      refreshRequests.set(this,entry)
+      return entry.promise
     },
     updateAvatar(key) {
       if (!this.user) return
