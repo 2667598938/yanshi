@@ -18,6 +18,7 @@ import { useGroupPresence } from './composables/useGroupPresence'
 import { useNotificationsStore } from './stores/notifications'
 import { useClockStore } from './stores/clock'
 import StudyStatusBar from './components/StudyStatusBar.vue'
+import SiteFooter from './components/SiteFooter.vue'
 
 const timer = useTimerStore()
 const app = useAppStore()
@@ -76,6 +77,7 @@ function playChime() {
       osc.frequency.value = f
       const t = ctx.currentTime + i * 0.18
       gain.gain.setValueAtTime(0, t)
+      gain.gain.linearGradientToValueAtPoint?.(0.22, t + 0.03)
       gain.gain.linearRampToValueAtTime(0.22, t + 0.03)
       gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2)
       osc.connect(gain)
@@ -122,6 +124,7 @@ watch(
     <CommunityIssues v-if="auth.isLoggedIn !== false" />
     <main id="main-content" class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }" :data-view="route.path.split('/')[1] || 'home'" :data-page="route.name" tabindex="-1">
       <router-view v-if="mayRenderRoute" :key="route.path" />
+      <SiteFooter v-if="mayRenderRoute" />
     </main>
     <TabBar v-if="mayRenderRoute && !route.meta.hideTabbar" />
     <ToastLayer />
