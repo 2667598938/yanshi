@@ -1,20 +1,20 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ArrowLeft } from 'lucide-vue-next'
-import { publicApi } from '../api'
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ArrowLeft } from 'lucide-vue-next';
+import { publicApi } from '../api';
 
-const router = useRouter()
-const text = ref('加载中…')
+const router = useRouter();
+const text = ref('加载中…');
 
 onMounted(async () => {
   try {
-    const legal = await publicApi.legal()
-    text.value = legal.disclaimer || '暂无内容'
+    const legal = await publicApi.legal();
+    text.value = legal.disclaimer || '暂无内容';
   } catch {
-    text.value = '加载失败，请稍后再试'
+    text.value = '加载失败，请稍后再试';
   }
-})
+});
 </script>
 
 <template>

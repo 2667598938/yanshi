@@ -1,11 +1,11 @@
 <script setup>
 // ICP 备案号与工信部查询地址
-const MIIT_URL = 'https://beian.miit.gov.cn/'
-const ICP_NUMBER = '豫ICP备2026056816号'
+const MIIT_URL = 'https://beian.miit.gov.cn/';
+const ICP_NUMBER = '豫ICP备2026056816号';
 
 // 公安联网备案：审核通过后把号码填入 MPS_NUMBER（留空则不显示）
-const MPS_URL = 'https://beian.mps.gov.cn/'
-const MPS_NUMBER = ''
+const MPS_URL = 'https://beian.mps.gov.cn/';
+const MPS_NUMBER = '';
 </script>
 
 <template>

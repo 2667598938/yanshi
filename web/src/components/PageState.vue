@@ -1,6 +1,6 @@
 <script setup>
-defineProps({ loading: Boolean, error: String, empty: Boolean, emptyLabel: String })
-defineEmits(['retry'])
+defineProps({ loading: Boolean, error: String, empty: Boolean, emptyLabel: String });
+defineEmits(['retry']);
 </script>
 
 <template>

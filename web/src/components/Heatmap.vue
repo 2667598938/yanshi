@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue'
-import { fmtMinutes } from '../utils/date'
+import { computed } from 'vue';
+import { fmtMinutes } from '../utils/date';
 
 const props = defineProps({
   view: { type: String, default: 'year' },
@@ -9,25 +9,25 @@ const props = defineProps({
   monthLabs: { type: Array, default: () => [] },
   weekDays: { type: Array, default: () => [] },
   selected: { type: String, default: '' },
-})
-const emit = defineEmits(['select'])
+});
+const emit = defineEmits(['select']);
 
-const DOW = ['一', '二', '三', '四', '五', '六', '日']
-const monthDays = computed(() => props.monthWeeks.flat())
+const DOW = ['一', '二', '三', '四', '五', '六', '日'];
+const monthDays = computed(() => props.monthWeeks.flat());
 
 function level(cell) {
-  if (cell.future) return 'f'
-  if (!cell.min) return 'l0'
-  if (cell.min < 30) return 'l1'
-  if (cell.min < 60) return 'l2'
-  if (cell.min < 120) return 'l3'
-  return 'l4'
+  if (cell.future) return 'f';
+  if (!cell.min) return 'l0';
+  if (cell.min < 30) return 'l1';
+  if (cell.min < 60) return 'l2';
+  if (cell.min < 120) return 'l3';
+  return 'l4';
 }
 function dowOf(key) {
-  return DOW[((new Date(key + 'T00:00:00').getDay() + 6) % 7)]
+  return DOW[(new Date(key + 'T00:00:00').getDay() + 6) % 7];
 }
 function dayNum(key) {
-  return Number(key.slice(8, 10))
+  return Number(key.slice(8, 10));
 }
 </script>
 
@@ -41,7 +41,8 @@ function dayNum(key) {
           :key="ml.col"
           class="hm-ml"
           :style="{ left: (ml.col / Math.max(yearWeeks.length, 1)) * 100 + '%' }"
-        >{{ ml.name }}</span>
+          >{{ ml.name }}</span
+        >
       </div>
       <div class="hm-cols">
         <div v-for="(col, ci) in yearWeeks" :key="ci" class="hm-col">
@@ -72,7 +73,9 @@ function dayNum(key) {
           @mouseenter="emit('select', cell.key)"
         >
           <span class="cal-num">{{ dayNum(cell.key) }}</span>
-          <span v-if="cell.min" class="cal-min tnum">{{ cell.min >= 60 ? (cell.min / 60).toFixed(1).replace(/\.0$/, '') + 'h' : cell.min + 'm' }}</span>
+          <span v-if="cell.min" class="cal-min tnum">{{
+            cell.min >= 60 ? (cell.min / 60).toFixed(1).replace(/\.0$/, '') + 'h' : cell.min + 'm'
+          }}</span>
         </div>
       </div>
     </div>

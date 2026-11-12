@@ -1,137 +1,135 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import {
-  ChevronLeft, Check, ImagePlus, X, NotebookPen,
-} from 'lucide-vue-next'
-import BlobImage from '../components/BlobImage.vue'
-import { useMistakesStore } from '../stores/mistakes'
-import { useSubjectsStore } from '../stores/subjects'
-import { errorTypeApi } from '../api'
-import { MISTAKE_REASONS, REVIEW_INTERVALS, intervalLabel } from '../data/subjects'
-import { compressImage } from '../utils/image'
-import { todayKey } from '../utils/date'
-import { useToast } from '../composables/useToast'
+import { ref, onMounted, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import { ChevronLeft, Check, ImagePlus, X, NotebookPen } from 'lucide-vue-next';
+import BlobImage from '../components/BlobImage.vue';
+import { useMistakesStore } from '../stores/mistakes';
+import { useSubjectsStore } from '../stores/subjects';
+import { errorTypeApi } from '../api';
+import { MISTAKE_REASONS, REVIEW_INTERVALS, intervalLabel } from '../data/subjects';
+import { compressImage } from '../utils/image';
+import { todayKey } from '../utils/date';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const route = useRoute()
-const mistakes = useMistakesStore()
-const subjects = useSubjectsStore()
-const { toast } = useToast()
+const router = useRouter();
+const route = useRoute();
+const mistakes = useMistakesStore();
+const subjects = useSubjectsStore();
+const { toast } = useToast();
 
-const QUICK_TAGS = ['数一', '408', '英语阅读', '政治', '竞赛', '真题', '高频']
+const QUICK_TAGS = ['数一', '408', '英语阅读', '政治', '竞赛', '真题', '高频'];
 
-const editingId = ref(null)
-const fSubject = ref('')
-const fChapter = ref('')
-const fReason = ref('concept')
-const tags = ref([])
-const images = ref([])
-const answerImages = ref([])
-const fContent = ref('')
-const fIdea = ref('')
-const fAnalysis = ref('')
-const fDate = ref(todayKey())
-const sessionId = ref(null)
-const tagInput = ref('')
-const fileRef = ref(null)
-const answerFileRef = ref(null)
-const customReasons = ref([])
-const saving = ref(false)
+const editingId = ref(null);
+const fSubject = ref('');
+const fChapter = ref('');
+const fReason = ref('concept');
+const tags = ref([]);
+const images = ref([]);
+const answerImages = ref([]);
+const fContent = ref('');
+const fIdea = ref('');
+const fAnalysis = ref('');
+const fDate = ref(todayKey());
+const sessionId = ref(null);
+const tagInput = ref('');
+const fileRef = ref(null);
+const answerFileRef = ref(null);
+const customReasons = ref([]);
+const saving = ref(false);
 
 const reasonOptions = computed(() => {
-  const rows = MISTAKE_REASONS.map((r) => ({ value: r.id, name: r.name }))
-  for (const r of customReasons.value) rows.push({ value: r.name, name: r.name })
+  const rows = MISTAKE_REASONS.map((r) => ({ value: r.id, name: r.name }));
+  for (const r of customReasons.value) rows.push({ value: r.name, name: r.name });
   if (fReason.value && !rows.some((r) => r.value === fReason.value)) {
-    rows.push({ value: fReason.value, name: fReason.value })
+    rows.push({ value: fReason.value, name: fReason.value });
   }
-  return rows
-})
+  return rows;
+});
 
 onMounted(async () => {
   try {
-    const data = await errorTypeApi.list()
-    customReasons.value = data.custom || []
+    const data = await errorTypeApi.list();
+    customReasons.value = data.custom || [];
   } catch {
-    customReasons.value = []
+    customReasons.value = [];
   }
-})
+});
 
 onMounted(() => {
-  const q = route.query
+  const q = route.query;
   if (q.id) {
-    const m = mistakes.list.find((x) => x.id === q.id)
+    const m = mistakes.list.find((x) => x.id === q.id);
     if (m) {
-      editingId.value = m.id
-      fSubject.value = m.subjectId
-      fChapter.value = m.chapter
-      fReason.value = m.reason
-      tags.value = [...(m.tags || [])]
-      images.value = [...(m.images || [])]
-      answerImages.value = [...(m.answerImages || [])]
-      fContent.value = m.content
-      fIdea.value = m.idea || ''
-      fAnalysis.value = m.analysis || ''
-      fDate.value = m.sourceDate
-      sessionId.value = m.sessionId
+      editingId.value = m.id;
+      fSubject.value = m.subjectId;
+      fChapter.value = m.chapter;
+      fReason.value = m.reason;
+      tags.value = [...(m.tags || [])];
+      images.value = [...(m.images || [])];
+      answerImages.value = [...(m.answerImages || [])];
+      fContent.value = m.content;
+      fIdea.value = m.idea || '';
+      fAnalysis.value = m.analysis || '';
+      fDate.value = m.sourceDate;
+      sessionId.value = m.sessionId;
     }
   } else {
-    fSubject.value = q.subjectId || subjects.active[0]?.id || 'other'
-    fDate.value = q.date || todayKey()
-    sessionId.value = q.sessionId || null
+    fSubject.value = q.subjectId || subjects.active[0]?.id || 'other';
+    fDate.value = q.date || todayKey();
+    sessionId.value = q.sessionId || null;
   }
-})
+});
 
 function addTag(t) {
-  const v = (t || '').trim()
-  if (!v || tags.value.includes(v)) return
+  const v = (t || '').trim();
+  if (!v || tags.value.includes(v)) return;
   if (tags.value.length >= 8) {
-    toast('最多 8 个标签')
-    return
+    toast('最多 8 个标签');
+    return;
   }
-  tags.value.push(v)
-  tagInput.value = ''
+  tags.value.push(v);
+  tagInput.value = '';
 }
 function removeTag(t) {
-  tags.value = tags.value.filter((x) => x !== t)
+  tags.value = tags.value.filter((x) => x !== t);
 }
 
 async function pickInto(list, e) {
-  const files = Array.from(e.target.files || [])
+  const files = Array.from(e.target.files || []);
   for (const f of files) {
     if (list.value.length >= 9) {
-      toast('最多 9 张图')
-      break
+      toast('最多 9 张图');
+      break;
     }
     try {
-      const blob = await compressImage(f, 1280, 0.82)
-      list.value.push(blob)
+      const blob = await compressImage(f, 1280, 0.82);
+      list.value.push(blob);
     } catch {
-      toast('图片读取失败')
+      toast('图片读取失败');
     }
   }
-  e.target.value = ''
+  e.target.value = '';
 }
 function onPick(e) {
-  return pickInto(images, e)
+  return pickInto(images, e);
 }
 function onPickAnswer(e) {
-  return pickInto(answerImages, e)
+  return pickInto(answerImages, e);
 }
 function removeImg(i) {
-  images.value.splice(i, 1)
+  images.value.splice(i, 1);
 }
 function removeAnswerImg(i) {
-  answerImages.value.splice(i, 1)
+  answerImages.value.splice(i, 1);
 }
 
 async function save() {
-  if (saving.value) return
+  if (saving.value) return;
   if (!fContent.value.trim() && !images.value.length) {
-    toast('至少写点题干或上传一张题目截图')
-    return
+    toast('至少写点题干或上传一张题目截图');
+    return;
   }
-  saving.value = true
+  saving.value = true;
   try {
     // 先保存本机图片与记录，补传由同步队列完成，不让网络请求阻塞收录。
     const payload = {
@@ -145,21 +143,21 @@ async function save() {
       images: images.value,
       answerImages: answerImages.value,
       sourceDate: fDate.value,
-    }
+    };
     if (editingId.value) {
-      await mistakes.update(editingId.value, payload)
-      toast('已更新错题')
+      await mistakes.update(editingId.value, payload);
+      toast('已更新错题');
     } else {
-      payload.sessionId = sessionId.value
-      await mistakes.add(payload)
-      toast(`已收录，将在 ${intervalLabel(REVIEW_INTERVALS[0])}后提醒复习`)
+      payload.sessionId = sessionId.value;
+      await mistakes.add(payload);
+      toast(`已收录，将在 ${intervalLabel(REVIEW_INTERVALS[0])}后提醒复习`);
     }
-    await router.push('/mistakes')
+    await router.push('/mistakes');
   } catch (error) {
-    console.error('错题保存失败', error)
-    toast('保存失败，请重试；填写的内容仍保留在当前页')
+    console.error('错题保存失败', error);
+    toast('保存失败，请重试；填写的内容仍保留在当前页');
   } finally {
-    saving.value = false
+    saving.value = false;
   }
 }
 </script>
@@ -174,7 +172,11 @@ async function save() {
     </div>
   </div>
 
-  <div class="page"><p class="field-hint">请确认有权上传题目/解析图片。<router-link to="/disclaimer">查看免责声明</router-link>；隐私模式可停止小组查看。</p>
+  <div class="page">
+    <p class="field-hint">
+      请确认有权上传题目/解析图片。<router-link to="/disclaimer">查看免责声明</router-link
+      >；隐私模式可停止小组查看。
+    </p>
     <div class="card">
       <div class="f-label">所属科目</div>
       <select v-model="fSubject" class="select">
@@ -182,7 +184,12 @@ async function save() {
       </select>
 
       <div class="f-label">章节 / 知识点</div>
-      <input v-model="fChapter" class="input" placeholder="如：极限与连续、进程调度" maxlength="30" />
+      <input
+        v-model="fChapter"
+        class="input"
+        placeholder="如：极限与连续、进程调度"
+        maxlength="30"
+      />
 
       <div class="f-label">错误原因</div>
       <div class="pill-row">
@@ -193,7 +200,9 @@ async function save() {
           :class="{ active: fReason === r.value }"
           :style="fReason === r.value ? { background: 'var(--tomato)' } : {}"
           @click="fReason = r.value"
-        >{{ r.name }}</button>
+        >
+          {{ r.name }}
+        </button>
       </div>
     </div>
 
@@ -217,7 +226,9 @@ async function save() {
           class="pill"
           :class="{ used: tags.includes(t) }"
           @click="addTag(t)"
-        >{{ t }}</button>
+        >
+          {{ t }}
+        </button>
       </div>
     </div>
 
@@ -225,7 +236,10 @@ async function save() {
       <div class="f-label">题目图（最多 9 张）</div>
       <div class="img-grid">
         <div v-for="(b, i) in images" :key="i" class="img-cell">
-          <BlobImage :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" />
+          <BlobImage
+            :blob="typeof b === 'string' ? null : b"
+            :src="typeof b === 'string' ? b : ''"
+          />
           <button class="img-del" @click="removeImg(i)"><X :size="14" /></button>
         </div>
         <button class="img-add" @click="fileRef.click()">
@@ -233,21 +247,17 @@ async function save() {
           <span>加题目图</span>
         </button>
       </div>
-      <input
-        ref="fileRef"
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        @change="onPick"
-      />
+      <input ref="fileRef" type="file" accept="image/*" multiple hidden @change="onPick" />
     </div>
 
     <div class="card">
       <div class="f-label">解析图（最多 9 张）</div>
       <div class="img-grid">
         <div v-for="(b, i) in answerImages" :key="i" class="img-cell">
-          <BlobImage :blob="typeof b === 'string' ? null : b" :src="typeof b === 'string' ? b : ''" />
+          <BlobImage
+            :blob="typeof b === 'string' ? null : b"
+            :src="typeof b === 'string' ? b : ''"
+          />
           <button class="img-del" @click="removeAnswerImg(i)"><X :size="14" /></button>
         </div>
         <button class="img-add" @click="answerFileRef.click()">
@@ -294,7 +304,12 @@ async function save() {
       <input v-model="fDate" type="date" class="input" />
     </div>
 
-    <button class="btn btn-tomato btn-block mt12" :disabled="saving" :aria-busy="saving" @click="save">
+    <button
+      class="btn btn-tomato btn-block mt12"
+      :disabled="saving"
+      :aria-busy="saving"
+      @click="save"
+    >
       <NotebookPen :size="18" />{{ saving ? '保存中…' : editingId ? '保存修改' : '收录错题' }}
     </button>
   </div>

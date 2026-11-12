@@ -1,92 +1,104 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  ChevronLeft, Plus, Check, Trash2, Pencil, AlertTriangle, Play, ListChecks,
-} from 'lucide-vue-next'
-import SubjectIcon from '../components/SubjectIcon.vue'
-import { useTasksStore } from '../stores/tasks'
-import { useSubjectsStore } from '../stores/subjects'
-import { useClockStore } from '../stores/clock'
-import { useTimerStore } from '../stores/timer'
-import { PHASES, PHASE_MAP } from '../data/subjects'
-import { todayKey, mdWeekLabel } from '../utils/date'
-import { useToast } from '../composables/useToast'
+  ChevronLeft,
+  Plus,
+  Check,
+  Trash2,
+  Pencil,
+  AlertTriangle,
+  Play,
+  ListChecks,
+} from 'lucide-vue-next';
+import SubjectIcon from '../components/SubjectIcon.vue';
+import { useTasksStore } from '../stores/tasks';
+import { useSubjectsStore } from '../stores/subjects';
+import { useClockStore } from '../stores/clock';
+import { useTimerStore } from '../stores/timer';
+import { PHASES, PHASE_MAP } from '../data/subjects';
+import { todayKey, mdWeekLabel } from '../utils/date';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const tasks = useTasksStore()
-const subjects = useSubjectsStore()
-const clock = useClockStore()
-const timer = useTimerStore()
-const taskEffort = computed(() => timer.taskSeconds || {})
-const { toast } = useToast()
+const router = useRouter();
+const tasks = useTasksStore();
+const subjects = useSubjectsStore();
+const clock = useClockStore();
+const timer = useTimerStore();
+const taskEffort = computed(() => timer.taskSeconds || {});
+const { toast } = useToast();
 
-const saving = ref(false)
-const sheet = ref(false)
-const editingId = ref(null)
-const fTitle = ref('')
-const fSubject = ref('')
-const fPhase = ref('custom')
-const fCriteria = ref('')
-const fDue = ref(todayKey())
-const fEstimated = ref(0)
+const saving = ref(false);
+const sheet = ref(false);
+const editingId = ref(null);
+const fTitle = ref('');
+const fSubject = ref('');
+const fPhase = ref('custom');
+const fCriteria = ref('');
+const fDue = ref(todayKey());
+const fEstimated = ref(0);
 
-const today = computed(() => clock.today)
-const overdue = computed(() =>
-  tasks.open.filter((t) => t.dueDate && t.dueDate < today.value))
-const todayTasks = computed(() =>
-  tasks.open.filter((t) => t.dueDate === today.value))
+const today = computed(() => clock.today);
+const overdue = computed(() => tasks.open.filter((t) => t.dueDate && t.dueDate < today.value));
+const todayTasks = computed(() => tasks.open.filter((t) => t.dueDate === today.value));
 const future = computed(() =>
   tasks.open
     .filter((t) => !t.dueDate || t.dueDate > today.value)
-    .sort((a, b) => (a.dueDate||'9999').localeCompare(b.dueDate||'9999')))
+    .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999')),
+);
 const doneList = computed(() =>
-  tasks.list.filter((t) => t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).slice(0,30))
+  tasks.list
+    .filter((t) => t.done)
+    .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0))
+    .slice(0, 30),
+);
 
 const todayRate = computed(() => {
-  const all = tasks.todayAll
-  if (!all.length) return null
-  return Math.round((all.filter((t) => t.done).length / all.length) * 100)
-})
+  const all = tasks.todayAll;
+  if (!all.length) return null;
+  return Math.round((all.filter((t) => t.done).length / all.length) * 100);
+});
 
 function subjOf(id) {
-  return subjects.byId[id] || subjects.byId.other
+  return subjects.byId[id] || subjects.byId.other;
 }
 function dateLabel(key) {
-  if(!key)return '未设截止日期'
-  if (key === today.value) return '今天'
-  return mdWeekLabel(key)
+  if (!key) return '未设截止日期';
+  if (key === today.value) return '今天';
+  return mdWeekLabel(key);
 }
 
 function openAdd() {
-  editingId.value = null
-  fTitle.value = ''
-  fSubject.value = subjects.active[0]?.id || 'other'
-  fPhase.value = 'custom'
-  fCriteria.value = ''
-  fDue.value = today.value
-  fEstimated.value = 0
-  sheet.value = true
+  editingId.value = null;
+  fTitle.value = '';
+  fSubject.value = subjects.active[0]?.id || 'other';
+  fPhase.value = 'custom';
+  fCriteria.value = '';
+  fDue.value = today.value;
+  fEstimated.value = 0;
+  sheet.value = true;
 }
 function openEdit(t) {
-  editingId.value = t.id
-  fTitle.value = t.title
-  fSubject.value = t.subjectId
-  fPhase.value = t.phase
-  fCriteria.value = t.acceptCriteria || ''
-  fDue.value = t.dueDate ?? ''
-  fEstimated.value = t.estimatedMin || 0
-  sheet.value = true
+  editingId.value = t.id;
+  fTitle.value = t.title;
+  fSubject.value = t.subjectId;
+  fPhase.value = t.phase;
+  fCriteria.value = t.acceptCriteria || '';
+  fDue.value = t.dueDate ?? '';
+  fEstimated.value = t.estimatedMin || 0;
+  sheet.value = true;
 }
 function focusTask(task) {
-  router.push({ path: '/focus', query: { taskId: task.id, subjectId: task.subjectId,
-    content: task.title.slice(0, 100) } })
+  router.push({
+    path: '/focus',
+    query: { taskId: task.id, subjectId: task.subjectId, content: task.title.slice(0, 100) },
+  });
 }
 async function save() {
-  if (saving.value) return
+  if (saving.value) return;
   if (!fTitle.value.trim()) {
-    toast('请填写任务标题')
-    return
+    toast('请填写任务标题');
+    return;
   }
   const payload = {
     title: fTitle.value,
@@ -94,24 +106,27 @@ async function save() {
     phase: fPhase.value,
     acceptCriteria: fCriteria.value,
     dueDate: fDue.value,
-    estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(fEstimated.value)||0))),
-  }
-  saving.value = true
+    estimatedMin: Math.max(0, Math.min(1440, Math.trunc(Number(fEstimated.value) || 0))),
+  };
+  saving.value = true;
   try {
     if (editingId.value) {
-      await tasks.update(editingId.value, payload)
-      toast('已更新任务')
+      await tasks.update(editingId.value, payload);
+      toast('已更新任务');
     } else {
-      await tasks.add(payload)
-      toast('已添加任务')
+      await tasks.add(payload);
+      toast('已添加任务');
     }
-    sheet.value = false
-  } catch (e) { toast(e.message || '任务保存失败，请重试') }
-  finally { saving.value = false }
+    sheet.value = false;
+  } catch (e) {
+    toast(e.message || '任务保存失败，请重试');
+  } finally {
+    saving.value = false;
+  }
 }
 async function remove(id) {
-  await tasks.remove(id)
-  toast('已删除任务')
+  await tasks.remove(id);
+  toast('已删除任务');
 }
 </script>
 
@@ -125,165 +140,225 @@ async function remove(id) {
   </div>
 
   <div class="task-workspace">
-  <div class="page">
-    <!-- 今日完成率 -->
-    <div class="rate-card">
-      <div class="rate-l">
-        <div class="rate-num tnum">{{ todayRate === null ? '—' : todayRate + '%' }}</div>
-        <div class="rate-cap">今日计划完成率（按截止日）</div>
-        <small>今天实际完成 {{tasks.doneCountBetween(today,today)}} 项，包含补做的旧任务</small>
-      </div>
-      <div class="rate-r">
-        <div>今天 {{ tasks.todayAll.filter((t) => t.done).length }}/{{ tasks.todayAll.length }} 项</div>
-        <div v-if="overdue.length" class="overdue">
-          <AlertTriangle :size="13" /> {{ overdue.length }} 项已逾期
+    <div class="page">
+      <!-- 今日完成率 -->
+      <div class="rate-card">
+        <div class="rate-l">
+          <div class="rate-num tnum">{{ todayRate === null ? '—' : todayRate + '%' }}</div>
+          <div class="rate-cap">今日计划完成率（按截止日）</div>
+          <small
+            >今天实际完成 {{ tasks.doneCountBetween(today, today) }} 项，包含补做的旧任务</small
+          >
+        </div>
+        <div class="rate-r">
+          <div>
+            今天 {{ tasks.todayAll.filter((t) => t.done).length }}/{{ tasks.todayAll.length }} 项
+          </div>
+          <div v-if="overdue.length" class="overdue">
+            <AlertTriangle :size="13" /> {{ overdue.length }} 项已逾期
+          </div>
         </div>
       </div>
-    </div>
 
-    <button class="btn btn-primary btn-block mt12" @click="openAdd">
-      <Plus :size="18" />新建任务
-    </button>
+      <button class="btn btn-primary btn-block mt12" @click="openAdd">
+        <Plus :size="18" />新建任务
+      </button>
 
-    <!-- 逾期 -->
-    <template v-if="overdue.length">
-      <div class="section-title">已逾期</div>
-      <div class="card">
-        <div v-for="t in overdue" :key="t.id" class="task-row">
-          <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
-          <div class="task-body" @click="openEdit(t)">
-            <div class="task-title danger">{{ t.title }}</div>
-            <div class="task-crit">已投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟 · 预估 {{t.estimatedMin||0}} 分钟</div>
-            <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
-            <div class="task-meta">
-              <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
-                <SubjectIcon :name="subjOf(t.subjectId)?.icon" :size="12" />
-                {{ subjOf(t.subjectId)?.name }}
-              </span>
-              <span class="phase-tag" :style="{ background: (PHASE_MAP[t.phase]?.color || '#999') + '1a', color: PHASE_MAP[t.phase]?.color }">
-                {{ PHASE_MAP[t.phase]?.name }}
-              </span>
-              <span class="due overdue-text">{{ dateLabel(t.dueDate) }}</span>
+      <!-- 逾期 -->
+      <template v-if="overdue.length">
+        <div class="section-title">已逾期</div>
+        <div class="card">
+          <div v-for="t in overdue" :key="t.id" class="task-row">
+            <button class="check" @click="tasks.toggle(t.id)">
+              <Check :size="15" :stroke-width="3" />
+            </button>
+            <div class="task-body" @click="openEdit(t)">
+              <div class="task-title danger">{{ t.title }}</div>
+              <div class="task-crit">
+                已投入 {{ Math.round((taskEffort[t.id] || 0) / 60) }} 分钟 · 预估
+                {{ t.estimatedMin || 0 }} 分钟
+              </div>
+              <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
+              <div class="task-meta">
+                <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
+                  <SubjectIcon :name="subjOf(t.subjectId)?.icon" :size="12" />
+                  {{ subjOf(t.subjectId)?.name }}
+                </span>
+                <span
+                  class="phase-tag"
+                  :style="{
+                    background: (PHASE_MAP[t.phase]?.color || '#999') + '1a',
+                    color: PHASE_MAP[t.phase]?.color,
+                  }"
+                >
+                  {{ PHASE_MAP[t.phase]?.name }}
+                </span>
+                <span class="due overdue-text">{{ dateLabel(t.dueDate) }}</span>
+              </div>
             </div>
-          </div>
-          <button class="del" @click="remove(t.id)"><Trash2 :size="15" /></button>
-          <button class="edit" title="为此任务专注" @click="focusTask(t)"><Play :size="15" /></button>
-        </div>
-      </div>
-    </template>
-
-    <!-- 今日 -->
-    <div class="section-title">今天</div>
-    <div class="card">
-      <div v-if="!todayTasks.length" class="empty">今天没有任务，新建一个吧</div>
-      <div v-for="t in todayTasks" :key="t.id" class="task-row">
-        <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
-        <div class="task-body" @click="openEdit(t)">
-          <div class="task-title">{{ t.title }}</div>
-          <div class="task-crit">已投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟 · 预估 {{t.estimatedMin||0}} 分钟</div>
-          <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
-          <div class="task-meta">
-            <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
-              <SubjectIcon :name="subjOf(t.subjectId)?.icon" :size="12" />
-              {{ subjOf(t.subjectId)?.name }}
-            </span>
-            <span class="phase-tag" :style="{ background: (PHASE_MAP[t.phase]?.color || '#999') + '1a', color: PHASE_MAP[t.phase]?.color }">
-              {{ PHASE_MAP[t.phase]?.name }}
-            </span>
+            <button class="del" @click="remove(t.id)"><Trash2 :size="15" /></button>
+            <button class="edit" title="为此任务专注" @click="focusTask(t)">
+              <Play :size="15" />
+            </button>
           </div>
         </div>
-        <button class="edit" title="为此任务专注" @click="focusTask(t)"><Play :size="15" /></button>
-        <button class="edit" @click="openEdit(t)"><Pencil :size="15" /></button>
-      </div>
-    </div>
+      </template>
 
-    <!-- 未来 -->
-    <template v-if="future.length">
-      <div class="section-title">其他待办</div>
+      <!-- 今日 -->
+      <div class="section-title">今天</div>
       <div class="card">
-        <div v-for="t in future" :key="t.id" class="task-row">
-          <button class="check" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
+        <div v-if="!todayTasks.length" class="empty">今天没有任务，新建一个吧</div>
+        <div v-for="t in todayTasks" :key="t.id" class="task-row">
+          <button class="check" @click="tasks.toggle(t.id)">
+            <Check :size="15" :stroke-width="3" />
+          </button>
           <div class="task-body" @click="openEdit(t)">
             <div class="task-title">{{ t.title }}</div>
-            <div class="task-crit">已投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟 · 预估 {{t.estimatedMin||0}} 分钟</div>
+            <div class="task-crit">
+              已投入 {{ Math.round((taskEffort[t.id] || 0) / 60) }} 分钟 · 预估
+              {{ t.estimatedMin || 0 }} 分钟
+            </div>
             <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
             <div class="task-meta">
               <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
                 <SubjectIcon :name="subjOf(t.subjectId)?.icon" :size="12" />
                 {{ subjOf(t.subjectId)?.name }}
               </span>
-              <span class="phase-tag" :style="{ background: (PHASE_MAP[t.phase]?.color || '#999') + '1a', color: PHASE_MAP[t.phase]?.color }">
+              <span
+                class="phase-tag"
+                :style="{
+                  background: (PHASE_MAP[t.phase]?.color || '#999') + '1a',
+                  color: PHASE_MAP[t.phase]?.color,
+                }"
+              >
                 {{ PHASE_MAP[t.phase]?.name }}
               </span>
-              <span class="due">{{ dateLabel(t.dueDate) }}</span>
             </div>
           </div>
-          <button class="edit" title="为此任务专注" @click="focusTask(t)"><Play :size="15" /></button>
+          <button class="edit" title="为此任务专注" @click="focusTask(t)">
+            <Play :size="15" />
+          </button>
           <button class="edit" @click="openEdit(t)"><Pencil :size="15" /></button>
         </div>
       </div>
-    </template>
 
-    <!-- 已完成 -->
-    <template v-if="doneList.length">
-      <div class="section-title">已完成</div>
-      <div class="card">
-        <div v-for="t in doneList" :key="t.id" class="task-row done">
-          <button class="check on" @click="tasks.toggle(t.id)"><Check :size="15" :stroke-width="3" /></button>
-          <div class="task-body">
-            <div class="task-title">{{ t.title }}</div>
-            <div class="task-crit">累计投入 {{Math.round((taskEffort[t.id]||0)/60)}} 分钟</div>
+      <!-- 未来 -->
+      <template v-if="future.length">
+        <div class="section-title">其他待办</div>
+        <div class="card">
+          <div v-for="t in future" :key="t.id" class="task-row">
+            <button class="check" @click="tasks.toggle(t.id)">
+              <Check :size="15" :stroke-width="3" />
+            </button>
+            <div class="task-body" @click="openEdit(t)">
+              <div class="task-title">{{ t.title }}</div>
+              <div class="task-crit">
+                已投入 {{ Math.round((taskEffort[t.id] || 0) / 60) }} 分钟 · 预估
+                {{ t.estimatedMin || 0 }} 分钟
+              </div>
+              <div v-if="t.acceptCriteria" class="task-crit">{{ t.acceptCriteria }}</div>
+              <div class="task-meta">
+                <span class="meta-subj" :style="{ color: subjOf(t.subjectId)?.color }">
+                  <SubjectIcon :name="subjOf(t.subjectId)?.icon" :size="12" />
+                  {{ subjOf(t.subjectId)?.name }}
+                </span>
+                <span
+                  class="phase-tag"
+                  :style="{
+                    background: (PHASE_MAP[t.phase]?.color || '#999') + '1a',
+                    color: PHASE_MAP[t.phase]?.color,
+                  }"
+                >
+                  {{ PHASE_MAP[t.phase]?.name }}
+                </span>
+                <span class="due">{{ dateLabel(t.dueDate) }}</span>
+              </div>
+            </div>
+            <button class="edit" title="为此任务专注" @click="focusTask(t)">
+              <Play :size="15" />
+            </button>
+            <button class="edit" @click="openEdit(t)"><Pencil :size="15" /></button>
           </div>
-          <button class="del" @click="remove(t.id)"><Trash2 :size="15" /></button>
         </div>
-      </div>
-    </template>
-  </div>
+      </template>
 
-  <!-- 新建/编辑 -->
-  <div v-if="sheet" class="mask task-editor-mask" @click.self="sheet = false">
-    <div class="sheet">
-      <div class="sheet-title">{{ editingId ? '编辑任务' : '新建任务' }}</div>
-
-      <div class="f-label">任务标题</div>
-      <input v-model="fTitle" class="input" placeholder="如：高数极限章节习题做完" maxlength="200" />
-
-      <div class="f-label">所属科目</div>
-      <select v-model="fSubject" class="select">
-        <option v-for="s in subjects.active" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
-
-      <div class="f-label">考研阶段</div>
-      <div class="pill-row">
-        <button
-          v-for="p in PHASES"
-          :key="p.id"
-          class="pill"
-          :class="{ active: fPhase === p.id }"
-          :style="fPhase === p.id ? { background: p.color } : {}"
-          @click="fPhase = p.id"
-        >{{ p.name }}</button>
-      </div>
-
-      <div class="f-label">验收标准（做完的标准是什么）</div>
-      <textarea
-        v-model="fCriteria"
-        class="criteria-input"
-        rows="2"
-        placeholder="如：极限章节课后习题全做完、错题能独立讲清"
-      ></textarea>
-
-      <div class="f-label">截止日期</div>
-      <label>预计用时（分钟，0为未设）</label><input v-model.number="fEstimated" class="input" type="number" min="0" max="1440" />
-      <input v-model="fDue" type="date" class="input" />
-
-      <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
-        <Check :size="18" />保存
-      </button>
-      <button class="btn btn-ghost btn-block mt8" @click="sheet = false">取消</button>
+      <!-- 已完成 -->
+      <template v-if="doneList.length">
+        <div class="section-title">已完成</div>
+        <div class="card">
+          <div v-for="t in doneList" :key="t.id" class="task-row done">
+            <button class="check on" @click="tasks.toggle(t.id)">
+              <Check :size="15" :stroke-width="3" />
+            </button>
+            <div class="task-body">
+              <div class="task-title">{{ t.title }}</div>
+              <div class="task-crit">
+                累计投入 {{ Math.round((taskEffort[t.id] || 0) / 60) }} 分钟
+              </div>
+            </div>
+            <button class="del" @click="remove(t.id)"><Trash2 :size="15" /></button>
+          </div>
+        </div>
+      </template>
     </div>
-  </div>
-  <aside v-if="!sheet" class="workspace-placeholder"><ListChecks :size="32" /><h3>把目标拆成今天能完成的事</h3><p>点击任务编辑，或新增一个带验收标准的任务。</p><button class="btn btn-primary" @click="openAdd">新建任务</button></aside>
+
+    <!-- 新建/编辑 -->
+    <div v-if="sheet" class="mask task-editor-mask" @click.self="sheet = false">
+      <div class="sheet">
+        <div class="sheet-title">{{ editingId ? '编辑任务' : '新建任务' }}</div>
+
+        <div class="f-label">任务标题</div>
+        <input
+          v-model="fTitle"
+          class="input"
+          placeholder="如：高数极限章节习题做完"
+          maxlength="200"
+        />
+
+        <div class="f-label">所属科目</div>
+        <select v-model="fSubject" class="select">
+          <option v-for="s in subjects.active" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+
+        <div class="f-label">考研阶段</div>
+        <div class="pill-row">
+          <button
+            v-for="p in PHASES"
+            :key="p.id"
+            class="pill"
+            :class="{ active: fPhase === p.id }"
+            :style="fPhase === p.id ? { background: p.color } : {}"
+            @click="fPhase = p.id"
+          >
+            {{ p.name }}
+          </button>
+        </div>
+
+        <div class="f-label">验收标准（做完的标准是什么）</div>
+        <textarea
+          v-model="fCriteria"
+          class="criteria-input"
+          rows="2"
+          placeholder="如：极限章节课后习题全做完、错题能独立讲清"
+        ></textarea>
+
+        <div class="f-label">截止日期</div>
+        <label>预计用时（分钟，0为未设）</label
+        ><input v-model.number="fEstimated" class="input" type="number" min="0" max="1440" />
+        <input v-model="fDue" type="date" class="input" />
+
+        <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
+          <Check :size="18" />保存
+        </button>
+        <button class="btn btn-ghost btn-block mt8" @click="sheet = false">取消</button>
+      </div>
+    </div>
+    <aside v-if="!sheet" class="workspace-placeholder">
+      <ListChecks :size="32" />
+      <h3>把目标拆成今天能完成的事</h3>
+      <p>点击任务编辑，或新增一个带验收标准的任务。</p>
+      <button class="btn btn-primary" @click="openAdd">新建任务</button>
+    </aside>
   </div>
 </template>
 

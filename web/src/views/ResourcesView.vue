@@ -1,119 +1,125 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
-  ArrowLeft, Plus, Search, Heart, Star, Link as LinkIcon, Lock, ChevronRight,
-} from 'lucide-vue-next'
-import { resourceApi } from '../api'
-import { fmtDate as formatDate } from '../utils/time'
-import { useAuthStore } from '../stores/auth'
-import { useToast } from '../composables/useToast'
-import PageState from '../components/PageState.vue'
-import { db } from '../db'
-import { toPlain } from '../utils/plain'
-import { favoriteRows, pullCommunityMirrors } from '../sync/community'
+  ArrowLeft,
+  Plus,
+  Search,
+  Heart,
+  Star,
+  Link as LinkIcon,
+  Lock,
+  ChevronRight,
+} from 'lucide-vue-next';
+import { resourceApi } from '../api';
+import { fmtDate as formatDate } from '../utils/time';
+import { useAuthStore } from '../stores/auth';
+import { useToast } from '../composables/useToast';
+import PageState from '../components/PageState.vue';
+import { db } from '../db';
+import { toPlain } from '../utils/plain';
+import { favoriteRows, pullCommunityMirrors } from '../sync/community';
 
-const FAV_CACHE = 'resourceFavCache'
+const FAV_CACHE = 'resourceFavCache';
 
-const route = useRoute()
-const router = useRouter()
-const auth = useAuthStore()
-const { toast } = useToast()
+const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+const { toast } = useToast();
 
 const TAB = [
   { id: 'all', label: '全部资料' },
   { id: 'fav', label: '我的收藏' },
   { id: 'mine', label: '我发布的' },
-]
-const CATEGORIES = ['英语', '数学', '政治', '专业课', '其他']
+];
+const CATEGORIES = ['英语', '数学', '政治', '专业课', '其他'];
 
-const tab = ref(['fav', 'mine'].includes(route.query.tab) ? route.query.tab : 'all')
-const query = ref('')
-const activeQuery = ref('')
-const category = ref('')
-const rows = ref([])
-const loading = ref(true)
-const loadingMore = ref(false)
-const cursor = ref(null)
-const loadError = ref('')
-let loadVersion = 0
+const tab = ref(['fav', 'mine'].includes(route.query.tab) ? route.query.tab : 'all');
+const query = ref('');
+const activeQuery = ref('');
+const category = ref('');
+const rows = ref([]);
+const loading = ref(true);
+const loadingMore = ref(false);
+const cursor = ref(null);
+const loadError = ref('');
+let loadVersion = 0;
 
-const isVip = computed(() => auth.isVip)
+const isVip = computed(() => auth.isVip);
 
 async function load(append = false) {
-  if (append && (loadingMore.value || !cursor.value)) return
-  const version = ++loadVersion
-  loading.value = !append
-  loadingMore.value = append
-  loadError.value = ''
-  if (!append) cursor.value = null
+  if (append && (loadingMore.value || !cursor.value)) return;
+  const version = ++loadVersion;
+  loading.value = !append;
+  loadingMore.value = append;
+  loadError.value = '';
+  if (!append) cursor.value = null;
   try {
     if (tab.value === 'fav') {
       try {
-        await pullCommunityMirrors()
-        const favorites = await favoriteRows()
-        if (version !== loadVersion) return
-        rows.value = favorites
+        await pullCommunityMirrors();
+        const favorites = await favoriteRows();
+        if (version !== loadVersion) return;
+        rows.value = favorites;
         // 缓存收藏列表，断网时仍可查看
-        await db.kv.put({ key: FAV_CACHE, value: toPlain(rows.value) })
+        await db.kv.put({ key: FAV_CACHE, value: toPlain(rows.value) });
       } catch (e) {
-        if (e.status && e.status < 500) throw e
-        const cached = await db.kv.get(FAV_CACHE)
-        const favorites = await favoriteRows()
-        if (version !== loadVersion) return
-        rows.value = favorites.length ? favorites : cached?.value || []
-        toast('离线中，显示本机缓存的收藏')
+        if (e.status && e.status < 500) throw e;
+        const cached = await db.kv.get(FAV_CACHE);
+        const favorites = await favoriteRows();
+        if (version !== loadVersion) return;
+        rows.value = favorites.length ? favorites : cached?.value || [];
+        toast('离线中，显示本机缓存的收藏');
       }
     } else if (tab.value === 'mine') {
-      const items = await resourceApi.mine()
-      if (version === loadVersion) rows.value = items
-    }
-    else {
-      const params = { page_size: 20 }
-      if (activeQuery.value) params.q = activeQuery.value
-      if (category.value) params.category = category.value
-      if (append) params.before_id = cursor.value
-      const page = await resourceApi.list(params)
-      if (version !== loadVersion) return
-      rows.value = append ? [...rows.value, ...page.items] : page.items
-      cursor.value = page.next
+      const items = await resourceApi.mine();
+      if (version === loadVersion) rows.value = items;
+    } else {
+      const params = { page_size: 20 };
+      if (activeQuery.value) params.q = activeQuery.value;
+      if (category.value) params.category = category.value;
+      if (append) params.before_id = cursor.value;
+      const page = await resourceApi.list(params);
+      if (version !== loadVersion) return;
+      rows.value = append ? [...rows.value, ...page.items] : page.items;
+      cursor.value = page.next;
     }
   } catch (e) {
-    if (version !== loadVersion) return
-    if (append) toast(e.message)
-    else loadError.value = e.message
+    if (version !== loadVersion) return;
+    if (append) toast(e.message);
+    else loadError.value = e.message;
   } finally {
     if (version === loadVersion) {
-      loading.value = false
-      loadingMore.value = false
+      loading.value = false;
+      loadingMore.value = false;
     }
   }
 }
 
 function searchResources() {
-  activeQuery.value = query.value.trim()
-  load()
+  activeQuery.value = query.value.trim();
+  load();
 }
 
 function publish() {
   if (!isVip.value) {
-    toast('仅 VIP 可发布资料')
-    router.push('/vip')
-    return
+    toast('仅 VIP 可发布资料');
+    router.push('/vip');
+    return;
   }
-  router.push('/resources/edit')
+  router.push('/resources/edit');
 }
 
 function open(row) {
-  router.push(`/resources/${row.id}`)
+  router.push(`/resources/${row.id}`);
 }
 
 function fmtDate(v) {
-  return formatDate(v)
+  return formatDate(v);
 }
 
-watch([tab, category], () => load())
-onMounted(() => load())
+watch([tab, category], () => load());
+onMounted(() => load());
 </script>
 
 <template>
@@ -129,19 +135,22 @@ onMounted(() => load())
 
     <div class="page">
       <div class="tabs">
-        <button
-          v-for="t in TAB"
-          :key="t.id"
-          :class="{ on: tab === t.id }"
-          @click="tab = t.id"
-        >{{ t.label }}</button>
+        <button v-for="t in TAB" :key="t.id" :class="{ on: tab === t.id }" @click="tab = t.id">
+          {{ t.label }}
+        </button>
       </div>
 
       <template v-if="tab === 'all'">
         <form class="search-row" @submit.prevent="searchResources">
           <div class="search-box">
             <Search :size="16" />
-            <input v-model="query" type="search" aria-label="搜索资料" placeholder="搜索标题、简介或分类" maxlength="80" />
+            <input
+              v-model="query"
+              type="search"
+              aria-label="搜索资料"
+              placeholder="搜索标题、简介或分类"
+              maxlength="80"
+            />
           </div>
           <button class="btn btn-outline btn-sm" type="submit">搜索</button>
         </form>
@@ -153,35 +162,55 @@ onMounted(() => load())
             class="cat-chip"
             :class="{ on: category === c }"
             @click="category = c"
-          >{{ c }}</button>
+          >
+            {{ c }}
+          </button>
         </div>
       </template>
 
-      <PageState :loading="loading" :error="loadError" :empty="!rows.length"
-        :empty-label="tab === 'fav' ? '还没有收藏资料' : tab === 'mine' ? '还没有发布过资料' : '没有匹配的资料'" @retry="load()">
-      <div class="res-list">
-        <button v-for="r in rows" :key="r.id" class="res-card" @click="open(r)">
-          <div class="res-top">
-            <span class="res-title">{{ r.title }}</span><span v-if="r.review_status!=='approved'">{{r.review_status==='pending'?'待审核':'已驳回'}}</span>
-            <span v-if="r.category" class="res-cat">{{ r.category }}</span>
-          </div>
-          <div v-if="r.intro" class="res-intro">{{ r.intro }}</div>
-          <div class="res-link">
-            <LinkIcon :size="13" />
-            <span class="res-url">{{ r.url }}</span>
-            <span v-if="r.masked" class="res-mask">仅 VIP 可见完整链接</span>
-          </div>
-          <div class="res-foot">
-            <span class="res-owner">{{ r.owner?.nickname || '研友' }} · {{ fmtDate(r.created_at) }}</span>
-            <span class="res-stat"><Heart :size="13" />{{ r.like_count }}</span>
-            <Star :size="13" :class="{ on: r.favorited }" />
-            <ChevronRight :size="15" class="res-arrow" />
-          </div>
-        </button>
-        <button v-if="cursor" class="btn btn-outline" type="button" :disabled="loadingMore" @click="load(true)">
-          {{ loadingMore ? '读取中…' : '加载更多' }}
-        </button>
-      </div>
+      <PageState
+        :loading="loading"
+        :error="loadError"
+        :empty="!rows.length"
+        :empty-label="
+          tab === 'fav' ? '还没有收藏资料' : tab === 'mine' ? '还没有发布过资料' : '没有匹配的资料'
+        "
+        @retry="load()"
+      >
+        <div class="res-list">
+          <button v-for="r in rows" :key="r.id" class="res-card" @click="open(r)">
+            <div class="res-top">
+              <span class="res-title">{{ r.title }}</span><span
+                v-if="r.review_status !== 'approved'"
+                >{{ r.review_status === 'pending' ? '待审核' : '已驳回' }}</span
+              >
+              <span v-if="r.category" class="res-cat">{{ r.category }}</span>
+            </div>
+            <div v-if="r.intro" class="res-intro">{{ r.intro }}</div>
+            <div class="res-link">
+              <LinkIcon :size="13" />
+              <span class="res-url">{{ r.url }}</span>
+              <span v-if="r.masked" class="res-mask">仅 VIP 可见完整链接</span>
+            </div>
+            <div class="res-foot">
+              <span class="res-owner"
+                >{{ r.owner?.nickname || '研友' }} · {{ fmtDate(r.created_at) }}</span
+              >
+              <span class="res-stat"><Heart :size="13" />{{ r.like_count }}</span>
+              <Star :size="13" :class="{ on: r.favorited }" />
+              <ChevronRight :size="15" class="res-arrow" />
+            </div>
+          </button>
+          <button
+            v-if="cursor"
+            class="btn btn-outline"
+            type="button"
+            :disabled="loadingMore"
+            @click="load(true)"
+          >
+            {{ loadingMore ? '读取中…' : '加载更多' }}
+          </button>
+        </div>
       </PageState>
     </div>
   </div>
@@ -215,11 +244,39 @@ onMounted(() => load())
   gap: 4px;
   cursor: pointer;
 }
-.publish.locked { background: #eef1f6; color: var(--faint); }
-.tabs { display: flex; gap: 6px; background: #fff; border-radius: 12px; padding: 4px; margin-bottom: 12px; box-shadow: var(--shadow-soft); }
-.tabs button { flex: 1; border: none; background: transparent; padding: 9px 0; border-radius: 9px; font-size: 14px; color: var(--sub); cursor: pointer; }
-.tabs button.on { background: var(--primary); color: #fff; font-weight: 600; }
-.search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.publish.locked {
+  background: #eef1f6;
+  color: var(--faint);
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-soft);
+}
+.tabs button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 9px 0;
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--sub);
+  cursor: pointer;
+}
+.tabs button.on {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+.search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 .search-box {
   flex: 1;
   display: flex;
@@ -231,8 +288,21 @@ onMounted(() => load())
   padding: 0 12px;
   color: var(--faint);
 }
-.search-box input { flex: 1; height: 40px; border: none; background: none; outline: none; font-size: 14px; }
-.cat-row { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
+.search-box input {
+  flex: 1;
+  height: 40px;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 14px;
+}
+.cat-row {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 12px;
+}
 .cat-chip {
   border: 1.5px solid var(--line);
   background: #fff;
@@ -244,8 +314,16 @@ onMounted(() => load())
   cursor: pointer;
   white-space: nowrap;
 }
-.cat-chip.on { border-color: transparent; background: var(--primary); color: #fff; }
-.res-list { display: flex; flex-direction: column; gap: 10px; }
+.cat-chip.on {
+  border-color: transparent;
+  background: var(--primary);
+  color: #fff;
+}
+.res-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .res-card {
   text-align: left;
   background: #fff;
@@ -256,10 +334,30 @@ onMounted(() => load())
   cursor: pointer;
   color: var(--ink);
 }
-.res-top { display: flex; align-items: center; gap: 8px; }
-.res-title { flex: 1; font-size: 14px; font-weight: 700; }
-.res-cat { font-size: 12px; font-weight: 700; color: var(--primary); background: #eef4fb; padding: 2px 8px; border-radius: 999px; }
-.res-intro { margin-top: 5px; font-size: 14px; color: var(--sub); line-height: 1.6; }
+.res-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.res-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+}
+.res-cat {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  background: #eef4fb;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.res-intro {
+  margin-top: 5px;
+  font-size: 14px;
+  color: var(--sub);
+  line-height: 1.6;
+}
 .res-link {
   margin-top: 9px;
   display: flex;
@@ -271,11 +369,38 @@ onMounted(() => load())
   color: var(--faint);
   font-size: 12px;
 }
-.res-url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.res-mask { color: var(--tomato-deep); font-weight: 600; flex-shrink: 0; }
-.res-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--faint); }
-.res-owner { flex: 1; }
-.res-stat { display: inline-flex; align-items: center; gap: 3px; }
-.res-foot svg.on { color: var(--accent-deep); fill: currentColor; }
-.res-arrow { color: #cad2de; }
+.res-url {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.res-mask {
+  color: var(--tomato-deep);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.res-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.res-owner {
+  flex: 1;
+}
+.res-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.res-foot svg.on {
+  color: var(--accent-deep);
+  fill: currentColor;
+}
+.res-arrow {
+  color: #cad2de;
+}
 </style>

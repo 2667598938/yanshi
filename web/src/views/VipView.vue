@@ -1,52 +1,56 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  ArrowLeft, Crown, ShieldCheck, Sparkles, Ticket, ChevronRight, Check,
-} from 'lucide-vue-next'
-import { useAuthStore } from '../stores/auth'
-import { vipApi } from '../api'
-import { fmtDate } from '../utils/time'
-import { useToast } from '../composables/useToast'
+  ArrowLeft,
+  Crown,
+  ShieldCheck,
+  Sparkles,
+  Ticket,
+  ChevronRight,
+  Check,
+} from 'lucide-vue-next';
+import { useAuthStore } from '../stores/auth';
+import { vipApi } from '../api';
+import { fmtDate } from '../utils/time';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const auth = useAuthStore()
-const { toast } = useToast()
+const router = useRouter();
+const auth = useAuthStore();
+const { toast } = useToast();
 
-const status = ref(null)
-const loading = ref(true)
+const status = ref(null);
+const loading = ref(true);
 
-const isVip = computed(() => status.value?.is_vip || false)
-const untilText = computed(() =>
-  status.value?.vip_until ? fmtDate(status.value.vip_until) : ''
-)
+const isVip = computed(() => status.value?.is_vip || false);
+const untilText = computed(() => (status.value?.vip_until ? fmtDate(status.value.vip_until) : ''));
 
 const benefits = [
   { icon: Sparkles, title: 'AI 问答权限', sub: '按配置额度使用AI助教，可查看当日用量' },
   { icon: ShieldCheck, title: '功能申请免审核', sub: '免人工审批，功能以站点开放状态为准' },
   { icon: Crown, title: 'VIP 专属标识', sub: '个人中心展示会员身份' },
   { icon: Ticket, title: '资料区权益', sub: '发布网盘资料，查看完整链接与提取码' },
-]
+];
 
 async function load() {
   try {
-    status.value = await vipApi.status()
+    status.value = await vipApi.status();
     if (auth.user && status.value) {
       auth.setUser({
         ...auth.user,
         is_vip: status.value.is_vip,
         vip_until: status.value.vip_until,
         vip_permanent: status.value.vip_permanent,
-      })
+      });
     }
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
-onMounted(load)
+onMounted(load);
 </script>
 
 <template>
@@ -66,7 +70,9 @@ onMounted(load)
         <div class="vh-state">
           <template v-if="loading">读取中…</template>
           <template v-else-if="status?.vip_permanent">永久VIP</template>
-          <template v-else-if="isVip">VIP 有效期至 {{ untilText }} · 剩余 {{ status.days_left }} 天</template>
+          <template v-else-if="isVip"
+            >VIP 有效期至 {{ untilText }} · 剩余 {{ status.days_left }} 天</template
+          >
           <template v-else>尚未开通 VIP</template>
         </div>
         <div class="vh-actions">

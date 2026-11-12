@@ -1,18 +1,18 @@
 // 七所梦校配置：校徽、校园雪景、主题色、校训
-import logoTsinghua from '../assets/schools/logo-tsinghua.jpg'
-import logoPku from '../assets/schools/logo-pku.jpg'
-import logoNju from '../assets/schools/logo-nju.jpg'
-import logoFudan from '../assets/schools/logo-fudan.jpg'
-import logoSjtu from '../assets/schools/logo-sjtu.jpg'
-import logoUstc from '../assets/schools/logo-ustc.jpg'
-import logoZju from '../assets/schools/logo-zju.jpg'
-import viewTsinghua from '../assets/schools/view-tsinghua.jpg'
-import viewPku from '../assets/schools/view-pku.jpg'
-import viewNju from '../assets/schools/view-nju.jpg'
-import viewFudan from '../assets/schools/view-fudan.jpg'
-import viewSjtu from '../assets/schools/view-sjtu.jpg'
-import viewUstc from '../assets/schools/view-ustc.jpg'
-import viewZju from '../assets/schools/view-zju.jpg'
+import logoTsinghua from '../assets/schools/logo-tsinghua.jpg';
+import logoPku from '../assets/schools/logo-pku.jpg';
+import logoNju from '../assets/schools/logo-nju.jpg';
+import logoFudan from '../assets/schools/logo-fudan.jpg';
+import logoSjtu from '../assets/schools/logo-sjtu.jpg';
+import logoUstc from '../assets/schools/logo-ustc.jpg';
+import logoZju from '../assets/schools/logo-zju.jpg';
+import viewTsinghua from '../assets/schools/view-tsinghua.jpg';
+import viewPku from '../assets/schools/view-pku.jpg';
+import viewNju from '../assets/schools/view-nju.jpg';
+import viewFudan from '../assets/schools/view-fudan.jpg';
+import viewSjtu from '../assets/schools/view-sjtu.jpg';
+import viewUstc from '../assets/schools/view-ustc.jpg';
+import viewZju from '../assets/schools/view-zju.jpg';
 
 export const SCHOOLS = [
   {
@@ -85,11 +85,11 @@ export const SCHOOLS = [
     color: '#0058a8',
     motto: '求是创新',
   },
-]
+];
 
-export const SCHOOL_MAP = Object.fromEntries(SCHOOLS.map((s) => [s.key, s]))
+export const SCHOOL_MAP = Object.fromEntries(SCHOOLS.map((s) => [s.key, s]));
 
-export const DEFAULT_SCHOOL_KEY = 'fudan'
+export const DEFAULT_SCHOOL_KEY = 'fudan';
 
 // 考研初试日期（2028 考研，初试 2027-12-25）
-export const EXAM_DATE = '2027-12-25'
+export const EXAM_DATE = '2027-12-25';

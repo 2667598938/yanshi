@@ -1,106 +1,170 @@
 <script setup>
-import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import BlobImage from './BlobImage.vue'
-import { useSchoolsStore } from '../stores/schools'
-import { Check, Target, MapPin } from 'lucide-vue-next'
-import { SCHOOL_MAP } from '../data/schools'
-import { useAppStore } from '../stores/app'
-import { useProfileStore } from '../stores/profile'
-import { useToast } from '../composables/useToast'
-import SchoolBullets from './SchoolBullets.vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import BlobImage from './BlobImage.vue';
+import { useSchoolsStore } from '../stores/schools';
+import { Check, Target, MapPin } from 'lucide-vue-next';
+import { SCHOOL_MAP } from '../data/schools';
+import { useAppStore } from '../stores/app';
+import { useProfileStore } from '../stores/profile';
+import { useToast } from '../composables/useToast';
+import SchoolBullets from './SchoolBullets.vue';
 
-const schools = ref([])
-const catalog = useSchoolsStore()
-const app = useAppStore()
-const profile = useProfileStore()
-const { toast } = useToast()
-let carousel
-let lastManual = 0
+const schools = ref([]);
+const catalog = useSchoolsStore();
+const app = useAppStore();
+const profile = useProfileStore();
+const { toast } = useToast();
+let carousel;
+let lastManual = 0;
 function mergeSchools(rows) {
-  if (!Array.isArray(rows)) return
+  if (!Array.isArray(rows)) return;
   schools.value = rows.map((row) => {
-    const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
-    return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
-      logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
-      album: row.album_keys?.length ? row.album_keys : [local.view] }
-  })
-  const target = schools.value.findIndex(row => row.key === app.dreamSchool)
-  if (!lastManual && target >= 0) browseIndex.value = target
-  else if (browseIndex.value >= schools.value.length) browseIndex.value = 0
+    const local = SCHOOL_MAP[row.key] || {
+      color: '#526484',
+      logo: '',
+      view: '',
+      motto: '',
+      city: '',
+    };
+    return {
+      ...local,
+      ...row.info,
+      key: row.key,
+      name: row.name,
+      short: row.short,
+      logo: row.logo_key || local.logo,
+      view: row.album_keys?.[0] || local.view,
+      album: row.album_keys?.length ? row.album_keys : [local.view],
+    };
+  });
+  const target = schools.value.findIndex((row) => row.key === app.dreamSchool);
+  if (!lastManual && target >= 0) browseIndex.value = target;
+  else if (browseIndex.value >= schools.value.length) browseIndex.value = 0;
 }
-const albumIndex = ref(0)
-let albumTimer
-let albumManualAt = 0
-const albumPaused = ref(false)
+const albumIndex = ref(0);
+let albumTimer;
+let albumManualAt = 0;
+const albumPaused = ref(false);
 const albumImages = computed(() => {
-  const list = (school.value.album || []).filter((key) => key && key !== school.value.logo)
-  return list.length ? [...new Set(list)] : (school.value.view && school.value.view !== school.value.logo ? [school.value.view] : [])
-})
-const campusImage = computed(() => albumImages.value[albumIndex.value] || school.value.view || '')
+  const list = (school.value.album || []).filter((key) => key && key !== school.value.logo);
+  return list.length
+    ? [...new Set(list)]
+    : school.value.view && school.value.view !== school.value.logo
+      ? [school.value.view]
+      : [];
+});
+const campusImage = computed(() => albumImages.value[albumIndex.value] || school.value.view || '');
 function pickAlbum(i) {
-  albumIndex.value = i
-  albumManualAt = Date.now()
+  albumIndex.value = i;
+  albumManualAt = Date.now();
 }
 onMounted(async () => {
   carousel = setInterval(() => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible' || Date.now() - lastManual < 10000) return
-    if (schools.value.length) browseIndex.value = (browseIndex.value + 1) % schools.value.length
-  }, 6000)
+    if (
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+      document.visibilityState !== 'visible' ||
+      Date.now() - lastManual < 10000
+    )
+      return;
+    if (schools.value.length) browseIndex.value = (browseIndex.value + 1) % schools.value.length;
+  }, 6000);
   albumTimer = setInterval(() => {
-    if (albumPaused.value || albumImages.value.length < 2) return
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible') return
-    if (Date.now() - albumManualAt < 12000) return
-    albumIndex.value = (albumIndex.value + 1) % albumImages.value.length
-  }, 5000)
-  await catalog.load()
-})
-onBeforeUnmount(() => { clearInterval(carousel); clearInterval(albumTimer) })
-const dreamIndex = computed(() =>
-  schools.value.findIndex((s) => s.key === app.dreamSchool)
-)
-const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3)
-watch(() => catalog.rows, mergeSchools, { immediate: true })
+    if (albumPaused.value || albumImages.value.length < 2) return;
+    if (
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+      document.visibilityState !== 'visible'
+    )
+      return;
+    if (Date.now() - albumManualAt < 12000) return;
+    albumIndex.value = (albumIndex.value + 1) % albumImages.value.length;
+  }, 5000);
+  await catalog.load();
+});
+onBeforeUnmount(() => {
+  clearInterval(carousel);
+  clearInterval(albumTimer);
+});
+const dreamIndex = computed(() => schools.value.findIndex((s) => s.key === app.dreamSchool));
+const browseIndex = ref(dreamIndex.value >= 0 ? dreamIndex.value : 3);
+watch(() => catalog.rows, mergeSchools, { immediate: true });
 
-const school = computed(() => schools.value[browseIndex.value] || schools.value[0] || { key:'',name:'我的梦校',color:'#526484',logo:'',view:'',motto:'自由添加你的目标院校',city:'' })
-const isDream = computed(() => school.value.key === app.dreamSchool)
-watch(() => school.value.key, () => { albumIndex.value = 0 })
-watch(() => albumImages.value.length, (n) => { if (albumIndex.value >= n) albumIndex.value = 0 })
+const school = computed(
+  () =>
+    schools.value[browseIndex.value] ||
+    schools.value[0] || {
+      key: '',
+      name: '我的梦校',
+      color: '#526484',
+      logo: '',
+      view: '',
+      motto: '自由添加你的目标院校',
+      city: '',
+    },
+);
+const isDream = computed(() => school.value.key === app.dreamSchool);
+watch(
+  () => school.value.key,
+  () => {
+    albumIndex.value = 0;
+  },
+);
+watch(
+  () => albumImages.value.length,
+  (n) => {
+    if (albumIndex.value >= n) albumIndex.value = 0;
+  },
+);
 
 function pick(i) {
-  browseIndex.value = i
-  albumIndex.value = 0
-  albumManualAt = Date.now()
-  lastManual = Date.now()
+  browseIndex.value = i;
+  albumIndex.value = 0;
+  albumManualAt = Date.now();
+  lastManual = Date.now();
 }
 async function setDream() {
   if (!isDream.value) {
-    try { await profile.save({ target_school: school.value.key }) }
-    catch (e) { toast(e.message) }
+    try {
+      await profile.save({ target_school: school.value.key });
+    } catch (e) {
+      toast(e.message);
+    }
   }
 }
 </script>
 
 <template>
-  <div class="hero" :style="{ '--sc': school.color }" @mouseenter="albumPaused = true" @mouseleave="albumPaused = false">
-    <BlobImage :key="school.key + campusImage" class="hero-bg" :src="campusImage" :alt="school.name" />
+  <div
+    class="hero"
+    :style="{ '--sc': school.color }"
+    @mouseenter="albumPaused = true"
+    @mouseleave="albumPaused = false"
+  >
+    <BlobImage
+      :key="school.key + campusImage"
+      class="hero-bg"
+      :src="campusImage"
+      :alt="school.name"
+    />
     <div class="hero-veil"></div>
 
     <div class="hero-inner">
       <div class="hero-top">
         <BlobImage class="seal" :src="school.logo" :alt="school.name + '校徽'" />
         <div class="school-meta">
-          <button class="school-name" style="background:transparent;border:none;color:inherit" @click="$router.push({path:'/dream-wall',query:{school:school.key}})">{{ school.name }} · 查看相册</button>
+          <button
+            class="school-name"
+            style="background: transparent; border: none; color: inherit"
+            @click="$router.push({ path: '/dream-wall', query: { school: school.key } })"
+          >
+            {{ school.name }} · 查看相册
+          </button>
           <div class="school-motto">{{ school.motto }}</div>
           <div class="school-city">
             <MapPin :size="11" :stroke-width="2.4" />
             <span>{{ school.city }}</span>
           </div>
         </div>
-        <button
-          class="dream-btn"
-          :class="{ on: isDream }"
-          @click="setDream"
-        >
+        <button class="dream-btn" :class="{ on: isDream }" @click="setDream">
           <component :is="isDream ? Check : Target" :size="14" :stroke-width="2.6" />
           <span>{{ isDream ? '我的梦校' : '设为目标' }}</span>
         </button>
@@ -363,7 +427,9 @@ async function setDream() {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.42);
   cursor: pointer;
-  transition: width 0.24s ease, background-color 0.24s ease;
+  transition:
+    width 0.24s ease,
+    background-color 0.24s ease;
 }
 .album-dot.on {
   width: 18px;

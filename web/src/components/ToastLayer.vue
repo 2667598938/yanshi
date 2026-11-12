@@ -1,5 +1,5 @@
 <script setup>
-import { toastState } from '../composables/useToast'
+import { toastState } from '../composables/useToast';
 </script>
 
 <template>

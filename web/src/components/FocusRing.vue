@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed } from 'vue';
 
 const props = defineProps({
   progress: { type: Number, default: 0 }, // 0 ~ 1
@@ -8,12 +8,12 @@ const props = defineProps({
   color: { type: String, default: '#4f46e5' },
   startColor: { type: String, default: '#8b5cf6' },
   track: { type: String, default: 'rgba(255,255,255,0.14)' },
-})
+});
 
-const center = computed(() => props.size / 2)
-const r = computed(() => (props.size - props.stroke) / 2)
-const circumference = computed(() => 2 * Math.PI * r.value)
-const offset = computed(() => circumference.value * (1 - props.progress))
+const center = computed(() => props.size / 2);
+const r = computed(() => (props.size - props.stroke) / 2);
+const circumference = computed(() => 2 * Math.PI * r.value);
+const offset = computed(() => circumference.value * (1 - props.progress));
 </script>
 
 <template>
@@ -25,14 +25,7 @@ const offset = computed(() => circumference.value * (1 - props.progress))
           <stop offset="100%" :stop-color="color" />
         </linearGradient>
       </defs>
-      <circle
-        :cx="center"
-        :cy="center"
-        :r="r"
-        :stroke="track"
-        :stroke-width="stroke"
-        fill="none"
-      />
+      <circle :cx="center" :cy="center" :r="r" :stroke="track" :stroke-width="stroke" fill="none" />
       <circle
         class="prog"
         :cx="center"

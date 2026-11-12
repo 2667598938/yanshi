@@ -1,7 +1,7 @@
-import js from '@eslint/js'
-import vue from 'eslint-plugin-vue'
-import prettier from 'eslint-config-prettier'
-import globals from 'globals'
+import js from '@eslint/js';
+import vue from 'eslint-plugin-vue';
+import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default [
   { ignores: ['dist/**', 'public/**', 'coverage/**'] },
@@ -16,4 +16,4 @@ export default [
     },
   },
   prettier,
-]
+];

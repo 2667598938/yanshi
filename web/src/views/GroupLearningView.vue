@@ -1,91 +1,330 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
-import { groupApi, roomApi } from '../api'
-import { useAuthStore } from '../stores/auth'
-import BlobImage from '../components/BlobImage.vue'
-import { REASON_MAP } from '../data/subjects'
-const router=useRouter(), auth=useAuthStore()
-const rooms=ref([]), roomId=ref(Number(router.currentRoute?.value?.query?.room)||null)
-const members=ref([]), selected=ref(null), records=ref([]), error=ref(''), tab=ref('task')
-let interval, generation=0, alive=true, flight=null, cursor=null
-function clear(){ records.value=[]; cursor=null }
-function valid(seq,account){return alive&&seq===generation&&account===auth.user?.id}
-async function load(){
-  const seq=generation, account=auth.user?.id
-  if(document.visibilityState==='hidden'){generation++;clear();return}
-  if(flight?.seq===seq)return
-  const token={seq};flight=token
-  try{
-    const rows=await groupApi.members(roomId.value)
-    if(!valid(seq,account))return
-    members.value=rows
-    const member=rows.find(row=>row.id===selected.value)
-    if(!member || (member.is_private_mode&&member.id!==account)){clear();return}
-    let nextCursor=cursor, result=new Map(records.value.map(row=>[row.id,row]))
-    if(nextCursor===null){
-      result=new Map();let after=''
-      for(;;){
-        const data=await groupApi.learning(member.id,after,roomId.value)
-        if(!valid(seq,account))return
-        // Keep the FIRST page's watermark: changes during pagination must replay.
-        if(nextCursor===null)nextCursor=data.cursor
-        for(const row of data.items)result.set(row.id,row)
-        if(!data.next)break
-        after=data.next
-      }
-    }
-    for(;;){
-      const data=await groupApi.changes(member.id,nextCursor,roomId.value)
-      if(!valid(seq,account))return
-      for(const change of data.items){
-        if(change.record)result.set(change.id,change.record)
-        else result.delete(change.id)
-      }
-      nextCursor=data.cursor
-      if(!data.has_more)break
-    }
-    if(valid(seq,account)){records.value=[...result.values()];cursor=nextCursor;error.value=''}
-  }catch(e){if(valid(seq,account)){clear();error.value=e.status===404?'该成员已开启隐私或共享权限已变化':e.message}}
-  finally{if(flight===token)flight=null}
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter } from 'vue-router';
+import { groupApi, roomApi } from '../api';
+import { useAuthStore } from '../stores/auth';
+import BlobImage from '../components/BlobImage.vue';
+import { REASON_MAP } from '../data/subjects';
+const router = useRouter(),
+  auth = useAuthStore();
+const rooms = ref([]),
+  roomId = ref(Number(router.currentRoute?.value?.query?.room) || null);
+const members = ref([]),
+  selected = ref(null),
+  records = ref([]),
+  error = ref(''),
+  tab = ref('task');
+let interval,
+  generation = 0,
+  alive = true,
+  flight = null,
+  cursor = null;
+function clear() {
+  records.value = [];
+  cursor = null;
 }
-watch(()=>auth.user?.id,()=>{generation++;clear();members.value=[];rooms.value=[];roomId.value=null;selected.value=null;loadRooms();load()})
-async function loadRooms(){const account=auth.user?.id;try{const rows=await roomApi.list();if(alive&&account===auth.user?.id)rooms.value=rows.filter(r=>r.joined)}catch(e){if(alive&&account===auth.user?.id)error.value=e.message}}
-function changeRoom(){generation++;clear();members.value=[];selected.value=null;router.replace?.({query:{...router.currentRoute?.value?.query,room:roomId.value||undefined}});load()}
-watch(()=>router.currentRoute?.value?.query?.room,value=>{const next=Number(value)||null;if(roomId.value!==next){roomId.value=next;generation++;clear();members.value=[];selected.value=null;load()}})
-function select(member){generation++;clear();selected.value=member.id;load()}
-const chosen=computed(()=>members.value.find(row=>row.id===selected.value))
-const visible=computed(()=>records.value.filter(row=>row.type===tab.value).sort((a,b)=>tab.value==='task' ? Number(a.done||0)-Number(b.done||0)||(a.dueDate||'9999').localeCompare(b.dueDate||'9999') : (b.createdAt||0)-(a.createdAt||0)))
-const subjectNames=computed(()=>Object.fromEntries(records.value.filter(r=>r.type==='subject').map(r=>[r.id,r.name])))
-function reasonLabel(value){return REASON_MAP[value]?.name || (/[\u4e00-\u9fff]/.test(value||'')?value:'自定义错因')}
-function sessionLabel(value){return value==='done'?'已完成':value==='quit'?'已结束（保留有效时长）':'学习记录'}
-const heat=computed(()=>{
- const result={};for(const row of records.value.filter(row=>row.type==='session'&&!row.conflict_flag&&!row.validation_issue))result[row.date]=(result[row.date]||0)+(row.actualSec||0)
- return Object.entries(result).sort(([a],[b])=>a.localeCompare(b))
-})
-onMounted(()=>{loadRooms();load();interval=setInterval(load,5000);document.addEventListener('visibilitychange',load)})
-onBeforeUnmount(()=>{alive=false;generation++;records.value=[];clearInterval(interval);document.removeEventListener('visibilitychange',load)})
+function valid(seq, account) {
+  return alive && seq === generation && account === auth.user?.id;
+}
+async function load() {
+  const seq = generation,
+    account = auth.user?.id;
+  if (document.visibilityState === 'hidden') {
+    generation++;
+    clear();
+    return;
+  }
+  if (flight?.seq === seq) return;
+  const token = { seq };
+  flight = token;
+  try {
+    const rows = await groupApi.members(roomId.value);
+    if (!valid(seq, account)) return;
+    members.value = rows;
+    const member = rows.find((row) => row.id === selected.value);
+    if (!member || (member.is_private_mode && member.id !== account)) {
+      clear();
+      return;
+    }
+    let nextCursor = cursor,
+      result = new Map(records.value.map((row) => [row.id, row]));
+    if (nextCursor === null) {
+      result = new Map();
+      let after = '';
+      for (;;) {
+        const data = await groupApi.learning(member.id, after, roomId.value);
+        if (!valid(seq, account)) return;
+        // Keep the FIRST page's watermark: changes during pagination must replay.
+        if (nextCursor === null) nextCursor = data.cursor;
+        for (const row of data.items) result.set(row.id, row);
+        if (!data.next) break;
+        after = data.next;
+      }
+    }
+    for (;;) {
+      const data = await groupApi.changes(member.id, nextCursor, roomId.value);
+      if (!valid(seq, account)) return;
+      for (const change of data.items) {
+        if (change.record) result.set(change.id, change.record);
+        else result.delete(change.id);
+      }
+      nextCursor = data.cursor;
+      if (!data.has_more) break;
+    }
+    if (valid(seq, account)) {
+      records.value = [...result.values()];
+      cursor = nextCursor;
+      error.value = '';
+    }
+  } catch (e) {
+    if (valid(seq, account)) {
+      clear();
+      error.value = e.status === 404 ? '该成员已开启隐私或共享权限已变化' : e.message;
+    }
+  } finally {
+    if (flight === token) flight = null;
+  }
+}
+watch(
+  () => auth.user?.id,
+  () => {
+    generation++;
+    clear();
+    members.value = [];
+    rooms.value = [];
+    roomId.value = null;
+    selected.value = null;
+    loadRooms();
+    load();
+  },
+);
+async function loadRooms() {
+  const account = auth.user?.id;
+  try {
+    const rows = await roomApi.list();
+    if (alive && account === auth.user?.id) rooms.value = rows.filter((r) => r.joined);
+  } catch (e) {
+    if (alive && account === auth.user?.id) error.value = e.message;
+  }
+}
+function changeRoom() {
+  generation++;
+  clear();
+  members.value = [];
+  selected.value = null;
+  router.replace?.({
+    query: { ...router.currentRoute?.value?.query, room: roomId.value || undefined },
+  });
+  load();
+}
+watch(
+  () => router.currentRoute?.value?.query?.room,
+  (value) => {
+    const next = Number(value) || null;
+    if (roomId.value !== next) {
+      roomId.value = next;
+      generation++;
+      clear();
+      members.value = [];
+      selected.value = null;
+      load();
+    }
+  },
+);
+function select(member) {
+  generation++;
+  clear();
+  selected.value = member.id;
+  load();
+}
+const chosen = computed(() => members.value.find((row) => row.id === selected.value));
+const visible = computed(() =>
+  records.value
+    .filter((row) => row.type === tab.value)
+    .sort((a, b) =>
+      tab.value === 'task'
+        ? Number(a.done || 0) - Number(b.done || 0) ||
+          (a.dueDate || '9999').localeCompare(b.dueDate || '9999')
+        : (b.createdAt || 0) - (a.createdAt || 0),
+    ),
+);
+const subjectNames = computed(() =>
+  Object.fromEntries(records.value.filter((r) => r.type === 'subject').map((r) => [r.id, r.name])),
+);
+function reasonLabel(value) {
+  return REASON_MAP[value]?.name || (/[\u4e00-\u9fff]/.test(value || '') ? value : '自定义错因');
+}
+function sessionLabel(value) {
+  return value === 'done' ? '已完成' : value === 'quit' ? '已结束（保留有效时长）' : '学习记录';
+}
+const heat = computed(() => {
+  const result = {};
+  for (const row of records.value.filter(
+    (row) => row.type === 'session' && !row.conflict_flag && !row.validation_issue,
+  ))
+    result[row.date] = (result[row.date] || 0) + (row.actualSec || 0);
+  return Object.entries(result).sort(([a], [b]) => a.localeCompare(b));
+});
+onMounted(() => {
+  loadRooms();
+  load();
+  interval = setInterval(load, 5000);
+  document.addEventListener('visibilitychange', load);
+});
+onBeforeUnmount(() => {
+  alive = false;
+  generation++;
+  records.value = [];
+  clearInterval(interval);
+  document.removeEventListener('visibilitychange', load);
+});
 </script>
 <template>
- <div class="page"><button class="btn btn-outline" @click="router.back()">返回</button><h2>好友房间 · 学习互助</h2><router-link to="/rooms">创建房间、邀请朋友与审批</router-link>
- <label class="room-picker">共享范围 <select v-model="roomId" @change="changeRoom"><option :value="null">全部已加入的好友房间</option><option v-for="r in rooms" :key="r.id" :value="r.id">{{r.name}}</option></select></label>
- <router-link v-if="roomId" :to="`/rooms/${roomId}`">返回本房间 / 确认共享</router-link>
- <p v-if="!members.length && !error">还没有可查看的共享成员。请先加入好友房间并确认共享；旧房间成员也需要分别确认。</p>
- <p>仅与同一好友房间已确认共享的成员互看学习记录；不同房间互不开放，隐私模式一键停止共享。这里只读查看，不会导入或修改对方的数据。</p>
- <button v-for="member in members" :key="member.id" class="btn btn-outline" @click="select(member)">{{member.nickname}} · {{member.statusText || '状态更新中'}}<small style="display:block">{{member.status==='private'?'位置已隐藏':member.roomName ? '房间：'+member.roomName : member.isOnline?'未在自习室':'未在线'}} </small></button>
- <p v-if="error">{{error}}</p>
- <template v-if="chosen">
- <h3>{{chosen.nickname}}</h3><p v-if="chosen.is_private_mode&&chosen.id!==auth.user.id">隐私中，学习数据不可见。</p>
- <template v-else>
- <div><button v-for="[key,label] in [['task','任务清单'],['mistake','错题集'],['session','番茄记录'],['stats','热力与时长']]" :key="key" class="btn btn-outline btn-sm" @click="tab=key">{{label}}</button></div>
- <div v-if="tab==='stats'" class="card mt16"><p>累计已同步时长：{{Math.round(heat.reduce((sum,entry)=>sum+entry[1],0)/60)}} 分钟</p><div class="heat"><span v-for="[day,sec] in heat" :key="day" :title="`${day} ${Math.round(sec/60)}分钟`" :style="{background:sec>3600?'#56836a':'#cce3d3'}">{{day.slice(5)}}<br>{{Math.round(sec/60)}}m</span></div></div>
- <div v-for="row in visible" :key="row.id" class="card mt16">
- <strong>{{row.title||row.content||row.learningContent||row.date||'学习记录'}}</strong>
- <p v-if="row.subjectId">科目：{{subjectNames[row.subjectId] || '其他/未同步科目'}}</p>
- <p v-if="row.type==='task'">{{row.done?'已完成':'待完成'}} · {{row.dueDate}} · 预计{{row.estimatedMin||0}}分钟 · {{row.acceptCriteria}}</p>
- <template v-if="row.type==='mistake'"><p>{{row.chapter}} · 错因：{{reasonLabel(row.reason)}} · {{(row.tags||[]).join('、')}}</p><p>思路：{{row.idea}}</p><p>解析：{{row.analysis}}</p><BlobImage v-for="key in [...(row.images||[]),...(row.answerImages||[])]" :key="key" :src="key" class="picture" /></template>
- <p v-if="row.type==='session'">{{row.conflict_flag||row.validation_issue?'待本人处理，暂不计入统计':Math.round((row.actualSec||0)/60)+'分钟 · '+sessionLabel(row.status)}}</p>
- </div><p v-if="!visible.length&&tab!=='stats'">暂无已同步记录</p>
- </template></template></div>
+  <div class="page">
+    <button class="btn btn-outline" @click="router.back()">返回</button>
+    <h2>好友房间 · 学习互助</h2>
+    <router-link to="/rooms">创建房间、邀请朋友与审批</router-link>
+    <label class="room-picker"
+      >共享范围
+      <select v-model="roomId" @change="changeRoom">
+        <option :value="null">全部已加入的好友房间</option>
+        <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.name }}</option>
+      </select></label
+    >
+    <router-link v-if="roomId" :to="`/rooms/${roomId}`">返回本房间 / 确认共享</router-link>
+    <p v-if="!members.length && !error">
+      还没有可查看的共享成员。请先加入好友房间并确认共享；旧房间成员也需要分别确认。
+    </p>
+    <p>
+      仅与同一好友房间已确认共享的成员互看学习记录；不同房间互不开放，隐私模式一键停止共享。这里只读查看，不会导入或修改对方的数据。
+    </p>
+    <button
+      v-for="member in members"
+      :key="member.id"
+      class="btn btn-outline"
+      @click="select(member)"
+    >
+      {{ member.nickname }} · {{ member.statusText || '状态更新中'
+      }}<small style="display: block"
+        >{{
+          member.status === 'private'
+            ? '位置已隐藏'
+            : member.roomName
+              ? '房间：' + member.roomName
+              : member.isOnline
+                ? '未在自习室'
+                : '未在线'
+        }}
+      </small>
+    </button>
+    <p v-if="error">{{ error }}</p>
+    <template v-if="chosen">
+      <h3>{{ chosen.nickname }}</h3>
+      <p v-if="chosen.is_private_mode && chosen.id !== auth.user.id">隐私中，学习数据不可见。</p>
+      <template v-else>
+        <div>
+          <button
+            v-for="[key, label] in [
+              ['task', '任务清单'],
+              ['mistake', '错题集'],
+              ['session', '番茄记录'],
+              ['stats', '热力与时长'],
+            ]"
+            :key="key"
+            class="btn btn-outline btn-sm"
+            @click="tab = key"
+          >
+            {{ label }}
+          </button>
+        </div>
+        <div v-if="tab === 'stats'" class="card mt16">
+          <p>
+            累计已同步时长：{{ Math.round(heat.reduce((sum, entry) => sum + entry[1], 0) / 60) }}
+            分钟
+          </p>
+          <div class="heat">
+            <span
+              v-for="[day, sec] in heat"
+              :key="day"
+              :title="`${day} ${Math.round(sec / 60)}分钟`"
+              :style="{ background: sec > 3600 ? '#56836a' : '#cce3d3' }"
+              >{{ day.slice(5) }}<br />{{ Math.round(sec / 60) }}m</span
+            >
+          </div>
+        </div>
+        <div v-for="row in visible" :key="row.id" class="card mt16">
+          <strong>{{
+            row.title || row.content || row.learningContent || row.date || '学习记录'
+          }}</strong>
+          <p v-if="row.subjectId">科目：{{ subjectNames[row.subjectId] || '其他/未同步科目' }}</p>
+          <p v-if="row.type === 'task'">
+            {{ row.done ? '已完成' : '待完成' }} · {{ row.dueDate }} · 预计{{
+              row.estimatedMin || 0
+            }}分钟 · {{ row.acceptCriteria }}
+          </p>
+          <template v-if="row.type === 'mistake'"
+            ><p>
+              {{ row.chapter }} · 错因：{{ reasonLabel(row.reason) }} ·
+              {{ (row.tags || []).join('、') }}
+            </p>
+            <p>思路：{{ row.idea }}</p>
+            <p>解析：{{ row.analysis }}</p>
+            <BlobImage
+              v-for="key in [...(row.images || []), ...(row.answerImages || [])]"
+              :key="key"
+              :src="key"
+              class="picture"
+          /></template>
+          <p v-if="row.type === 'session'">
+            {{
+              row.conflict_flag || row.validation_issue
+                ? '待本人处理，暂不计入统计'
+                : Math.round((row.actualSec || 0) / 60) + '分钟 · ' + sessionLabel(row.status)
+            }}
+          </p>
+        </div>
+        <p v-if="!visible.length && tab !== 'stats'">暂无已同步记录</p>
+      </template></template
+    >
+  </div>
 </template>
-<style scoped>.room-picker{display:flex;align-items:center;gap:10px;margin:18px 0;flex-wrap:wrap}.room-picker select{max-width:100%;min-height:42px;padding:8px;border:1px solid var(--line,#ddd);border-radius:10px;background:var(--card,#fff);color:inherit}p{font-size: 14px;line-height:1.7}button{margin:4px}.picture{width:100%;max-height:360px;object-fit:contain}.heat{display:flex;flex-wrap:wrap;gap:4px}.heat span{padding:7px;border-radius:4px;font-size: 12px}</style>
+<style scoped>
+.room-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  flex-wrap: wrap;
+}
+.room-picker select {
+  max-width: 100%;
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 10px;
+  background: var(--card, #fff);
+  color: inherit;
+}
+p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+button {
+  margin: 4px;
+}
+.picture {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+.heat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.heat span {
+  padding: 7px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+</style>

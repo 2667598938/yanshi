@@ -1,112 +1,122 @@
 // 统一 HTTP 封装：Bearer 注入、access 过期自动刷新一次、统一 {code,message,data} 解包。
 // 开发期经 Vite proxy 转发到 127.0.0.1:8000，生产同源，无需写绝对地址。
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore } from '../stores/auth';
 
-const BASE = '/api/v1'
-const REQUEST_TIMEOUT_MS = 10_000
-const ATTACHMENT_TIMEOUT_MS = 60_000
+const BASE = '/api/v1';
+const REQUEST_TIMEOUT_MS = 10_000;
+const ATTACHMENT_TIMEOUT_MS = 60_000;
 
 // 共享同一个 refresh，避免并发请求各自刷新
-let refreshPromise = null
-function accountGuard(store,owner){
- if(store.user?.id!==owner){const error=new Error('账号已切换，旧请求已停止');error.code=40990;error.status=409;throw error}
+let refreshPromise = null;
+function accountGuard(store, owner) {
+  if (store.user?.id !== owner) {
+    const error = new Error('账号已切换，旧请求已停止');
+    error.code = 40990;
+    error.status = 409;
+    throw error;
+  }
 }
 
 async function withRequestTimeout(work, timeout) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeout)
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    return await work(controller.signal)
+    return await work(controller.signal);
   } catch (error) {
-    if (!controller.signal.aborted) throw error
-    throw new Error('请求超时，请检查网络后重试', { cause: error })
+    if (!controller.signal.aborted) throw error;
+    throw new Error('请求超时，请检查网络后重试', { cause: error });
   } finally {
-    clearTimeout(timer)
+    clearTimeout(timer);
   }
 }
 
 async function perform(url, options) {
-  const timeout = options.body instanceof FormData ? ATTACHMENT_TIMEOUT_MS : REQUEST_TIMEOUT_MS
+  const timeout = options.body instanceof FormData ? ATTACHMENT_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
   return withRequestTimeout(async (signal) => {
-    const res = await fetch(url, { ...options, signal })
-    let data = null
+    const res = await fetch(url, { ...options, signal });
+    let data = null;
     try {
-      data = await res.json()
+      data = await res.json();
     } catch (error) {
-      if (signal.aborted) throw error
+      if (signal.aborted) throw error;
       /* 非 JSON（如图片流）由调用方用 raw 处理 */
     }
-    return { res, data }
-  }, timeout)
+    return { res, data };
+  }, timeout);
 }
 
 function buildOptions(method, body, headers) {
-  const options = { method, headers: { ...headers } }
+  const options = { method, headers: { ...headers } };
   if (body !== undefined && body !== null) {
     if (body instanceof FormData) {
-      options.body = body
+      options.body = body;
     } else {
-      options.headers['Content-Type'] = 'application/json'
-      options.body = JSON.stringify(body)
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(body);
     }
   }
-  return options
+  return options;
 }
 
 async function request(method, path, { body, query, auth = true, raw = false } = {}) {
-  const authStore = useAuthStore()
-  const owner=authStore.user?.id
-  const url = BASE + path + (query ? '?' + new URLSearchParams(query).toString() : '')
-  const headers = {}
+  const authStore = useAuthStore();
+  const owner = authStore.user?.id;
+  const url = BASE + path + (query ? '?' + new URLSearchParams(query).toString() : '');
+  const headers = {};
   if (auth && authStore.accessToken) {
-    headers['Authorization'] = 'Bearer ' + authStore.accessToken
+    headers['Authorization'] = 'Bearer ' + authStore.accessToken;
   }
 
-  let options = buildOptions(method, body, headers)
-  let { res, data } = await perform(url, options)
-  if(auth)accountGuard(authStore,owner)
+  let options = buildOptions(method, body, headers);
+  let { res, data } = await perform(url, options);
+  if (auth) accountGuard(authStore, owner);
 
   // access 过期：用 refresh 换一次，重试原请求（只重试一次）
-  if (res.status === 401 && auth && authStore.canRefresh && !['/auth/refresh','/auth/logout'].includes(path)) {
-    refreshPromise = refreshPromise || authStore.tryRefresh()
-    const ok = await refreshPromise
-    refreshPromise = null
-    if(auth)accountGuard(authStore,owner)
+  if (
+    res.status === 401 &&
+    auth &&
+    authStore.canRefresh &&
+    !['/auth/refresh', '/auth/logout'].includes(path)
+  ) {
+    refreshPromise = refreshPromise || authStore.tryRefresh();
+    const ok = await refreshPromise;
+    refreshPromise = null;
+    if (auth) accountGuard(authStore, owner);
     if (ok) {
-      headers['Authorization'] = 'Bearer ' + authStore.accessToken
-      options = buildOptions(method, body, headers)
-      const retried = await perform(url, options)
-      res = retried.res
-      data = retried.data
-      if(auth)accountGuard(authStore,owner)
+      headers['Authorization'] = 'Bearer ' + authStore.accessToken;
+      options = buildOptions(method, body, headers);
+      const retried = await perform(url, options);
+      res = retried.res;
+      data = retried.data;
+      if (auth) accountGuard(authStore, owner);
     }
   }
 
   if (raw) {
     if (!res.ok) {
-      const err = new Error(data?.message || '请求失败')
-      err.status = res.status
-      err.data = data
-      throw err
+      const err = new Error(data?.message || '请求失败');
+      err.status = res.status;
+      err.data = data;
+      throw err;
     }
-    return { res, data }
+    return { res, data };
   }
 
   if (!res.ok || !data || data.code !== 0) {
-    const err = new Error(data?.message || `请求失败（${res.status}）`)
-    err.code = data?.code
-    err.status = res.status
-    err.data = data?.data
-    throw err
+    const err = new Error(data?.message || `请求失败（${res.status}）`);
+    err.code = data?.code;
+    err.status = res.status;
+    err.data = data?.data;
+    throw err;
   }
-  return data.data
+  return data.data;
 }
 
 // 流式 POST（SSE）：逐条解析 data: {...} 事件；401 时自动刷新一次后重试
 export async function streamPost(path, body, onEvent, { signal } = {}) {
-  const authStore = useAuthStore()
-  const owner=authStore.user?.id
-  const url = BASE + path
+  const authStore = useAuthStore();
+  const owner = authStore.user?.id;
+  const url = BASE + path;
   const doFetch = (token) =>
     fetch(url, {
       method: 'POST',
@@ -116,75 +126,75 @@ export async function streamPost(path, body, onEvent, { signal } = {}) {
       },
       body: JSON.stringify(body),
       signal,
-    })
+    });
 
-  let res = await doFetch(authStore.accessToken)
-  accountGuard(authStore,owner)
+  let res = await doFetch(authStore.accessToken);
+  accountGuard(authStore, owner);
   if (res.status === 401 && authStore.canRefresh) {
-    refreshPromise = refreshPromise || authStore.tryRefresh()
-    const ok = await refreshPromise
-    refreshPromise = null
-    accountGuard(authStore,owner)
-    if (ok) res = await doFetch(authStore.accessToken)
-    accountGuard(authStore,owner)
+    refreshPromise = refreshPromise || authStore.tryRefresh();
+    const ok = await refreshPromise;
+    refreshPromise = null;
+    accountGuard(authStore, owner);
+    if (ok) res = await doFetch(authStore.accessToken);
+    accountGuard(authStore, owner);
   }
   if (!res.ok) {
-    let data = null
+    let data = null;
     try {
-      data = await res.json()
+      data = await res.json();
     } catch {
       /* 非 JSON 错误体 */
     }
-    const err = new Error(data?.message || `请求失败（${res.status}）`)
-    err.code = data?.code
-    err.status = res.status
-    throw err
+    const err = new Error(data?.message || `请求失败（${res.status}）`);
+    err.code = data?.code;
+    err.status = res.status;
+    throw err;
   }
-  if (!res.body) throw new Error('当前浏览器不支持流式响应')
+  if (!res.body) throw new Error('当前浏览器不支持流式响应');
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let finished = false
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finished = false;
   const deliver = (event) => {
-    accountGuard(authStore,owner)
-    if (event.type === 'done' || event.type === 'error') finished = true
-    onEvent(event)
-  }
+    accountGuard(authStore, owner);
+    if (event.type === 'done' || event.type === 'error') finished = true;
+    onEvent(event);
+  };
   try {
     for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      buffer = buffer.replace(/\r\n/g, '\n')
-      const blocks = buffer.split('\n\n')
-      buffer = blocks.pop() || ''
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, '\n');
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop() || '';
       for (const block of blocks) {
-        const line = block.split('\n').find((x) => x.startsWith('data:'))
-        if (!line) continue
-        const payload = line.slice(5).trim()
-        if (!payload) continue
-        let event = null
+        const line = block.split('\n').find((x) => x.startsWith('data:'));
+        if (!line) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        let event = null;
         try {
-          event = JSON.parse(payload)
+          event = JSON.parse(payload);
         } catch {
-          continue // 忽略无法解析的心跳/空事件
+          continue; // 忽略无法解析的心跳/空事件
         }
-        deliver(event)
+        deliver(event);
       }
     }
     // 刷新末尾未以空行收尾的事件
-    const tail = buffer.split('\n').find((x) => x.startsWith('data:'))
+    const tail = buffer.split('\n').find((x) => x.startsWith('data:'));
     if (tail) {
       try {
-        deliver(JSON.parse(tail.slice(5).trim()))
+        deliver(JSON.parse(tail.slice(5).trim()));
       } catch {
         /* 忽略不完整事件 */
       }
     }
-    if (!finished) throw new Error('连接提前结束，回答尚未完成，请重试')
+    if (!finished) throw new Error('连接提前结束，回答尚未完成，请重试');
   } finally {
-    reader.releaseLock()
+    reader.releaseLock();
   }
 }
 
@@ -194,28 +204,32 @@ export const http = {
   put: (path, body, opts) => request('PUT', path, { ...opts, body }),
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   del: (path, opts) => request('DELETE', path, opts),
-}
+};
 
 // 带鉴权拉取二进制（图片附件 view 接口需要 Authorization 头，<img> 标签无法带 token）
 export async function fetchBlob(url) {
-  const authStore = useAuthStore()
-  const owner=authStore.user?.id
-  const doFetch = (token) => withRequestTimeout(async (signal) => {
-    const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {}, signal })
-    accountGuard(authStore, owner)
-    return { status: res.status, blob: res.ok ? await res.blob() : null }
-  }, ATTACHMENT_TIMEOUT_MS)
-  let res = await doFetch(authStore.accessToken)
-  accountGuard(authStore,owner)
+  const authStore = useAuthStore();
+  const owner = authStore.user?.id;
+  const doFetch = (token) =>
+    withRequestTimeout(async (signal) => {
+      const res = await fetch(url, {
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+        signal,
+      });
+      accountGuard(authStore, owner);
+      return { status: res.status, blob: res.ok ? await res.blob() : null };
+    }, ATTACHMENT_TIMEOUT_MS);
+  let res = await doFetch(authStore.accessToken);
+  accountGuard(authStore, owner);
   // access 过期：复用全局刷新一次后重试，避免令牌过期瞬间图片被误判为加载失败
   if (res.status === 401 && authStore.canRefresh) {
-    refreshPromise = refreshPromise || authStore.tryRefresh()
-    const ok = await refreshPromise
-    refreshPromise = null
-    accountGuard(authStore,owner)
-    if (ok) res = await doFetch(authStore.accessToken)
-    accountGuard(authStore,owner)
+    refreshPromise = refreshPromise || authStore.tryRefresh();
+    const ok = await refreshPromise;
+    refreshPromise = null;
+    accountGuard(authStore, owner);
+    if (ok) res = await doFetch(authStore.accessToken);
+    accountGuard(authStore, owner);
   }
-  if (!res.blob) throw new Error('图片加载失败')
-  return res.blob
+  if (!res.blob) throw new Error('图片加载失败');
+  return res.blob;
 }

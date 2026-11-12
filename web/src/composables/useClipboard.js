@@ -1,20 +1,20 @@
-import { ref } from 'vue'
-import { copyText } from '../utils/clipboard'
+import { ref } from 'vue';
+import { copyText } from '../utils/clipboard';
 
 export function useClipboard(toast) {
-  const manualCopy = ref(null)
+  const manualCopy = ref(null);
   async function copy(value, successMessage = '已复制') {
-    const text = String(value ?? '')
+    const text = String(value ?? '');
     if (!text) {
-      toast('暂无可复制的内容')
-      return false
+      toast('暂无可复制的内容');
+      return false;
     }
     if (await copyText(text)) {
-      toast(successMessage)
-      return true
+      toast(successMessage);
+      return true;
     }
-    manualCopy.value = text
-    return false
+    manualCopy.value = text;
+    return false;
   }
-  return { copy, manualCopy }
+  return { copy, manualCopy };
 }

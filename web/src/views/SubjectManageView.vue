@@ -1,67 +1,71 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  ChevronLeft, Plus, Pencil, Archive, RotateCcw, Check, ArchiveRestore,
-} from 'lucide-vue-next'
-import SubjectIcon from '../components/SubjectIcon.vue'
-import { useSubjectsStore } from '../stores/subjects'
-import {
-  SUBJECT_COLORS, SUBJECT_ICONS, DEFAULT_SUBJECTS,
-} from '../data/subjects'
-import { useToast } from '../composables/useToast'
+  ChevronLeft,
+  Plus,
+  Pencil,
+  Archive,
+  RotateCcw,
+  Check,
+  ArchiveRestore,
+} from 'lucide-vue-next';
+import SubjectIcon from '../components/SubjectIcon.vue';
+import { useSubjectsStore } from '../stores/subjects';
+import { SUBJECT_COLORS, SUBJECT_ICONS, DEFAULT_SUBJECTS } from '../data/subjects';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const subjects = useSubjectsStore()
-const { toast } = useToast()
+const router = useRouter();
+const subjects = useSubjectsStore();
+const { toast } = useToast();
 
-const sheet = ref(false)
-const editingId = ref(null)
-const formName = ref('')
-const formColor = ref(SUBJECT_COLORS[0])
-const formIcon = ref('BookOpen')
+const sheet = ref(false);
+const editingId = ref(null);
+const formName = ref('');
+const formColor = ref(SUBJECT_COLORS[0]);
+const formIcon = ref('BookOpen');
 
 const archived = computed(() =>
-  subjects.list
-    .filter((x) => x.archived)
-    .sort((a, b) => a.order - b.order)
-)
+  subjects.list.filter((x) => x.archived).sort((a, b) => a.order - b.order),
+);
 
 function openAdd() {
-  editingId.value = null
-  formName.value = ''
-  formColor.value = SUBJECT_COLORS[subjects.list.length % SUBJECT_COLORS.length]
-  formIcon.value = 'BookOpen'
-  sheet.value = true
+  editingId.value = null;
+  formName.value = '';
+  formColor.value = SUBJECT_COLORS[subjects.list.length % SUBJECT_COLORS.length];
+  formIcon.value = 'BookOpen';
+  sheet.value = true;
 }
 function openEdit(s) {
-  editingId.value = s.id
-  formName.value = s.name
-  formColor.value = s.color
-  formIcon.value = s.icon
-  sheet.value = true
+  editingId.value = s.id;
+  formName.value = s.name;
+  formColor.value = s.color;
+  formIcon.value = s.icon;
+  sheet.value = true;
 }
 async function save() {
-  const name = formName.value.trim()
+  const name = formName.value.trim();
   if (!name) {
-    toast('请填写科目名称')
-    return
+    toast('请填写科目名称');
+    return;
   }
   if (editingId.value) {
     await subjects.update(editingId.value, {
-      name, color: formColor.value, icon: formIcon.value,
-    })
-    toast('已保存')
+      name,
+      color: formColor.value,
+      icon: formIcon.value,
+    });
+    toast('已保存');
   } else {
-    await subjects.add({ name, color: formColor.value, icon: formIcon.value })
-    toast('已添加科目')
+    await subjects.add({ name, color: formColor.value, icon: formIcon.value });
+    toast('已添加科目');
   }
-  sheet.value = false
+  sheet.value = false;
 }
 async function setArchived(s, archived) {
-  await subjects.setArchived(s.id, archived)
-  if (archived) toast(`已归档「${s.name}」`)
-  else toast(`已恢复「${s.name}」`)
+  await subjects.setArchived(s.id, archived);
+  if (archived) toast(`已归档「${s.name}」`);
+  else toast(`已恢复「${s.name}」`);
 }
 </script>
 
@@ -76,11 +80,7 @@ async function setArchived(s, archived) {
 
   <div class="page">
     <div class="card">
-      <div
-        v-for="s in subjects.active"
-        :key="s.id"
-        class="subj-row"
-      >
+      <div v-for="s in subjects.active" :key="s.id" class="subj-row">
         <span class="subj-ic" :style="{ background: s.color }">
           <SubjectIcon :name="s.icon" :size="17" />
         </span>
@@ -105,7 +105,9 @@ async function setArchived(s, archived) {
     <button class="btn btn-primary btn-block mt12" @click="openAdd">
       <Plus :size="18" />新增科目
     </button>
-    <div class="tip">内置 {{ DEFAULT_SUBJECTS.length }} 科也可以改名、换色；归档只是隐藏，不会删除历史记录。</div>
+    <div class="tip">
+      内置 {{ DEFAULT_SUBJECTS.length }} 科也可以改名、换色；归档只是隐藏，不会删除历史记录。
+    </div>
   </div>
 
   <!-- 编辑弹层 -->
@@ -141,9 +143,7 @@ async function setArchived(s, archived) {
         </button>
       </div>
 
-      <button class="btn btn-primary btn-block mt16" @click="save">
-        <Check :size="18" />保存
-      </button>
+      <button class="btn btn-primary btn-block mt16" @click="save"><Check :size="18" />保存</button>
       <button class="btn btn-ghost btn-block mt8" @click="sheet = false">取消</button>
     </div>
   </div>

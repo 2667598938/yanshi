@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash } from 'node:crypto';
 
 export function serviceWorkerSource(files, version, offlineShell = '/index.html') {
   return `const PREFIX = 'yanshi-static-';
@@ -46,7 +46,7 @@ self.addEventListener('fetch', (event) => {
       throw error;
     }
   })());
-});`
+});`;
 }
 
 export function offlinePlugin() {
@@ -55,13 +55,23 @@ export function offlinePlugin() {
     apply: 'build',
     enforce: 'post',
     generateBundle(_options, bundle) {
-      const html = bundle['index.html']
-      if (html?.type !== 'asset') this.error('Offline build requires index.html')
-      const files = Object.keys(bundle).filter((name) => name !== 'index.html' && !name.endsWith('.map')).map((name) => '/' + name)
-      const version = createHash('sha256').update(files.join('|')).update(html.source).digest('hex').slice(0, 16)
-      const shellName = `assets/offline-${version}.html`
-      this.emitFile({ type: 'asset', fileName: shellName, source: html.source })
-      this.emitFile({ type: 'asset', fileName: 'sw.js', source: serviceWorkerSource(files, version, '/' + shellName) })
+      const html = bundle['index.html'];
+      if (html?.type !== 'asset') this.error('Offline build requires index.html');
+      const files = Object.keys(bundle)
+        .filter((name) => name !== 'index.html' && !name.endsWith('.map'))
+        .map((name) => '/' + name);
+      const version = createHash('sha256')
+        .update(files.join('|'))
+        .update(html.source)
+        .digest('hex')
+        .slice(0, 16);
+      const shellName = `assets/offline-${version}.html`;
+      this.emitFile({ type: 'asset', fileName: shellName, source: html.source });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sw.js',
+        source: serviceWorkerSource(files, version, '/' + shellName),
+      });
     },
-  }
+  };
 }

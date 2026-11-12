@@ -47,19 +47,18 @@ export const QUOTES = [
   '把注意力还给眼前，把结果交给积累。',
   '愿我们顶峰相见，也珍惜并肩的途中。',
   '大雪覆盖山野，也保护着来年的种子。',
-]
+];
 
 // 按日期取一条稳定的金句（同一天不变）
 export function quoteOfDay(date = new Date()) {
-  const dayIndex =
-    date.getFullYear() * 372 + (date.getMonth() + 1) * 31 + date.getDate()
-  return QUOTES[dayIndex % QUOTES.length]
+  const dayIndex = date.getFullYear() * 372 + (date.getMonth() + 1) * 31 + date.getDate();
+  return QUOTES[dayIndex % QUOTES.length];
 }
 
-let previous = -1
+let previous = -1;
 export function randomQuote() {
- let index = Math.floor(Math.random()*QUOTES.length)
- if(index===previous && QUOTES.length>1) index=(index+1)%QUOTES.length
- previous=index
- return QUOTES[index]
+  let index = Math.floor(Math.random() * QUOTES.length);
+  if (index === previous && QUOTES.length > 1) index = (index + 1) % QUOTES.length;
+  previous = index;
+  return QUOTES[index];
 }
