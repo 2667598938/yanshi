@@ -1,9 +1,10 @@
 """持久化邮件任务与VIP到期通知；业务事务提交后才有任务可被领取。"""
 import secrets
-from datetime import timedelta
-from sqlalchemy import or_, select, update, case
+from datetime import timedelta, timezone
+from sqlalchemy import JSON, case, or_, select, type_coerce, update
+from sqlalchemy.exc import IntegrityError
 
-from ..models import EmailJob, User, FeatureRequest
+from ..models import EmailJob, FeatureRequest, LearningRecord, Message, User
 from ..time import utcnow
 from .messages import create_message
 from .transient import deliver
@@ -21,6 +22,31 @@ def enqueue_expiry_notifications(session_factory, settings):
             create_message(db, user, 'vip', 'VIP 已到期', 'VIP已到期；单独审批授权仍按其有效状态保留。', '/vip',
                 dedupe_key=f'vip-expired:{user.id}:{user.vip_until.isoformat()}', email=True, settings=settings)
             user.vip_expiry_notified_until = user.vip_until
+        db.commit()
+
+
+def enqueue_daily_reminders(session_factory, settings):
+    now = utcnow().replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=8)))
+    if now.hour < 20:
+        return
+    dedupe_key = f'daily-study:{now.date().isoformat()}'
+    opted_in = type_coerce(LearningRecord.body, JSON)['value']['dailyReminder'].as_boolean()
+    delivered = select(Message.id).where(Message.user_id == User.id, Message.dedupe_key == dedupe_key)
+    mail_ready = bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
+    with session_factory() as db:
+        users = db.scalars(select(User).join(LearningRecord, LearningRecord.user_id == User.id)
+            .where(User.status == 'active', User.role != 'admin', LearningRecord.id == 'learning-settings',
+                   LearningRecord.deleted == 0, opted_in.is_(True), ~delivered.exists())
+            .order_by(User.id).limit(100)).all()
+        for user in users:
+            try:
+                with db.begin_nested():
+                    create_message(db, user, 'study', '每日学习提醒', '今天也留一点时间给自己，去看看任务和待复习错题吧。', '/',
+                                   dedupe_key=dedupe_key,
+                                   email=mail_ready and not user.email.endswith('.invalid'), settings=settings)
+            except IntegrityError:
+                # A concurrent maintenance process may already have queued this day.
+                continue
         db.commit()
 
 
@@ -113,15 +139,17 @@ def refresh_model_catalogs(session_factory, settings, secret):
                 db.rollback()  # Key或上游故障不能阻断邮件与其他用户的目录刷新。
 
 
-def run_maintenance(session_factory, settings, secret=None):
+def run_maintenance(session_factory, settings, secret=None, *, prune=True):
     import time
     from sqlalchemy import delete
     from .persistent_transient import TransientState
-    with session_factory() as db:
-        db.execute(delete(TransientState).where(TransientState.expires_at < time.time()))
-        db.commit()
-    from .attachments import purge_deleted_attachments
-    purge_deleted_attachments(session_factory,settings)
+    if prune:
+        with session_factory() as db:
+            db.execute(delete(TransientState).where(TransientState.expires_at < time.time()))
+            db.commit()
+        from .attachments import purge_deleted_attachments
+        purge_deleted_attachments(session_factory,settings)
+        enqueue_daily_reminders(session_factory, settings)
     enqueue_expiry_notifications(session_factory, settings)
     deliver_email_jobs(session_factory, settings)
     if secret: refresh_model_catalogs(session_factory, settings, secret)

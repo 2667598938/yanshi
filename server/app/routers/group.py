@@ -1,5 +1,5 @@
 from typing import Literal
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from ..deps import get_current_user, get_db, get_admin
 from ..models import User, RoomMember, Room
@@ -95,7 +95,8 @@ class SiteHeartbeat(HeartbeatInput):
 
 
 @router.post("/group/presence")
-def presence(body: SiteHeartbeat, user=Depends(get_current_user), db=Depends(get_db)):
+def presence(body: SiteHeartbeat, request: Request, user=Depends(get_current_user), db=Depends(get_db)):
+    request.app.state.heartbeat_rate.limit(user.id)
     return ok(update_presence(db, user, body))
 
 

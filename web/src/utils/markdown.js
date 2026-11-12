@@ -26,6 +26,7 @@ function inline(text) {
         : label
     })
     .replace(/\n/g, '<br/>')
+  // eslint-disable-next-line no-control-regex -- temporary code placeholders use NUL delimiters
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[Number(i)]}</code>`)
 }
 
@@ -186,5 +187,6 @@ export function renderMarkdown(source = '') {
     out.push(`<p>${inline(buf.join('\n'))}</p>`)
   }
   closeList()
+  // eslint-disable-next-line no-control-regex -- temporary math placeholders use SOH delimiters
   return out.join('').replace(/\u0001MATH(\d+)\u0001/g, (_, i) => math[Number(i)] || '')
 }

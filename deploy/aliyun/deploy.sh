@@ -11,7 +11,8 @@ exec 9>/var/lock/yanshi-deploy.lock
 flock -n 9 || { echo 'Another release is running.' >&2; exit 1; }
 export API_IMAGE="ghcr.io/2667598938/yanshi-api@$2"
 export WEB_IMAGE="ghcr.io/2667598938/yanshi-web@$3"
-compose() { docker compose -p yanshi -f /opt/yanshi/compose.yaml "$@"; }
+compose_command=(docker compose -p yanshi -f /opt/yanshi/compose.yaml)
+compose() { "${compose_command[@]}" "$@"; }
 [[ -r /etc/yanshi/server.env && -f /opt/yanshi/compose.yaml ]]
 compose config --quiet
 images=$(compose config --images)
@@ -19,7 +20,10 @@ if ! grep -Fxq "$API_IMAGE" <<< "$images" || ! grep -Fxq "$WEB_IMAGE" <<< "$imag
   echo 'Install the current deploy/aliyun/compose.yaml before updating.' >&2
   exit 1
 fi
-compose pull
+if ! timeout --kill-after=15s 20m "${compose_command[@]}" pull; then
+  echo 'Image pull failed; retrying the same digests before stopping services.' >&2
+  timeout --kill-after=15s 20m "${compose_command[@]}" pull
+fi
 database_exists=$(compose run -T --rm --no-deps api python -c '
 from pathlib import Path
 from sqlalchemy.engine import make_url

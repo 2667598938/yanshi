@@ -8,6 +8,7 @@ import { resourceApi } from '../api'
 import { fmtDate as formatDate } from '../utils/time'
 import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
+import PageState from '../components/PageState.vue'
 import { db } from '../db'
 import { toPlain } from '../utils/plain'
 import { favoriteRows, pullCommunityMirrors } from '../sync/community'
@@ -28,40 +29,70 @@ const CATEGORIES = ['英语', '数学', '政治', '专业课', '其他']
 
 const tab = ref(['fav', 'mine'].includes(route.query.tab) ? route.query.tab : 'all')
 const query = ref('')
+const activeQuery = ref('')
 const category = ref('')
 const rows = ref([])
 const loading = ref(true)
+const loadingMore = ref(false)
+const cursor = ref(null)
+const loadError = ref('')
+let loadVersion = 0
 
 const isVip = computed(() => auth.isVip)
 
-async function load() {
-  loading.value = true
+async function load(append = false) {
+  if (append && (loadingMore.value || !cursor.value)) return
+  const version = ++loadVersion
+  loading.value = !append
+  loadingMore.value = append
+  loadError.value = ''
+  if (!append) cursor.value = null
   try {
     if (tab.value === 'fav') {
       try {
         await pullCommunityMirrors()
-        rows.value = await favoriteRows()
+        const favorites = await favoriteRows()
+        if (version !== loadVersion) return
+        rows.value = favorites
         // 缓存收藏列表，断网时仍可查看
         await db.kv.put({ key: FAV_CACHE, value: toPlain(rows.value) })
       } catch (e) {
         if (e.status && e.status < 500) throw e
         const cached = await db.kv.get(FAV_CACHE)
-        rows.value = await favoriteRows()
-        if (!rows.value.length) rows.value = cached?.value || []
+        const favorites = await favoriteRows()
+        if (version !== loadVersion) return
+        rows.value = favorites.length ? favorites : cached?.value || []
         toast('离线中，显示本机缓存的收藏')
       }
-    } else if (tab.value === 'mine') rows.value = await resourceApi.mine()
+    } else if (tab.value === 'mine') {
+      const items = await resourceApi.mine()
+      if (version === loadVersion) rows.value = items
+    }
     else {
-      const params = {}
-      if (query.value.trim()) params.q = query.value.trim()
+      const params = { page_size: 20 }
+      if (activeQuery.value) params.q = activeQuery.value
       if (category.value) params.category = category.value
-      rows.value = await resourceApi.list(params)
+      if (append) params.before_id = cursor.value
+      const page = await resourceApi.list(params)
+      if (version !== loadVersion) return
+      rows.value = append ? [...rows.value, ...page.items] : page.items
+      cursor.value = page.next
     }
   } catch (e) {
-    toast(e.message)
+    if (version !== loadVersion) return
+    if (append) toast(e.message)
+    else loadError.value = e.message
   } finally {
-    loading.value = false
+    if (version === loadVersion) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
+}
+
+function searchResources() {
+  activeQuery.value = query.value.trim()
+  load()
 }
 
 function publish() {
@@ -81,8 +112,8 @@ function fmtDate(v) {
   return formatDate(v)
 }
 
-watch([tab, category], load)
-onMounted(load)
+watch([tab, category], () => load())
+onMounted(() => load())
 </script>
 
 <template>
@@ -107,10 +138,10 @@ onMounted(load)
       </div>
 
       <template v-if="tab === 'all'">
-        <form class="search-row" @submit.prevent="load">
+        <form class="search-row" @submit.prevent="searchResources">
           <div class="search-box">
             <Search :size="16" />
-            <input v-model="query" placeholder="搜索标题或简介" maxlength="40" />
+            <input v-model="query" type="search" aria-label="搜索资料" placeholder="搜索标题、简介或分类" maxlength="80" />
           </div>
           <button class="btn btn-outline btn-sm" type="submit">搜索</button>
         </form>
@@ -126,11 +157,9 @@ onMounted(load)
         </div>
       </template>
 
-      <div v-if="loading" class="empty">读取中…</div>
-      <div v-else-if="!rows.length" class="empty">
-        {{ tab === 'fav' ? '还没有收藏资料' : tab === 'mine' ? '还没有发布过资料' : '还没有资料，等第一位分享者' }}
-      </div>
-      <div v-else class="res-list">
+      <PageState :loading="loading" :error="loadError" :empty="!rows.length"
+        :empty-label="tab === 'fav' ? '还没有收藏资料' : tab === 'mine' ? '还没有发布过资料' : '没有匹配的资料'" @retry="load()">
+      <div class="res-list">
         <button v-for="r in rows" :key="r.id" class="res-card" @click="open(r)">
           <div class="res-top">
             <span class="res-title">{{ r.title }}</span><span v-if="r.review_status!=='approved'">{{r.review_status==='pending'?'待审核':'已驳回'}}</span>
@@ -149,7 +178,11 @@ onMounted(load)
             <ChevronRight :size="15" class="res-arrow" />
           </div>
         </button>
+        <button v-if="cursor" class="btn btn-outline" type="button" :disabled="loadingMore" @click="load(true)">
+          {{ loadingMore ? '读取中…' : '加载更多' }}
+        </button>
       </div>
+      </PageState>
     </div>
   </div>
 </template>

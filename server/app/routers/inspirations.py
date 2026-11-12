@@ -85,6 +85,7 @@ def submit_inspiration(
     user=Depends(get_current_user),
     db=Depends(get_db),
 ):
+    request.app.state.transient.limit(f"inspiration-create:{user.id}", 5, 600)
     pending = db.scalar(
         select(Inspiration.id).where(
             Inspiration.user_id == user.id, Inspiration.status == "pending"

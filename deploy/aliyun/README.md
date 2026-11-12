@@ -137,11 +137,32 @@ sudo bash deploy/aliyun/deploy.sh '<Commit>' '<API sha256:…>' '<Web sha256:…
 
 如果迁移或启动失败，检查日志及 `/var/backups/yanshi` 中本次备份。回滚前应在新目录演练恢复数据库及图片，再用 `/etc/yanshi/previous-release.env` 记录的镜像恢复服务。首次从旧模板升级时，该文件记录的是当前机器上的镜像 ID，演练结束前保留这些镜像。
 
-## 11. 备份（重要）
+## 11. 定时备份
 
 迁移前备份保存在 `/var/backups/yanshi`，保留最近 14 份，包含 SQLite 和本地图片。七牛图片需要独立备份。
 
+```bash
+sudo install -m 0750 deploy/azure/backup.sh /usr/local/sbin/yanshi-backup
+sudo install -m 0644 deploy/azure/yanshi-backup.service deploy/azure/yanshi-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now yanshi-backup.timer
+sudo systemctl start yanshi-backup.service
+sudo journalctl -u yanshi-backup.service -n 20 --no-pager
+```
+
 定期做磁盘快照或把已校验的备份复制到异地，避免服务器故障时同时丢失原数据和备份。
+
+## 12. 现有站点的运营配置
+
+在 `/etc/yanshi/server.env` 设置 `AUTH_EMAIL_DOMAINS=`、`AUTH_QQ_NUMERIC_ONLY=false` 与 `ACCOUNT_MAX_USERS=300`。现有显式环境变量优先于代码默认值。邮箱注册开关继续由管理后台控制，放开前分别向 QQ、163 和学校邮箱发送测试验证码。
+
+生产环境缺少 TURN 地址或密钥时自动隐藏 `av_room`。准备同地区的 coturn，在服务端使用共享密钥认证、限制中继端口范围和带宽。云主机有公网/私网映射时配置 coturn 的 `external-ip`，安全组与防火墙放行监听端口和指定的 UDP 中继端口。把可达的 STUN 地址填入 `ROOM_ICE_SERVERS`，TURN 地址填入 `ROOM_TURN_URLS`，把同一共享密钥写入私有配置的 `ROOM_TURN_SECRET`。跨 Wi-Fi 与蜂窝网络验收双向收音和视频后再开放。参见 [coturn 配置参考](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)。
+
+给 `https://duzhi.xin/health/ready` 配置 HTTPS 拨测并对连续失败和证书到期报警。API 日志含请求 ID、路由模板、状态码和耗时。先收集一周 `csp_report` 日志，验证登录、数学渲染、图片上传、离线刷新和音视频，再评估把 CSP 改成强制模式。
+
+已有商业证书的站点可以先用 Certbot 的 `certonly --webroot` 单独申请证书。请先确认 HTTP 的 ACME 路径由指定目录提供，签发成功后再把现有 HTTPS 站点切到新证书，并运行 `nginx -t`。切换后用 `certbot renew --dry-run` 验证续期，并设置续期成功时重载 Nginx 的 deploy hook。参见 [Certbot 续期文档](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates)。
+
+清理前记录当前和上一版镜像 ID，核对回滚镜像仍在，再删除明确废弃的镜像。旧部署目录应先确认已脱离 Nginx、容器、定时任务和备份配置，并保留可恢复副本。
 
 ## 日常运维命令
 

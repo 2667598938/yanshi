@@ -1,6 +1,8 @@
 import secrets
 import asyncio
 import logging
+import json
+from time import monotonic, perf_counter
 from contextlib import suppress
 from contextlib import asynccontextmanager
 
@@ -11,6 +13,7 @@ from .config import BASE_DIR, Settings
 from .database import make_database
 from .errors import install_errors, ok
 from .services.persistent_transient import PersistentTransientStore
+from .services.presence import HeartbeatLimiter
 from .routers import (
     auth,
     room_media,
@@ -55,14 +58,19 @@ async def lifespan(app: FastAPI):
     async def maintenance_loop():
         from .services.maintenance import run_maintenance
 
+        next_prune = 0
         while True:
+            prune = monotonic() >= next_prune
             try:
                 await asyncio.to_thread(
                     run_maintenance,
                     app.state.session_factory,
                     app.state.settings,
                     app.state.secret,
+                    prune=prune,
                 )
+                if prune:
+                    next_prune = monotonic() + 300
             except Exception:
                 logging.getLogger("yanshi.maintenance").exception(
                     "Maintenance cycle failed"
@@ -96,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.transient = PersistentTransientStore(
         sessions, settings.ai_key_enc_secret or app.state.secret
     )
+    app.state.heartbeat_rate = HeartbeatLimiter()
 
     install_errors(app)
     app.add_middleware(
@@ -104,11 +113,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
     )
 
     @app.middleware("http")
     async def security_headers(request, call_next):
-        response = await call_next(request)
+        request_id = secrets.token_hex(16)
+        request.state.request_id = request_id
+        started = perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        finally:
+            if request.url.path.startswith("/api/"):
+                route = request.scope.get("route")
+                logging.getLogger("uvicorn.error").info(json.dumps({
+                    "event": "api_request",
+                    "request_id": request_id,
+                    "method": request.method,
+                    "route": getattr(route, "path", "<unmatched>"),
+                    "status": status_code,
+                    "duration_ms": round((perf_counter() - started) * 1000, 1),
+                }))
+        response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"

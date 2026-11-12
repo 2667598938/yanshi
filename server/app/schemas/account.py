@@ -5,6 +5,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 EMAIL_RE = re.compile(r"^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$")
 PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
+COMMON_PASSWORDS = frozenset({
+    "12345678a", "123456789a", "abc12345", "abcd1234", "admin123",
+    "password1", "password123", "qwerty123", "qwerty1234", "welcome123",
+})
 
 
 def phone_value(v: str) -> str:
@@ -32,6 +36,8 @@ def password_value(v: str) -> str:
         or not (8 <= len(v) <= 64)
     ):
         raise ValueError("密码需 8-64 位且包含字母和数字")
+    if v.casefold() in COMMON_PASSWORDS:
+        raise ValueError("请更换常见弱密码")
     return v
 
 

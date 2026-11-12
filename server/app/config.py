@@ -29,16 +29,16 @@ class Settings(BaseSettings):
     auth_password_only: bool = True
     # email 表示邮箱账号，验证码登录另受 auth_password_only 控制。
     auth_channels: str = "email"  # 逗号分隔：email,wechat,qq,phone
-    # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，测试环境用空值）
-    auth_email_domains: str = "qq.com"
-    auth_qq_numeric_only: bool = True
+    # 邮箱验证码/注册可选域名白名单，逗号分隔，留空允许任意域名。
+    auth_email_domains: str = ""
+    auth_qq_numeric_only: bool = False
     github_client_id: str = ""
     github_client_secret: str = ""
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
     qq_app_id: str = ""
     qq_app_secret: str = ""
-    account_max_users: int = Field(default=100, ge=0, le=1000000)
+    account_max_users: int = Field(default=300, ge=0, le=1000000)
     registration_open: bool = False
     features: str = "text_room,resource,post,inspiration,dream_school"
     sms_secret_id: str = ""
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     room_sfu_enabled: bool = False
     room_sfu_url: str = ""
-    room_ice_servers: str = '[{"urls":"stun:stun.l.google.com:19302"}]'
+    room_ice_servers: str = '[]'
     room_turn_urls: str = ""
     room_turn_secret: str = ""
     room_turn_ttl: int = Field(default=43200, ge=600, le=86400)
@@ -103,7 +103,14 @@ class Settings(BaseSettings):
 
     @property
     def enabled_features(self):
-        return [x.strip() for x in self.features.split(",") if x.strip()]
+        features = [x.strip() for x in self.features.split(",") if x.strip()]
+        if self.environment == "production" and "av_room" in features:
+            urls = [url.strip() for url in self.room_turn_urls.split(",") if url.strip()]
+            if not self.room_turn_secret.strip() or not urls or any(
+                not url.startswith(("turn:", "turns:")) for url in urls
+            ):
+                features.remove("av_room")
+        return features
 
     @property
     def ai_enabled(self):

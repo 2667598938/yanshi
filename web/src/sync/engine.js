@@ -410,7 +410,7 @@ let syncCompletion = Promise.resolve()
 // expectedRevision=0 会与云端已有 revision 冲突，产生一串假冲突。
 async function ensureBootstrapped() {
   if (await db.syncMeta.get('bootstrapDone')) return { ready: true, pulled: false }
-  let pulled = false
+  let pulled
   try {
     pulled = await pullAll()
   } catch (e) {

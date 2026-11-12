@@ -193,7 +193,7 @@ export const resourceApi = {
 export const postApi = {
   mirror: (afterId = 0) => http.get('/posts/mirror', { query: { after_id: afterId } }),
   update: (id, content, revision) => http.put(`/posts/${id}`, { content, expected_revision: revision }),
-  list: () => http.get('/posts'),
+  list: (params = {}) => http.get('/posts', { query: params }),
   mine: () => http.get('/posts/mine'),
   get: (id) => http.get(`/posts/${id}`),
   create: (content, clientId = '') =>

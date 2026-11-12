@@ -45,3 +45,17 @@ it('注销失败保留待办，重新登录成功后不发送过期的补注销�
   await authApi.logout({ pendingOnly: true })
   expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/v1/auth/logout', '/api/v1/auth/login'])
 })
+
+it('普通请求读取响应体超时后中止并给出可重试提示', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url, { signal }) => ({
+    status: 200,
+    json: () => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    }),
+  })))
+  const request = http.get('/config/public')
+  const rejected = expect(request).rejects.toThrow('请求超时')
+  await vi.advanceTimersByTimeAsync(10_000)
+  await rejected
+})

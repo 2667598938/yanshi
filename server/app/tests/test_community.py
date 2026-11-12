@@ -15,6 +15,28 @@ def make_member(client, ah, email, name):
     return r.json()['data']
 
 
+def test_post_limit_preserves_replays_and_search_paginates(client):
+    ah = h(login(client, **ADMIN)['access_token'])
+    make_member(client, ah, 'feed@test.com', '动态测试')
+    headers = h(login(client, 'feed@test.com', 'Friend2028')['access_token'])
+    endpoint = '/api/v1/posts'
+    sent = []
+    for index in range(5):
+        body = {'content': f'复习进度 {index}', 'client_id': f'fixture-{index}'}
+        response = client.post(endpoint, headers=headers, json=body)
+        assert response.status_code == 200, response.text
+        sent.append(response.json()['data']['id'])
+    assert client.post(endpoint, headers=headers, json={'content': '额外动态'}).status_code == 429
+    replay = client.post(endpoint, headers=headers, json=body)
+    assert replay.json()['data']['id'] == sent[-1]
+    first = client.get(endpoint, headers=headers, params={'q': '复习', 'page_size': 3}).json()['data']
+    second = client.get(endpoint, headers=headers, params={
+        'q': '复习', 'page_size': 3, 'before_id': first['next'],
+    }).json()['data']
+    assert [r['id'] for r in first['items'] + second['items']] == sent[::-1]
+    assert second['next'] is None
+
+
 def test_posts_and_nested_comments(client):
     admin = login(client, **ADMIN)
     ah = h(admin['access_token'])

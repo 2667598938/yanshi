@@ -1,12 +1,35 @@
 import json
 from datetime import timedelta
 from datetime import timezone
+from threading import Lock
+from time import monotonic
 from sqlalchemy import select, delete
 from ..models import DevicePresence, RoomPresence, RoomMember, Room
 from ..time import utcnow
 from ..errors import ApiError
+from ..database import begin_development_transaction
 
 WINDOW = 90
+
+
+class HeartbeatLimiter:
+    """Process-local rate limit for replaceable presence updates."""
+
+    def __init__(self):
+        self.lock = Lock()
+        self.minute = -1
+        self.counts = {}
+
+    def limit(self, user_id):
+        with self.lock:
+            minute = int(monotonic() // 60)
+            if minute != self.minute:
+                self.minute = minute
+                self.counts.clear()
+            count = self.counts.get(user_id, 0) + 1
+            if count > 60:
+                raise ApiError(429, 42901, "状态更新过于频繁，请稍后再试")
+            self.counts[user_id] = count
 
 
 def active_devices(db, uid):
@@ -79,14 +102,15 @@ def project_rooms(db, uid):
 
 def update_presence(db, user, body):
     now = utcnow()
-    db.execute(
-        delete(DevicePresence).where(
-            DevicePresence.user_id == user.id,
-            DevicePresence.heartbeat_at < now - timedelta(days=1),
-        )
-    )
+    begin_development_transaction(db)
     device = db.get(DevicePresence, (user.id, body.device_id))
     if not device:
+        db.execute(
+            delete(DevicePresence).where(
+                DevicePresence.user_id == user.id,
+                DevicePresence.heartbeat_at < now - timedelta(days=1),
+            )
+        )
         count = len(
             db.scalars(
                 select(DevicePresence).where(DevicePresence.user_id == user.id)

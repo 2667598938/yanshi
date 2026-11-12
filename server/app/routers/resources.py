@@ -4,7 +4,7 @@ from types import SimpleNamespace
 """资料区：VIP 发布、后端脱敏、点赞、收藏、编辑删除。"""
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select, update, case, or_, type_coerce, JSON
 from sqlalchemy.exc import IntegrityError
 
@@ -145,7 +145,12 @@ def _lists(db, user, rows):
 
 @router.get("")
 def list_resources(
-    q: str = "", category: str = "", user=Depends(get_current_user), db=Depends(get_db)
+    q: str = Query("", max_length=80),
+    category: str = Query("", max_length=40),
+    before_id: int | None = Query(None, gt=0),
+    page_size: int | None = Query(None, ge=1, le=100),
+    user=Depends(get_current_user),
+    db=Depends(get_db),
 ):
     query = select(Resource).where(
         Resource.deleted_at.is_(None), Resource.approved_snapshot.is_not(None)
@@ -165,13 +170,19 @@ def list_resources(
             or_(
                 func.lower(visible("title")).contains(term, autoescape=True),
                 func.lower(visible("intro")).contains(term, autoescape=True),
+                func.lower(visible("category")).contains(term, autoescape=True),
             )
         )
     if category.strip():
         query = query.where(visible("category") == category.strip())
-    rows = db.scalars(query.order_by(Resource.id.desc()).limit(100)).all()
+    if before_id is not None:
+        query = query.where(Resource.id < before_id)
+    rows = db.scalars(query.order_by(Resource.id.desc()).limit(page_size + 1 if page_size else 100)).all()
+    has_more = page_size is not None and len(rows) > page_size
+    if has_more:
+        rows.pop()
     payload, _, _, _ = _lists(db, user, rows)
-    return ok(payload)
+    return ok({'items': payload, 'next': rows[-1].id if has_more else None} if page_size else payload)
 
 
 @router.get("/favorites")
@@ -256,6 +267,7 @@ def create_resource(
 ):
     if not is_vip(user):
         raise ApiError(403, 40301, "仅 VIP 可发布资料")
+    request.app.state.transient.limit(f"resource-create:{user.id}", 5, 600)
     now = utcnow()
     row = Resource(
         user_id=user.id,

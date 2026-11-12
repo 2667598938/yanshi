@@ -16,4 +16,4 @@ def test_turn_secret_stays_server_side_and_credentials_expire(monkeypatch):
 
 
 def test_unconfigured_turn_keeps_stun_only():
-    assert ice_servers(Settings(_env_file=None),42)==[{'urls':'stun:stun.l.google.com:19302'}]
+    assert ice_servers(Settings(_env_file=None),42)==[]

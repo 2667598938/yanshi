@@ -3,6 +3,8 @@
 import { useAuthStore } from '../stores/auth'
 
 const BASE = '/api/v1'
+const REQUEST_TIMEOUT_MS = 10_000
+const ATTACHMENT_TIMEOUT_MS = 60_000
 
 // 共享同一个 refresh，避免并发请求各自刷新
 let refreshPromise = null
@@ -10,15 +12,32 @@ function accountGuard(store,owner){
  if(store.user?.id!==owner){const error=new Error('账号已切换，旧请求已停止');error.code=40990;error.status=409;throw error}
 }
 
-async function perform(url, options) {
-  const res = await fetch(url, options)
-  let data = null
+async function withRequestTimeout(work, timeout) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
   try {
-    data = await res.json()
-  } catch {
-    /* 非 JSON（如图片流）由调用方用 raw 处理 */
+    return await work(controller.signal)
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+    throw new Error('请求超时，请检查网络后重试', { cause: error })
+  } finally {
+    clearTimeout(timer)
   }
-  return { res, data }
+}
+
+async function perform(url, options) {
+  const timeout = options.body instanceof FormData ? ATTACHMENT_TIMEOUT_MS : REQUEST_TIMEOUT_MS
+  return withRequestTimeout(async (signal) => {
+    const res = await fetch(url, { ...options, signal })
+    let data = null
+    try {
+      data = await res.json()
+    } catch (error) {
+      if (signal.aborted) throw error
+      /* 非 JSON（如图片流）由调用方用 raw 处理 */
+    }
+    return { res, data }
+  }, timeout)
 }
 
 function buildOptions(method, body, headers) {
@@ -181,8 +200,11 @@ export const http = {
 export async function fetchBlob(url) {
   const authStore = useAuthStore()
   const owner=authStore.user?.id
-  const doFetch = (token) =>
-    fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} })
+  const doFetch = (token) => withRequestTimeout(async (signal) => {
+    const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {}, signal })
+    accountGuard(authStore, owner)
+    return { status: res.status, blob: res.ok ? await res.blob() : null }
+  }, ATTACHMENT_TIMEOUT_MS)
   let res = await doFetch(authStore.accessToken)
   accountGuard(authStore,owner)
   // access 过期：复用全局刷新一次后重试，避免令牌过期瞬间图片被误判为加载失败
@@ -194,8 +216,6 @@ export async function fetchBlob(url) {
     if (ok) res = await doFetch(authStore.accessToken)
     accountGuard(authStore,owner)
   }
-  if (!res.ok) throw new Error('图片加载失败')
-  const blob=await res.blob()
-  accountGuard(authStore,owner)
-  return blob
+  if (!res.blob) throw new Error('图片加载失败')
+  return res.blob
 }

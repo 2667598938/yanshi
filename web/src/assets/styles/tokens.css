@@ -2,13 +2,16 @@
  --font-caption:12px;--font-body:14px;--font-card:16px;--font-title:20px;--font-display:24px;
  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;
  --radius:20px;--radius-sm:12px;--tabbar-h:64px;
+ --surface-raised:#fff;--on-primary:#fff;
+ --status-danger:#b53333;
+ --status-warning-ink:#a5781f;--status-warning-line:#e6c98a;--status-warning-surface:#fffdf7;
 }
 body{font-size:var(--font-body);line-height:24px}
 button,input,textarea,select{font:inherit}
 body .btn{font-size:var(--font-body);min-height:44px;border-radius:var(--radius-sm);font-weight:600;line-height:24px}
-body .btn-primary,body .btn-tomato{background:var(--primary-grad);color:#fff;border:1px solid transparent}
+body .btn-primary,body .btn-tomato{background:var(--primary-grad);color:var(--on-primary);border:1px solid transparent}
 body .btn-outline,body .btn-ghost{background:var(--glass);color:var(--primary);border:1px solid var(--line)}
-body .btn-danger{background:#b53333;color:#fff;border:1px solid #b53333}
+body .btn-danger{background:var(--status-danger);color:var(--on-primary);border:1px solid var(--status-danger)}
 body .btn:disabled{opacity:.55;cursor:not-allowed}
 body .sheet .sheet-title,body .modal .modal-title{font-size:var(--font-title);font-weight:700;line-height:28px}
 body .card .mini-title{font-size:var(--font-card);font-weight:700}

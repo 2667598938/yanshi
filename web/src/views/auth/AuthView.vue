@@ -28,6 +28,7 @@ const info = ref('')
 const codeSending = ref(false)
 const passwordVisible = ref(false)
 const registrationOpen = ref(null)
+const registrationSlots = ref(null)
 const configError = ref(false)
 let alive = true
 const redirectTarget = computed(() => typeof route.query.redirect === 'string'
@@ -152,6 +153,10 @@ async function sendCode(scene) {
     error.value = '注册暂未开放，请联系管理员创建账号'
     return
   }
+  if (scene === 'register' && registrationSlots.value === 0) {
+    error.value = '本站注册名额已满'
+    return
+  }
   if (!/^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(form.email)) {
     error.value = '请先输入正确的邮箱'
     return
@@ -201,6 +206,7 @@ async function submit() {
       }
     } else if (mode.value === 'register') {
       if (registrationOpen.value !== true) { error.value = '注册暂未开放，请联系管理员创建账号'; return }
+      if (registrationSlots.value === 0) { error.value = '本站注册名额已满'; return }
       if (!form.accepted) {
         error.value = '请先阅读并同意用户协议与隐私政策'
         loading.value = false
@@ -288,6 +294,7 @@ async function loadPublicConfig() {
     loginMode.value = emailCodeAvailable.value ? 'code' : 'password'
     if (Array.isArray(cfg.enabled_auth_channels)) channels.value = cfg.enabled_auth_channels
     registrationOpen.value = !passwordOnly.value && cfg.registration_open === true
+    registrationSlots.value = Number.isInteger(cfg.registration_slots) ? cfg.registration_slots : null
     if (registrationOpen.value && route.query.mode === 'register' && mode.value === 'login') mode.value = 'register'
     if (!registrationOpen.value && mode.value === 'register') switchMode('login')
   } catch {
@@ -381,6 +388,9 @@ onMounted(async () => {
           </form>
 
           <p v-if="registrationOpen === false" class="admission-note">注册暂未开放，新账号请联系管理员创建。</p>
+          <p v-else-if="mode === 'register' && registrationSlots !== null" class="admission-note">
+            {{ registrationSlots ? `剩余 ${registrationSlots} 个注册名额` : '本站注册名额已满。' }}
+          </p>
           <p v-else-if="configError" class="admission-note">暂时无法确认注册状态。已有账号仍可登录。<button type="button" class="text-button" @click="loadPublicConfig">重试</button></p>
           <p v-if="passwordOnly" class="admission-note">内测期间仅支持账号密码登录。</p>
           <div v-if="passwordOnly" class="agree"><button type="button" class="legal-link" @click="openLegal('terms')">用户协议</button><button type="button" class="legal-link" @click="openLegal('privacy')">隐私政策</button></div>

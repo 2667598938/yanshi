@@ -37,6 +37,7 @@ curl --fail --silent http://127.0.0.1:18080/health/ready
 curl --fail --silent -D /tmp/yanshi-headers http://127.0.0.1:18080/rooms/1 -o /tmp/yanshi-index
 grep -qi 'X-Content-Type-Options: nosniff' /tmp/yanshi-headers
 grep -qi 'X-Frame-Options: DENY' /tmp/yanshi-headers
+grep -qi 'Content-Security-Policy-Report-Only:.*report-uri /api/v1/csp-report' /tmp/yanshi-headers
 grep -qi 'Cache-Control: no-cache' /tmp/yanshi-headers
 grep -q '<html' /tmp/yanshi-index
 [[ $(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/assets/missing-ci.js) == 404 ]]
@@ -47,6 +48,9 @@ curl --fail --silent -D /tmp/yanshi-login-headers -H 'Content-Type: application/
   http://127.0.0.1:18080/api/v1/auth/login > /tmp/yanshi-login.json
 grep -qi 'Set-Cookie:.*HttpOnly' /tmp/yanshi-login-headers
 grep -qi 'Set-Cookie:.*Secure' /tmp/yanshi-login-headers
+grep -qi 'X-Request-ID:' /tmp/yanshi-login-headers
+[[ $(curl --silent -o /dev/null -w '%{http_code}' -H 'Content-Type: application/csp-report' \
+  -d '{"csp-report":{"effective-directive":"script-src"}}' http://127.0.0.1:18080/api/v1/csp-report) == 204 ]]
 [[ $(curl --silent -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
   -d '{"email":"123456@qq.com","scene":"login"}' http://127.0.0.1:18080/api/v1/auth/email-code) == 403 ]]
 dc exec -T api python -c '
