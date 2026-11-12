@@ -22,7 +22,7 @@ from importlib.metadata import version
 s=Settings(_env_file=None)
 assert s.environment=="production" and s.auth_password_only, "Production/password settings required"
 assert len(s.jwt_secret)>=48 and len(s.ai_key_enc_secret)>=48, "Strong independent secrets required"
-assert s.public_origin=="https://boang.fun" and s.cors_list==["https://boang.fun"], "Unexpected public origin"
+assert s.public_origin=="https://duzhi.xin" and s.cors_list==["https://duzhi.xin"], "Unexpected public origin"
 assert (s.image_storage=="qiniu" and s.qiniu_access_key and s.qiniu_secret_key and s.qiniu_bucket) or (s.image_storage=="local" and str(s.image_directory).startswith("/var/lib/yanshi/")), "Valid image storage configuration required"
 assert s.smtp_host and s.smtp_user and s.smtp_password and not s.mail_console, "SMTP configuration required"
 assert len(s.admin_password)>=12 and len(s.admin_password.encode())<=72, "Strong administrator password required"
