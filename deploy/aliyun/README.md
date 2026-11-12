@@ -1,7 +1,7 @@
 # 阿里云 ECS 部署指南（研时 yanshi）
 
 适用：阿里云 ECS 2核2G、Ubuntu 24.04、公网 IP 139.196.205.43。
-备案已在阿里云完成（豫ICP备2026056816号），同厂商换机无需重新备案，只改解析。
+域名 duzhi.xin 已在阿里云完成备案，同厂商换机无需重新备案，只改解析。
 本目录为全新部署，不迁移旧数据。
 
 ---
@@ -79,7 +79,7 @@ sudo tee /etc/nginx/sites-available/yanshi >/dev/null <<'EOF'
 server {
     listen 80;
     listen [::]:80;
-    server_name boang.fun;
+    server_name duzhi.xin;
 
     client_max_body_size 8m;
 
@@ -103,8 +103,8 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## 7. 切换域名解析
 
-在域名控制台把 `boang.fun` 的 A 记录改为 `139.196.205.43`，删除旧的 A 记录。
-等待解析生效（可用 `dig +short boang.fun` 确认返回新 IP）。
+在域名控制台把 `duzhi.xin` 的 A 记录改为 `139.196.205.43`，删除旧的 A 记录。
+等待解析生效（可用 `dig +short duzhi.xin` 确认返回新 IP）。
 
 ## 8. 申请 HTTPS 证书
 
@@ -112,7 +112,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d boang.fun --redirect
+sudo certbot --nginx -d duzhi.xin --redirect
 ```
 
 certbot 会自动把站点改为 443 并加 HTTP 跳 HTTPS，证书到期自动续期。
@@ -122,7 +122,7 @@ certbot 会自动把站点改为 443 并加 HTTP 跳 HTTPS，证书到期自动�
 
 ## 9. 上线验证
 
-- 打开 https://boang.fun ，确认锁形图标、无证书告警。
+- 打开 https://duzhi.xin ，确认锁形图标、无证书告警。
 - 用管理员账号登录，确认页脚显示 ICP 号并可点击跳转。
 - 上传一张图片，然后在服务器执行 `sudo ls /var/lib/docker/volumes/yanshi-data/_data/uploads`，
   确认文件确实落在持久卷，而不是容器临时层。
