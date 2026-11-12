@@ -9,8 +9,13 @@ compose() { docker compose -p yanshi -f /opt/yanshi/compose.yaml "$@"; }
 [[ -r /etc/yanshi/server.env && -f /opt/yanshi/compose.yaml ]]
 compose config --quiet
 compose pull
-# 首次启动需要先跑数据库迁移；镜像内已含 Alembic，升级失败则中止，不会强行上线。
+# 在迁移前判断是否首次部署：数据库文件不存在则迁移后需要 seed 管理员。
+database_exists=$(compose run --rm --no-deps api python -c 'from pathlib import Path; print("yes" if Path("/var/lib/yanshi/prod.sqlite").exists() else "no")')
+# 镜像内已含 Alembic，升级失败则中止，不会强行上线。
 compose run --rm --no-deps api python -m alembic upgrade head
+if [[ $database_exists == no ]]; then
+  compose run --rm --no-deps api python -m app.seed --quiet
+fi
 compose up -d --force-recreate --wait --wait-timeout 120
 curl --fail --silent --show-error http://127.0.0.1:18080/health/ready
 echo
