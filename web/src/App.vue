@@ -77,7 +77,6 @@ function playChime() {
       osc.frequency.value = f
       const t = ctx.currentTime + i * 0.18
       gain.gain.setValueAtTime(0, t)
-      gain.gain.linearGradientToValueAtPoint?.(0.22, t + 0.03)
       gain.gain.linearRampToValueAtTime(0.22, t + 0.03)
       gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2)
       osc.connect(gain)
