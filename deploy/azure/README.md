@@ -1,6 +1,6 @@
 # Azure Ubuntu 24.04 部署与恢复
 
-适配：4vCPU/16GiB/64GiB，宿主已有Nginx 1.24、Certbot和boang.fun/www证书，SSH限定来源IP。当前账号总数上限100、使用SQLite单worker；不用安装宿主Python、Node、Java、MySQL或宝塔。
+适配：4vCPU/16GiB/64GiB，宿主已有Nginx 1.24、Certbot和duzhi.xin/www证书，SSH限定来源IP。当前账号总数上限100、使用SQLite单worker；不用安装宿主Python、Node、Java、MySQL或宝塔。
 
 流向：浏览器HTTPS → **已有宿主Nginx** → `127.0.0.1:18080` → web容器 → api容器8000 → 持久卷/七牛/SMTP/本人AI服务商。容器不发布80/443或api8000，既有证书与续期保留。
 
@@ -25,7 +25,7 @@ command -v docker || true
 sudo systemctl status docker --no-pager || true
 ```
 
-本机查看`sudo nginx -T`，找到真正生效的boang.fun站点并备份。不要把完整环境文件、私钥或密码贴到Issue/聊天。确认18080未占用；如果已有旧yanshi.service或其他业务，先确认数据位置，不能两个启动器写同一SQLite。
+本机查看`sudo nginx -T`，找到真正生效的duzhi.xin站点并备份。不要把完整环境文件、私钥或密码贴到Issue/聊天。确认18080未占用；如果已有旧yanshi.service或其他业务，先确认数据位置，不能两个启动器写同一SQLite。
 
 宿主需能出站访问GHCR、Docker镜像源、Azure管理端点、七牛、SMTP和所选AI服务商。Indonesia到国内供应商的延迟、地域权限与邮件端口须从实际服务器验收。
 
@@ -78,7 +78,7 @@ sudoedit /etc/yanshi/server.env
 
 ## 4. 获取镜像并首次发布
 
-GitHub构建job使用GITHUB_TOKEN推GHCR。服务器拉私有镜像时，使用专用、限期、仅`read:packages`的PAT classic，通过`sudo docker login ghcr.io --username 2667598938 --password-stdin`输入。不要把Token写进命令参数、仓库或工作流正文；限制root Docker凭据文件权限并轮换，条件允许时使用凭据助手。[官方认证说明](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)。
+GitHub构建job使用GITHUB_TOKEN推GHCR。服务器拉私有镜像时，使用专用、限期、仅`read:packages`的PAT classic，通过`sudo docker login ghcr.io --username 2667598938 --password-stdin`输入。不要把Token写进命令参数、仓库或工作流正文；限制root Docker凭据文件权限并轮换，条件允许时使用凭据助手。[官方认证说明](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-the-container-registry)。
 
 从GitHub发布工作流摘要取得完整commit及API/web digest。保持DEPLOY_ENABLED未设置或false，先SSH手动发布：
 
@@ -94,17 +94,17 @@ sudo docker compose --env-file /etc/yanshi/release.env -p yanshi -f /opt/yanshi/
 
 ## 5. 接入已有Nginx和HTTPS
 
-将`nginx-host-location.conf`合并进**现有boang.fun的443站点**：保留listen/server_name/证书路径/Certbot管理部分；替换已有同名location /，不要重复定义，也不要添加第二套冲突的80/443站点。已有client_max_body_size只保留一份有效配置。80端口及ACME挑战路径按原方案保留。
+将`nginx-host-location.conf`合并进**现有duzhi.xin的443站点**：保留listen/server_name/证书路径/Certbot管理部分；替换已有同名location /，不要重复定义，也不要添加第二套冲突的80/443站点。已有client_max_body_size只保留一份有效配置。80端口及ACME挑战路径按原方案保留。
 
-www建议在现有HTTPS站点重定向到`https://boang.fun$request_uri`，使账号、本地库和Cookie统一在主域。按现有server块结构合并，不盲目新建冲突站点。主域PUBLIC_ORIGIN与CORS保持示例值。
+www建议在现有HTTPS站点重定向到`https://duzhi.xin$request_uri`，使账号、本地库和Cookie统一在主域。按现有server块结构合并，不盲目新建冲突站点。主域PUBLIC_ORIGIN与CORS保持示例值。
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
-curl --fail https://boang.fun/health/ready
-curl -I https://boang.fun/index.html
-curl -I https://boang.fun/sw.js
-curl -I https://www.boang.fun/
+curl --fail https://duzhi.xin/health/ready
+curl -I https://duzhi.xin/index.html
+curl -I https://duzhi.xin/sw.js
+curl -I https://www.duzhi.xin/
 sudo ss -lntp
 ```
 
@@ -138,7 +138,7 @@ df -h
 
 保留SSH白名单，采用[Azure OIDC](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect)+[VM Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command)。需要VM Agent正常、出站443可达Azure管理端点。
 
-1. Azure联邦信任subject限定`repo:2667598938/yanshi:ref:refs/heads/main`；权限限定这台VM的读取与RunCommand能力，不授予订阅Owner。此能力能在VM执行高权限脚本，应保护仓库写权限。
+1. Azure联邦信任subject限定`repo:2667598938:yanshi:ref:refs/heads/main`；权限限定这台VM的读取与RunCommand能力，不授予订阅Owner。此能力能在VM执行高权限脚本，应保护仓库写权限。
 2. GitHub仓库Secrets设置AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID；Variables设置AZURE_RESOURCE_GROUP/AZURE_VM_NAME。业务Key只留服务器env，不进入GitHub变量。
 3. 首次手动部署、七牛/SMTP/AI、恢复演练通过后，才把DEPLOY_ENABLED设为true。模板不依赖当前私有套餐不支持的受保护environment。若以后改为受保护production环境，须同步修改workflow和OIDC subject。
 4. main最新成功CI→依赖审计/构建→按两个digest调用发布脚本→预检/备份/迁移/ready→验证成功标记。GitHub和VM双重串行锁，CLI返回0仍需匹配服务器成功标记。Azure身份配置、真实供应商与生产业务尚需实际服务器验收，CI不会创建云资源或自动填写密钥。
