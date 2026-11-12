@@ -1,82 +1,93 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import {
-  ArrowLeft, Send, Sparkles, BookOpen, Users, Ellipsis, Crown, ChevronRight,
-} from 'lucide-vue-next'
-import { useAuthStore } from '../stores/auth'
-import { requestApi } from '../api'
-import { fmtDateTime } from '../utils/time'
-import { useToast } from '../composables/useToast'
+  ArrowLeft,
+  Send,
+  Sparkles,
+  BookOpen,
+  Users,
+  Ellipsis,
+  Crown,
+  ChevronRight,
+} from 'lucide-vue-next';
+import { useAuthStore } from '../stores/auth';
+import { requestApi } from '../api';
+import { fmtDateTime } from '../utils/time';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const route = useRoute()
-const auth = useAuthStore()
-const { toast } = useToast()
+const router = useRouter();
+const route = useRoute();
+const auth = useAuthStore();
+const { toast } = useToast();
 
 const FEATURES = [
   { id: 'ai', label: 'AI 问答权限', icon: Sparkles },
   { id: 'materials', label: '资料区完整链接', icon: BookOpen },
   { id: 'room', label: '房间类型权限（未开放）', icon: Users },
   { id: 'other', label: '其他功能', icon: Ellipsis },
-]
+];
 const STATUS = {
   pending: { label: '审核中', cls: 'tag-pending' },
   approved: { label: '已通过', cls: 'tag-approved' },
   rejected: { label: '已驳回', cls: 'tag-rejected' },
   withdrawn: { label: '已撤回', cls: 'tag-withdrawn' },
   revoked: { label: '已撤销', cls: 'tag-rejected' },
-}
+};
 
-const feature = ref(FEATURES.some(f => f.id === route.query.feature) ? route.query.feature : 'ai')
-const reason = ref('')
-const submitting = ref(false)
-const rows = ref([])
-const loading = ref(true)
+const feature = ref(
+  FEATURES.some((f) => f.id === route.query.feature) ? route.query.feature : 'ai',
+);
+const reason = ref('');
+const submitting = ref(false);
+const rows = ref([]);
+const loading = ref(true);
 
-const isVip = computed(() => auth.isVip)
+const isVip = computed(() => auth.isVip);
 
 function fmtDate(v) {
-  return fmtDateTime(v)
+  return fmtDateTime(v);
 }
 
 async function load() {
   try {
-    rows.value = await requestApi.mine()
+    rows.value = await requestApi.mine();
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function submit() {
-  const text = reason.value.trim()
-  if (text.length < 5) return toast('请至少写 5 个字的申请理由')
-  submitting.value = true
+  const text = reason.value.trim();
+  if (text.length < 5) return toast('请至少写 5 个字的申请理由');
+  submitting.value = true;
   try {
-    const row = await requestApi.create({ feature: feature.value, reason: text })
-    rows.value.unshift(row)
-    reason.value = ''
-    toast(row.status === 'approved' ? '权限已通过，功能以站点开放状态为准' : '已提交，等待管理员审批')
+    const row = await requestApi.create({ feature: feature.value, reason: text });
+    rows.value.unshift(row);
+    reason.value = '';
+    toast(
+      row.status === 'approved' ? '权限已通过，功能以站点开放状态为准' : '已提交，等待管理员审批',
+    );
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    submitting.value = false
+    submitting.value = false;
   }
 }
 
 async function withdraw(row) {
   try {
-    const next = await requestApi.withdraw(row.id)
-    Object.assign(row, next)
-    toast('已撤回')
+    const next = await requestApi.withdraw(row.id);
+    Object.assign(row, next);
+    toast('已撤回');
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   }
 }
 
-onMounted(load)
+onMounted(load);
 </script>
 
 <template>
@@ -104,7 +115,7 @@ onMounted(load)
         <div class="form-title">申请开通</div>
         <div class="feature-grid">
           <button
-            v-for="f in FEATURES.filter(item=>item.id!=='room')"
+            v-for="f in FEATURES.filter((item) => item.id !== 'room')"
             :key="f.id"
             class="feature-pill"
             :class="{ on: feature === f.id }"
@@ -142,7 +153,9 @@ onMounted(load)
           <div v-if="r.review_note" class="req-note">审批备注：{{ r.review_note }}</div>
           <div class="req-foot">
             <span>{{ fmtDate(r.created_at) }}</span>
-            <span v-if="r.status === 'pending'" class="req-withdraw" @click="withdraw(r)">撤回</span>
+            <span v-if="r.status === 'pending'" class="req-withdraw" @click="withdraw(r)"
+              >撤回</span
+            >
           </div>
         </div>
       </div>

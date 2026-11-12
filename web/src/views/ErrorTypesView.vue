@@ -1,79 +1,79 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ArrowLeft, Plus, Pencil, Trash2, Check, X } from 'lucide-vue-next'
-import { errorTypeApi } from '../api'
-import { useToast } from '../composables/useToast'
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ArrowLeft, Plus, Pencil, Trash2, Check, X } from 'lucide-vue-next';
+import { errorTypeApi } from '../api';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const { toast } = useToast()
+const router = useRouter();
+const { toast } = useToast();
 
-const presets = ref([])
-const custom = ref([])
-const newName = ref('')
-const editingId = ref(null)
-const editName = ref('')
-const loading = ref(true)
-const saving = ref(false)
+const presets = ref([]);
+const custom = ref([]);
+const newName = ref('');
+const editingId = ref(null);
+const editName = ref('');
+const loading = ref(true);
+const saving = ref(false);
 
 async function load() {
   try {
-    const data = await errorTypeApi.list()
-    presets.value = data.presets || []
-    custom.value = data.custom || []
+    const data = await errorTypeApi.list();
+    presets.value = data.presets || [];
+    custom.value = data.custom || [];
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function add() {
-  const name = newName.value.trim()
-  if (!name) return toast('请输入类型名称')
-  saving.value = true
+  const name = newName.value.trim();
+  if (!name) return toast('请输入类型名称');
+  saving.value = true;
   try {
-    const row = await errorTypeApi.create(name)
-    custom.value.push(row)
-    newName.value = ''
-    toast('已添加')
+    const row = await errorTypeApi.create(name);
+    custom.value.push(row);
+    newName.value = '';
+    toast('已添加');
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    saving.value = false
+    saving.value = false;
   }
 }
 
 function startEdit(row) {
-  editingId.value = row.id
-  editName.value = row.name
+  editingId.value = row.id;
+  editName.value = row.name;
 }
 
 async function saveEdit(row) {
-  const name = editName.value.trim()
-  if (!name) return toast('名称不能为空')
+  const name = editName.value.trim();
+  if (!name) return toast('名称不能为空');
   try {
-    const next = await errorTypeApi.rename(row.id, name)
-    Object.assign(row, next)
-    editingId.value = null
-    toast('已重命名')
+    const next = await errorTypeApi.rename(row.id, name);
+    Object.assign(row, next);
+    editingId.value = null;
+    toast('已重命名');
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   }
 }
 
 async function remove(row) {
-  if (!confirm(`删除错误类型「${row.name}」？历史错题仍保留原名称。`)) return
+  if (!confirm(`删除错误类型「${row.name}」？历史错题仍保留原名称。`)) return;
   try {
-    await errorTypeApi.remove(row.id)
-    custom.value = custom.value.filter((x) => x.id !== row.id)
-    toast('已删除')
+    await errorTypeApi.remove(row.id);
+    custom.value = custom.value.filter((x) => x.id !== row.id);
+    toast('已删除');
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   }
 }
 
-onMounted(load)
+onMounted(load);
 </script>
 
 <template>
@@ -114,7 +114,12 @@ onMounted(load)
       <div v-else class="card list">
         <div v-for="row in custom" :key="row.id" class="row">
           <template v-if="editingId === row.id">
-            <input v-model="editName" class="input inline-input" maxlength="20" @keyup.enter="saveEdit(row)" />
+            <input
+              v-model="editName"
+              class="input inline-input"
+              maxlength="20"
+              @keyup.enter="saveEdit(row)"
+            />
             <button class="mini ok" @click="saveEdit(row)"><Check :size="15" /></button>
             <button class="mini" @click="editingId = null"><X :size="15" /></button>
           </template>
@@ -143,11 +148,29 @@ onMounted(load)
   cursor: pointer;
   box-shadow: var(--shadow-soft);
 }
-.card-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
-.add-row { display: flex; gap: 8px; }
-.add-row .input { flex: 1; }
-.hint { font-size: 12px; color: var(--faint); margin-top: 9px; line-height: 1.6; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.add-row {
+  display: flex;
+  gap: 8px;
+}
+.add-row .input {
+  flex: 1;
+}
+.hint {
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 9px;
+  line-height: 1.6;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .chip-static {
   background: #eef3f9;
   color: var(--sub);
@@ -156,7 +179,9 @@ onMounted(load)
   font-size: 14px;
   font-weight: 600;
 }
-.list { padding: 2px 16px; }
+.list {
+  padding: 2px 16px;
+}
 .row {
   display: flex;
   align-items: center;
@@ -164,9 +189,19 @@ onMounted(load)
   padding: 11px 0;
   border-bottom: 1px solid var(--line);
 }
-.row:last-child { border-bottom: none; }
-.row-name { flex: 1; font-size: 14px; font-weight: 600; }
-.inline-input { flex: 1; padding: 8px 10px; font-size: 14px; }
+.row:last-child {
+  border-bottom: none;
+}
+.row-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+.inline-input {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 14px;
+}
 .mini {
   width: 34px;
   height: 34px;
@@ -179,6 +214,10 @@ onMounted(load)
   justify-content: center;
   cursor: pointer;
 }
-.mini.ok { color: var(--green); }
-.mini.danger { color: var(--red); }
+.mini.ok {
+  color: var(--green);
+}
+.mini.danger {
+  color: var(--red);
+}
 </style>

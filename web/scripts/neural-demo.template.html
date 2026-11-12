@@ -1,53 +1,428 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="dark light"><title>研时 AI · 视觉动效演示</title>
-<style>
-/* NEURAL_CSS */
-*{box-sizing:border-box}body{margin:0;background:#101216}body .ai-wrap.neural.demo{inset:0;max-width:none;width:100%;height:100dvh;transform:none}.demo .demo-note{color:var(--n-faint);font-size:11px}.demo .demo-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}.demo .demo-card{border:1px solid var(--n-line);border-radius:24px;padding:22px;background:var(--n-panel)}.demo .demo-card h4{margin:0 0 16px;font-size:14px;font-weight:500}.demo .demo-timeline{list-style:none;padding:0;margin:0}.demo .demo-timeline li{position:relative;padding:0 0 22px 18px;border-left:1px solid var(--n-line);font-size:13px}.demo .demo-timeline li:before{content:'';position:absolute;left:-3px;top:7px;width:5px;height:5px;border-radius:50%;background:#b69ed4}.demo .demo-timeline span{display:block;font-size:11px;color:var(--n-faint)}.demo .demo-bar{display:grid;grid-template-columns:40px 1fr 44px;gap:10px;align-items:center;font-size:11px;margin:16px 0}.demo .demo-track{height:5px;background:var(--n-panel-strong);border-radius:6px}.demo .demo-track i{display:block;height:100%;background:linear-gradient(90deg,#638aca,#b6a0d3);border-radius:6px}.demo .demo-status{font-size:11px;color:var(--n-faint);padding:12px 0}.demo .simulate-btn{width:auto;padding:0 17px;font-size:12px}.demo .demo-actions{display:flex;gap:8px;align-items:center}.demo .theme-btn{font-size:12px;width:auto;padding:0 12px}.demo .chat-empty .starter{cursor:pointer}.demo .demo-response{white-space:pre-wrap}.demo .demo-response strong{font-weight:600;background:var(--n-ombre);background-clip:text;-webkit-text-fill-color:transparent}@media(max-width:600px){.demo .demo-card-grid{grid-template-columns:1fr}.demo .demo-note{max-width:140px;line-height:1.5}.demo .simulate-btn{padding:0 12px}.demo .nav-title{font-size:16px}}@media(max-height:540px){.demo .empty-desc{display:none}}
-</style></head><body>
-<main class="ai-wrap neural theme-dark state-idle is-empty demo" id="demo" aria-label="研时 AI 视觉演示">
-  <div class="neural-bg" aria-hidden="true"><div class="spectrum-flow"></div><div class="spectrum-tail"></div><div class="spectrum-beam"></div><div class="spectrum-focus"></div></div>
-  <div class="ai-workspace">
-    <header class="ai-nav"><div class="nav-brand"><span class="brand-spark" aria-hidden="true"></span><div><div class="nav-title">研时 AI</div><div class="demo-note">视觉演示 · 示例内容，不读取账号数据</div></div></div><div class="demo-actions"><button class="icon-btn theme-btn" id="theme" type="button" aria-label="切换主题">深色</button><button class="icon-btn" id="reset" type="button" aria-label="重新开始">＋</button></div></header>
-    <div class="scene-bar"><button class="scene-chip on" type="button">学习规划</button><span class="scene-chip">考研答疑</span><span class="scene-chip">学习复盘</span></div>
-    <section class="chat-scroll" id="reading" aria-label="回答阅读区">
-      <div class="chat-empty" id="welcome"><div class="empty-badge"><span class="brand-spark lg" aria-hidden="true"></span></div><div class="empty-kicker">研时 · YOUR NEXT UNDERSTANDING</div><h1 class="empty-title">把疑问，变成下一步。</h1><p class="empty-desc">理清一个知识点，安排一段好时光。<br>让每一次理解，都成为向前的力量。</p><div class="starter-list"><button class="starter" type="button">帮我规划明天的复习 ↗</button><button class="starter" type="button">怎么复盘一道数学错题？ ↗</button><button class="starter" type="button">专注一下午后怎样调整节奏？ ↗</button></div></div>
-      <div id="result" hidden></div>
-    </section>
-    <div class="composer-dock"><div class="composer-meta"><span class="state-dot" id="dot"></span><span id="status" role="status">准备好了</span><span class="meta-spacer"></span><span>此页只演示动效，不连接模型</span></div><form class="composer" id="form"><input id="prompt" maxlength="4000" aria-label="输入演示问题" placeholder="输入一个问题，或直接模拟生成…" autocomplete="off"><button class="send-btn simulate-btn" id="generate" type="submit">模拟生成</button></form></div>
-  </div>
-</main>
-<template id="answer-template"><article class="chat-msg assistant"><div class="msg-ava"><span class="brand-spark sm" aria-hidden="true"></span></div><div class="msg-main"><div class="bubble answer delivering"><div class="md demo-response" id="answer-text"></div><div class="demo-card-grid" id="details" hidden><section class="demo-card"><h4>明日节奏 · 示例时间线</h4><ol class="demo-timeline"><li><span>09:00 · 数学</span>75分钟，攻克一个核心题型</li><li><span>14:00 · 408</span>50分钟，理解并讲出知识框架</li><li><span>19:00 · 英语与错题</span>35分钟阅读，25分钟复盘</li></ol></section><figure class="demo-card" style="margin:0"><h4>专注分配 · 示例数据</h4><div class="demo-bar"><span>数学</span><div class="demo-track"><i style="width:100%"></i></div><span>75分</span></div><div class="demo-bar"><span>408</span><div class="demo-track"><i style="width:67%"></i></div><span>50分</span></div><div class="demo-bar"><span>英语</span><div class="demo-track"><i style="width:47%"></i></div><span>35分</span></div><figcaption class="demo-note">为说明版式而预置，不是你的学习统计。</figcaption></figure></div></div><p class="demo-status">演示回答不会保存，也不会生成系统任务。</p></div></article></template>
-<script>
-(() => {
-  const root=document.getElementById('demo'), input=document.getElementById('prompt'), result=document.getElementById('result'), reading=document.getElementById('reading'), status=document.getElementById('status'), button=document.getElementById('generate');
-  const motion=window.matchMedia?.('(prefers-reduced-motion: reduce)'), colors=window.matchMedia?.('(prefers-color-scheme: light)');
-  let state='idle', generation=0, theme='dark', pending=null;
-  const labels={idle:'准备好了',listening:'正在输入',thinking:'正在思考',delivering:'正在输出'};
-  function focusPoint(){let target=state==='thinking'?root.querySelector('.thinking-row'):state==='delivering'?root.querySelector('.answer'):root.querySelector('.composer');if(!target)return;const a=root.getBoundingClientRect(),b=target.getBoundingClientRect();if(a.width&&a.height){root.style.setProperty('--focus-x',((b.left+b.width/2-a.left)/a.width*100)+'%');root.style.setProperty('--focus-y',Math.max(8,Math.min(92,(b.top+b.height/2-a.top)/a.height*100))+'%')}}
-  // idle：进入/结束/清空；listening：聚焦或输入；thinking：提交后等待；delivering：示例文字开始输出。
-  function setState(next){root.classList.remove('state-'+state);state=next;root.classList.add('state-'+state);status.textContent=labels[state];document.getElementById('dot').className='state-dot dot-'+state;focusPoint()}
-  function wait(ms){return new Promise(resolve=>{pending={resolve,id:setTimeout(()=>{pending=null;resolve()},ms)}})}
-  function cancel(){generation++;if(pending){clearTimeout(pending.id);pending.resolve();pending=null}button.textContent='模拟生成';setState(input.value.trim()?'listening':'idle')}
-  function updateMotion(){root.classList.toggle('reduce-motion',!!motion?.matches)}
-  async function simulate(){
-    if(state==='thinking'||state==='delivering'){cancel();root.querySelector('.thinking-row')?.remove();root.querySelector('.answer')?.classList.remove('delivering');return}
-    const owner=++generation, question=input.value.trim()||'帮我规划明天的复习';
-    document.getElementById('welcome').hidden=true;result.hidden=false;root.classList.remove('is-empty');result.replaceChildren();
-    const heading=document.createElement('div');heading.className='chat-msg user';const questionText=document.createElement('div');questionText.className='bubble';questionText.textContent=question;heading.append(questionText);result.append(heading);
-    const thinking=document.createElement('div');thinking.className='thinking-row';thinking.setAttribute('role','status');thinking.innerHTML='<div class="think-spark"><span class="brand-spark"></span></div><div class="think-copy"><strong>正在整理思路</strong><p>即将展示预置示例，不连接模型…</p></div><div class="think-ripple"><i></i><i></i></div><div class="think-particles"><i></i><i></i><i></i></div>';
-    result.append(thinking);input.value='';button.textContent='停止演示';setState('thinking');await wait(motion?.matches?80:1400);if(owner!==generation)return;
-    thinking.remove();result.append(document.getElementById('answer-template').content.cloneNode(true));setState('delivering');
-    const text='明天先完成两项最重要的任务，再给复盘留出余量。\n\n把“学完一章”缩小为一个能检查的成果：讲清一个知识点，独立做对一道题。每段专注结束后，留出真正的休息时间。\n\n你不需要把一天填满。稳稳完成，并知道自己为什么进步，就很好。';
-    const output=document.getElementById('answer-text');let index=0;
-    for(const char of text){if(owner!==generation)return;const span=document.createElement('span');span.textContent=char;if(!motion?.matches)span.className='stream-char';output.append(span);if(!motion?.matches&&++index%2===0)await wait(18);if(reading.scrollHeight-reading.scrollTop-reading.clientHeight<160)reading.scrollTop=reading.scrollHeight}
-    if(owner!==generation)return;const first=text.indexOf('\n');const lead=document.createElement('strong');lead.textContent=text.slice(0,first);output.replaceChildren(lead,document.createTextNode(text.slice(first)));document.getElementById('details').hidden=false;root.querySelector('.answer').classList.remove('delivering');button.textContent='模拟生成';setState('idle');
-  }
-  document.getElementById('form').addEventListener('submit',event=>{event.preventDefault();simulate()});
-  input.addEventListener('focus',()=>{if(state==='idle')setState('listening')});input.addEventListener('input',()=>{if(state!=='thinking'&&state!=='delivering')setState('listening')});input.addEventListener('blur',()=>{if(state==='listening'&&!input.value.trim())setState('idle')});
-  document.querySelectorAll('.starter').forEach(item=>item.addEventListener('click',()=>{input.value=item.textContent.replace(/ ↗$/,'');input.focus()}));
-  document.getElementById('reset').addEventListener('click',()=>{cancel();input.value='';result.replaceChildren();result.hidden=true;document.getElementById('welcome').hidden=false;root.classList.add('is-empty');setState('idle')});
-  document.getElementById('theme').addEventListener('click',event=>{root.classList.remove('theme-'+theme);theme=theme==='dark'?'light':theme==='light'?'auto':'dark';root.classList.add('theme-'+theme);event.currentTarget.textContent={dark:'深色',light:'浅色',auto:'跟随系统'}[theme]});
-  window.addEventListener('resize',focusPoint);reading.addEventListener('scroll',focusPoint,{passive:true});motion?.addEventListener('change',updateMotion);document.addEventListener('visibilitychange',()=>root.classList.toggle('is-paused',document.hidden));window.addEventListener('pagehide',cancel,{once:true});
-  updateMotion();focusPoint();
-})();
-</script></body></html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <title>研时 AI · 视觉动效演示</title>
+    <style>
+      /* NEURAL_CSS */
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #101216;
+      }
+      body .ai-wrap.neural.demo {
+        inset: 0;
+        max-width: none;
+        width: 100%;
+        height: 100dvh;
+        transform: none;
+      }
+      .demo .demo-note {
+        color: var(--n-faint);
+        font-size: 11px;
+      }
+      .demo .demo-card-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .demo .demo-card {
+        border: 1px solid var(--n-line);
+        border-radius: 24px;
+        padding: 22px;
+        background: var(--n-panel);
+      }
+      .demo .demo-card h4 {
+        margin: 0 0 16px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .demo .demo-timeline {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .demo .demo-timeline li {
+        position: relative;
+        padding: 0 0 22px 18px;
+        border-left: 1px solid var(--n-line);
+        font-size: 13px;
+      }
+      .demo .demo-timeline li:before {
+        content: '';
+        position: absolute;
+        left: -3px;
+        top: 7px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #b69ed4;
+      }
+      .demo .demo-timeline span {
+        display: block;
+        font-size: 11px;
+        color: var(--n-faint);
+      }
+      .demo .demo-bar {
+        display: grid;
+        grid-template-columns: 40px 1fr 44px;
+        gap: 10px;
+        align-items: center;
+        font-size: 11px;
+        margin: 16px 0;
+      }
+      .demo .demo-track {
+        height: 5px;
+        background: var(--n-panel-strong);
+        border-radius: 6px;
+      }
+      .demo .demo-track i {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #638aca, #b6a0d3);
+        border-radius: 6px;
+      }
+      .demo .demo-status {
+        font-size: 11px;
+        color: var(--n-faint);
+        padding: 12px 0;
+      }
+      .demo .simulate-btn {
+        width: auto;
+        padding: 0 17px;
+        font-size: 12px;
+      }
+      .demo .demo-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .demo .theme-btn {
+        font-size: 12px;
+        width: auto;
+        padding: 0 12px;
+      }
+      .demo .chat-empty .starter {
+        cursor: pointer;
+      }
+      .demo .demo-response {
+        white-space: pre-wrap;
+      }
+      .demo .demo-response strong {
+        font-weight: 600;
+        background: var(--n-ombre);
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      @media (max-width: 600px) {
+        .demo .demo-card-grid {
+          grid-template-columns: 1fr;
+        }
+        .demo .demo-note {
+          max-width: 140px;
+          line-height: 1.5;
+        }
+        .demo .simulate-btn {
+          padding: 0 12px;
+        }
+        .demo .nav-title {
+          font-size: 16px;
+        }
+      }
+      @media (max-height: 540px) {
+        .demo .empty-desc {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      class="ai-wrap neural theme-dark state-idle is-empty demo"
+      id="demo"
+      aria-label="研时 AI 视觉演示"
+    >
+      <div class="neural-bg" aria-hidden="true">
+        <div class="spectrum-flow"></div>
+        <div class="spectrum-tail"></div>
+        <div class="spectrum-beam"></div>
+        <div class="spectrum-focus"></div>
+      </div>
+      <div class="ai-workspace">
+        <header class="ai-nav">
+          <div class="nav-brand">
+            <span class="brand-spark" aria-hidden="true"></span>
+            <div>
+              <div class="nav-title">研时 AI</div>
+              <div class="demo-note">视觉演示 · 示例内容，不读取账号数据</div>
+            </div>
+          </div>
+          <div class="demo-actions">
+            <button class="icon-btn theme-btn" id="theme" type="button" aria-label="切换主题">
+              深色</button
+            ><button class="icon-btn" id="reset" type="button" aria-label="重新开始">＋</button>
+          </div>
+        </header>
+        <div class="scene-bar">
+          <button class="scene-chip on" type="button">学习规划</button
+          ><span class="scene-chip">考研答疑</span><span class="scene-chip">学习复盘</span>
+        </div>
+        <section class="chat-scroll" id="reading" aria-label="回答阅读区">
+          <div class="chat-empty" id="welcome">
+            <div class="empty-badge"><span class="brand-spark lg" aria-hidden="true"></span></div>
+            <div class="empty-kicker">研时 · YOUR NEXT UNDERSTANDING</div>
+            <h1 class="empty-title">把疑问，变成下一步。</h1>
+            <p class="empty-desc">
+              理清一个知识点，安排一段好时光。<br />让每一次理解，都成为向前的力量。
+            </p>
+            <div class="starter-list">
+              <button class="starter" type="button">帮我规划明天的复习 ↗</button
+              ><button class="starter" type="button">怎么复盘一道数学错题？ ↗</button
+              ><button class="starter" type="button">专注一下午后怎样调整节奏？ ↗</button>
+            </div>
+          </div>
+          <div id="result" hidden></div>
+        </section>
+        <div class="composer-dock">
+          <div class="composer-meta">
+            <span class="state-dot" id="dot"></span><span id="status" role="status">准备好了</span
+            ><span class="meta-spacer"></span><span>此页只演示动效，不连接模型</span>
+          </div>
+          <form class="composer" id="form">
+            <input
+              id="prompt"
+              maxlength="4000"
+              aria-label="输入演示问题"
+              placeholder="输入一个问题，或直接模拟生成…"
+              autocomplete="off"
+            /><button class="send-btn simulate-btn" id="generate" type="submit">模拟生成</button>
+          </form>
+        </div>
+      </div>
+    </main>
+    <template id="answer-template"
+      ><article class="chat-msg assistant">
+        <div class="msg-ava"><span class="brand-spark sm" aria-hidden="true"></span></div>
+        <div class="msg-main">
+          <div class="bubble answer delivering">
+            <div class="md demo-response" id="answer-text"></div>
+            <div class="demo-card-grid" id="details" hidden>
+              <section class="demo-card">
+                <h4>明日节奏 · 示例时间线</h4>
+                <ol class="demo-timeline">
+                  <li><span>09:00 · 数学</span>75分钟，攻克一个核心题型</li>
+                  <li><span>14:00 · 408</span>50分钟，理解并讲出知识框架</li>
+                  <li><span>19:00 · 英语与错题</span>35分钟阅读，25分钟复盘</li>
+                </ol>
+              </section>
+              <figure class="demo-card" style="margin: 0">
+                <h4>专注分配 · 示例数据</h4>
+                <div class="demo-bar">
+                  <span>数学</span>
+                  <div class="demo-track"><i style="width: 100%"></i></div>
+                  <span>75分</span>
+                </div>
+                <div class="demo-bar">
+                  <span>408</span>
+                  <div class="demo-track"><i style="width: 67%"></i></div>
+                  <span>50分</span>
+                </div>
+                <div class="demo-bar">
+                  <span>英语</span>
+                  <div class="demo-track"><i style="width: 47%"></i></div>
+                  <span>35分</span>
+                </div>
+                <figcaption class="demo-note">为说明版式而预置，不是你的学习统计。</figcaption>
+              </figure>
+            </div>
+          </div>
+          <p class="demo-status">演示回答不会保存，也不会生成系统任务。</p>
+        </div>
+      </article></template
+    >
+    <script>
+      (() => {
+        const root = document.getElementById('demo'),
+          input = document.getElementById('prompt'),
+          result = document.getElementById('result'),
+          reading = document.getElementById('reading'),
+          status = document.getElementById('status'),
+          button = document.getElementById('generate');
+        const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)'),
+          colors = window.matchMedia?.('(prefers-color-scheme: light)');
+        let state = 'idle',
+          generation = 0,
+          theme = 'dark',
+          pending = null;
+        const labels = {
+          idle: '准备好了',
+          listening: '正在输入',
+          thinking: '正在思考',
+          delivering: '正在输出',
+        };
+        function focusPoint() {
+          let target =
+            state === 'thinking'
+              ? root.querySelector('.thinking-row')
+              : state === 'delivering'
+                ? root.querySelector('.answer')
+                : root.querySelector('.composer');
+          if (!target) return;
+          const a = root.getBoundingClientRect(),
+            b = target.getBoundingClientRect();
+          if (a.width && a.height) {
+            root.style.setProperty(
+              '--focus-x',
+              ((b.left + b.width / 2 - a.left) / a.width) * 100 + '%',
+            );
+            root.style.setProperty(
+              '--focus-y',
+              Math.max(8, Math.min(92, ((b.top + b.height / 2 - a.top) / a.height) * 100)) + '%',
+            );
+          }
+        }
+        // idle：进入/结束/清空；listening：聚焦或输入；thinking：提交后等待；delivering：示例文字开始输出。
+        function setState(next) {
+          root.classList.remove('state-' + state);
+          state = next;
+          root.classList.add('state-' + state);
+          status.textContent = labels[state];
+          document.getElementById('dot').className = 'state-dot dot-' + state;
+          focusPoint();
+        }
+        function wait(ms) {
+          return new Promise((resolve) => {
+            pending = {
+              resolve,
+              id: setTimeout(() => {
+                pending = null;
+                resolve();
+              }, ms),
+            };
+          });
+        }
+        function cancel() {
+          generation++;
+          if (pending) {
+            clearTimeout(pending.id);
+            pending.resolve();
+            pending = null;
+          }
+          button.textContent = '模拟生成';
+          setState(input.value.trim() ? 'listening' : 'idle');
+        }
+        function updateMotion() {
+          root.classList.toggle('reduce-motion', !!motion?.matches);
+        }
+        async function simulate() {
+          if (state === 'thinking' || state === 'delivering') {
+            cancel();
+            root.querySelector('.thinking-row')?.remove();
+            root.querySelector('.answer')?.classList.remove('delivering');
+            return;
+          }
+          const owner = ++generation,
+            question = input.value.trim() || '帮我规划明天的复习';
+          document.getElementById('welcome').hidden = true;
+          result.hidden = false;
+          root.classList.remove('is-empty');
+          result.replaceChildren();
+          const heading = document.createElement('div');
+          heading.className = 'chat-msg user';
+          const questionText = document.createElement('div');
+          questionText.className = 'bubble';
+          questionText.textContent = question;
+          heading.append(questionText);
+          result.append(heading);
+          const thinking = document.createElement('div');
+          thinking.className = 'thinking-row';
+          thinking.setAttribute('role', 'status');
+          thinking.innerHTML =
+            '<div class="think-spark"><span class="brand-spark"></span></div><div class="think-copy"><strong>正在整理思路</strong><p>即将展示预置示例，不连接模型…</p></div><div class="think-ripple"><i></i><i></i></div><div class="think-particles"><i></i><i></i><i></i></div>';
+          result.append(thinking);
+          input.value = '';
+          button.textContent = '停止演示';
+          setState('thinking');
+          await wait(motion?.matches ? 80 : 1400);
+          if (owner !== generation) return;
+          thinking.remove();
+          result.append(document.getElementById('answer-template').content.cloneNode(true));
+          setState('delivering');
+          const text =
+            '明天先完成两项最重要的任务，再给复盘留出余量。\n\n把“学完一章”缩小为一个能检查的成果：讲清一个知识点，独立做对一道题。每段专注结束后，留出真正的休息时间。\n\n你不需要把一天填满。稳稳完成，并知道自己为什么进步，就很好。';
+          const output = document.getElementById('answer-text');
+          let index = 0;
+          for (const char of text) {
+            if (owner !== generation) return;
+            const span = document.createElement('span');
+            span.textContent = char;
+            if (!motion?.matches) span.className = 'stream-char';
+            output.append(span);
+            if (!motion?.matches && ++index % 2 === 0) await wait(18);
+            if (reading.scrollHeight - reading.scrollTop - reading.clientHeight < 160)
+              reading.scrollTop = reading.scrollHeight;
+          }
+          if (owner !== generation) return;
+          const first = text.indexOf('\n');
+          const lead = document.createElement('strong');
+          lead.textContent = text.slice(0, first);
+          output.replaceChildren(lead, document.createTextNode(text.slice(first)));
+          document.getElementById('details').hidden = false;
+          root.querySelector('.answer').classList.remove('delivering');
+          button.textContent = '模拟生成';
+          setState('idle');
+        }
+        document.getElementById('form').addEventListener('submit', (event) => {
+          event.preventDefault();
+          simulate();
+        });
+        input.addEventListener('focus', () => {
+          if (state === 'idle') setState('listening');
+        });
+        input.addEventListener('input', () => {
+          if (state !== 'thinking' && state !== 'delivering') setState('listening');
+        });
+        input.addEventListener('blur', () => {
+          if (state === 'listening' && !input.value.trim()) setState('idle');
+        });
+        document.querySelectorAll('.starter').forEach((item) =>
+          item.addEventListener('click', () => {
+            input.value = item.textContent.replace(/ ↗$/, '');
+            input.focus();
+          }),
+        );
+        document.getElementById('reset').addEventListener('click', () => {
+          cancel();
+          input.value = '';
+          result.replaceChildren();
+          result.hidden = true;
+          document.getElementById('welcome').hidden = false;
+          root.classList.add('is-empty');
+          setState('idle');
+        });
+        document.getElementById('theme').addEventListener('click', (event) => {
+          root.classList.remove('theme-' + theme);
+          theme = theme === 'dark' ? 'light' : theme === 'light' ? 'auto' : 'dark';
+          root.classList.add('theme-' + theme);
+          event.currentTarget.textContent = { dark: '深色', light: '浅色', auto: '跟随系统' }[
+            theme
+          ];
+        });
+        window.addEventListener('resize', focusPoint);
+        reading.addEventListener('scroll', focusPoint, { passive: true });
+        motion?.addEventListener('change', updateMotion);
+        document.addEventListener('visibilitychange', () =>
+          root.classList.toggle('is-paused', document.hidden),
+        );
+        window.addEventListener('pagehide', cancel, { once: true });
+        updateMotion();
+        focusPoint();
+      })();
+    </script>
+  </body>
+</html>

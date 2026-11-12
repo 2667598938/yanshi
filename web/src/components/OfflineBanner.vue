@@ -1,27 +1,27 @@
 <script setup>
 // 全局离线提示：首次断网提醒可用功能，联网后自动隐藏
-import { ref, onMounted, onUnmounted } from 'vue'
-import { WifiOff } from 'lucide-vue-next'
-import { syncNow } from '../sync/engine'
+import { ref, onMounted, onUnmounted } from 'vue';
+import { WifiOff } from 'lucide-vue-next';
+import { syncNow } from '../sync/engine';
 
-const offline = ref(!navigator.onLine)
+const offline = ref(!navigator.onLine);
 
 function onOffline() {
-  offline.value = true
+  offline.value = true;
 }
 function onOnline() {
-  offline.value = false
-  syncNow()
+  offline.value = false;
+  syncNow();
 }
 
 onMounted(() => {
-  window.addEventListener('offline', onOffline)
-  window.addEventListener('online', onOnline)
-})
+  window.addEventListener('offline', onOffline);
+  window.addEventListener('online', onOnline);
+});
 onUnmounted(() => {
-  window.removeEventListener('offline', onOffline)
-  window.removeEventListener('online', onOnline)
-})
+  window.removeEventListener('offline', onOffline);
+  window.removeEventListener('online', onOnline);
+});
 </script>
 
 <template>

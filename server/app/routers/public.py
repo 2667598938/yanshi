@@ -1,13 +1,42 @@
 import json
-from fastapi import APIRouter, Depends, Request
+import logging
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 from ..deps import get_db
 from ..errors import ok
 from ..models import Announcement, Config
 from ..serializers import iso
+from ..services.admission import registration_slots
 from ..legal_text import LEGAL_VERSION, TERMS, PRIVACY, DISCLAIMER
 
 router = APIRouter(prefix='/api/v1', tags=['public'])
+CSP_DIRECTIVES = frozenset({
+    'default-src', 'base-uri', 'object-src', 'frame-ancestors', 'form-action',
+    'script-src', 'script-src-elem', 'script-src-attr', 'style-src',
+    'style-src-elem', 'style-src-attr', 'img-src', 'font-src', 'media-src',
+    'connect-src', 'worker-src', 'frame-src',
+})
+
+
+@router.post('/csp-report', include_in_schema=False, status_code=204)
+async def report_csp(request: Request):
+    if request.headers.get('content-type', '').split(';', 1)[0] != 'application/csp-report':
+        return Response(status_code=415)
+    payload = bytearray()
+    async for chunk in request.stream():
+        if len(payload) + len(chunk) > 8192:
+            return Response(status_code=413)
+        payload.extend(chunk)
+    try:
+        directive = json.loads(payload)['csp-report']['effective-directive']
+    except (ValueError, TypeError, KeyError):
+        return Response(status_code=400)
+    if isinstance(directive, str) and directive in CSP_DIRECTIVES:
+        # Reports can contain URLs and snippets. Keep only the policy directive.
+        logging.getLogger('uvicorn.error').info(
+            json.dumps({'event': 'csp_report', 'directive': directive})
+        )
+    return Response(status_code=204)
 
 
 def config_get(db, key, default=None):
@@ -24,12 +53,14 @@ def config_get(db, key, default=None):
 def public_config(request: Request, db=Depends(get_db)):
     settings = request.app.state.settings
     mail_ready = settings.environment != 'production' or bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
+    registration_open = mail_ready and not settings.auth_password_only and config_get(db, 'registration_open', False)
     return ok({
         'site_name': config_get(db, 'site_name', '研时'),
         'exam_date': config_get(db, 'exam_date', '2027-12-25'),
         'exam_year': config_get(db, 'exam_year', 2028),
         'email_code_available': mail_ready and not settings.auth_password_only,
-        'registration_open': mail_ready and not request.app.state.settings.auth_password_only and config_get(db, 'registration_open', False),
+        'registration_open': registration_open,
+        'registration_slots': registration_slots(db, settings) if registration_open else None,
         'auth_password_only': request.app.state.settings.auth_password_only,
         'enabled_auth_channels': request.app.state.settings.enabled_auth_channels,
         'features': request.app.state.settings.enabled_features,

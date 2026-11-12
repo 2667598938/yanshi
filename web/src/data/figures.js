@@ -8,6 +8,6 @@ export const FIGURES = [
   { id: 'figure-6', emoji: '🚀', name: '冲刺', bg: '#fdecec' },
   { id: 'figure-7', emoji: '🐧', name: '专注', bg: '#e6f7fb' },
   { id: 'figure-8', emoji: '🌲', name: '深埋', bg: '#eaf2e8' },
-]
+];
 
-export const FIGURE_MAP = Object.fromEntries(FIGURES.map((f) => [f.id, f]))
+export const FIGURE_MAP = Object.fromEntries(FIGURES.map((f) => [f.id, f]));

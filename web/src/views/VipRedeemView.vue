@@ -1,40 +1,45 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ArrowLeft, Ticket, Check, ShieldCheck, Sparkles, Crown } from 'lucide-vue-next'
-import { useAuthStore } from '../stores/auth'
-import { vipApi } from '../api'
-import { useToast } from '../composables/useToast'
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { ArrowLeft, Ticket, Check, ShieldCheck, Sparkles, Crown } from 'lucide-vue-next';
+import { useAuthStore } from '../stores/auth';
+import { vipApi } from '../api';
+import { useToast } from '../composables/useToast';
 
-const router = useRouter()
-const auth = useAuthStore()
-const { toast } = useToast()
+const router = useRouter();
+const auth = useAuthStore();
+const { toast } = useToast();
 
-const code = ref('')
-const submitting = ref(false)
+const code = ref('');
+const submitting = ref(false);
 
 const benefits = [
   'AI 问答权限，按每日预算与服务商额度使用',
   '功能申请免人工审批，以站点开放状态为准',
   '个人中心 VIP 专属标识',
   '发布网盘资料、查看资料完整链接',
-]
+];
 
 async function activate() {
-  const value = code.value.trim().toUpperCase()
-  if (!value) return toast('请输入邀请码')
-  submitting.value = true
+  const value = code.value.trim().toUpperCase();
+  if (!value) return toast('请输入邀请码');
+  submitting.value = true;
   try {
-    const data = await vipApi.redeem(value)
+    const data = await vipApi.redeem(value);
     if (auth.user) {
-      auth.setUser({ ...auth.user, is_vip: data.is_vip, vip_until: data.vip_until, vip_permanent: !!data.vip_permanent })
+      auth.setUser({
+        ...auth.user,
+        is_vip: data.is_vip,
+        vip_until: data.vip_until,
+        vip_permanent: !!data.vip_permanent,
+      });
     }
-    toast(`已开通 ${data.granted_days} 天 VIP`)
-    router.replace('/vip')
+    toast(`已开通 ${data.granted_days} 天 VIP`);
+    router.replace('/vip');
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    submitting.value = false
+    submitting.value = false;
   }
 }
 </script>

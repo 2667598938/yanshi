@@ -41,7 +41,7 @@ def heartbeat(
     db=Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    request.app.state.transient.limit(f"room-hb:{user.id}", 60, 60)
+    request.app.state.heartbeat_rate.limit(user.id)
     return ok(room_service.heartbeat(db, user, body))
 
 

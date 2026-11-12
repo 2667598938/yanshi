@@ -1,78 +1,91 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Check } from 'lucide-vue-next'
-import { resourceApi } from '../api'
-import { useAuthStore } from '../stores/auth'
-import { useToast } from '../composables/useToast'
+import { ref, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { ArrowLeft, Check } from 'lucide-vue-next';
+import { resourceApi } from '../api';
+import { useAuthStore } from '../stores/auth';
+import { useToast } from '../composables/useToast';
 
-const route = useRoute()
-const router = useRouter()
-const auth = useAuthStore()
-const { toast } = useToast()
+const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+const { toast } = useToast();
 
-const CATEGORIES = ['英语', '数学', '政治', '专业课', '其他']
-const editingId = computed(() => route.params.id ? Number(route.params.id) : null)
-const loading = ref(false)
-const saving = ref(false)
-const revision=ref(null)
+const CATEGORIES = ['英语', '数学', '政治', '专业课', '其他'];
+const editingId = computed(() => (route.params.id ? Number(route.params.id) : null));
+const loading = ref(false);
+const saving = ref(false);
+const revision = ref(null);
 const form = ref({
-  title: '', url: '', code: '', category: '英语', intro: '',personal_note:'',
-})
+  title: '',
+  url: '',
+  code: '',
+  category: '英语',
+  intro: '',
+  personal_note: '',
+});
 
 async function load() {
-  if (!editingId.value) return
-  loading.value = true
+  if (!editingId.value) return;
+  loading.value = true;
   try {
-    const row = await resourceApi.get(editingId.value)
-    revision.value=row.revision
+    const row = await resourceApi.get(editingId.value);
+    revision.value = row.revision;
     form.value = {
-      title: row.title, url: row.url, code: row.code || '',
-      category: row.category || '其他', intro: row.intro || '',personal_note:row.personal_note||'',
-    }
+      title: row.title,
+      url: row.url,
+      code: row.code || '',
+      category: row.category || '其他',
+      intro: row.intro || '',
+      personal_note: row.personal_note || '',
+    };
   } catch (e) {
-    toast(e.message)
-    router.replace('/resources')
+    toast(e.message);
+    router.replace('/resources');
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function save() {
-  const f = form.value
-  if (f.title.trim().length < 2) return toast('标题至少 2 个字')
-  if (!/^https?:\/\//.test(f.url.trim())) return toast('链接需以 http:// 或 https:// 开头')
-  saving.value = true
+  const f = form.value;
+  if (f.title.trim().length < 2) return toast('标题至少 2 个字');
+  if (!/^https?:\/\//.test(f.url.trim())) return toast('链接需以 http:// 或 https:// 开头');
+  saving.value = true;
   try {
     const payload = {
-      title: f.title.trim(), url: f.url.trim(), code: f.code.trim(),
-      category: f.category, intro: f.intro.trim(),personal_note:f.personal_note.trim(),
-      ...(editingId.value&&revision.value?{expected_revision:revision.value}:{}),
-    }
+      title: f.title.trim(),
+      url: f.url.trim(),
+      code: f.code.trim(),
+      category: f.category,
+      intro: f.intro.trim(),
+      personal_note: f.personal_note.trim(),
+      ...(editingId.value && revision.value ? { expected_revision: revision.value } : {}),
+    };
     if (editingId.value) {
-      const updated = await resourceApi.update(editingId.value, payload)
-      toast(updated.review_status === 'pending' ? '已保存，当前版本待审核' : '已保存')
-      router.replace(`/resources/${editingId.value}`)
+      const updated = await resourceApi.update(editingId.value, payload);
+      toast(updated.review_status === 'pending' ? '已保存，当前版本待审核' : '已保存');
+      router.replace(`/resources/${editingId.value}`);
     } else {
-      const row = await resourceApi.create(payload)
-      toast('已提交审核，通过后公开')
-      router.replace(`/resources/${row.id}`)
+      const row = await resourceApi.create(payload);
+      toast('已提交审核，通过后公开');
+      router.replace(`/resources/${row.id}`);
     }
   } catch (e) {
-    toast(e.message)
+    toast(e.message);
   } finally {
-    saving.value = false
+    saving.value = false;
   }
 }
 
 onMounted(() => {
   if (!auth.isVip && !editingId.value) {
-    toast('仅 VIP 可发布资料')
-    router.replace('/vip')
-    return
+    toast('仅 VIP 可发布资料');
+    router.replace('/vip');
+    return;
   }
-  load()
-})
+  load();
+});
 </script>
 
 <template>
@@ -84,14 +97,29 @@ onMounted(() => {
 
     <div class="page">
       <div v-if="loading" class="empty">读取中…</div>
-      <div v-else class="card"><p>资料需审核通过后公开。修改已有公开资料时，旧版保留到新版通过。</p><label class="field"><span>个人备注（仅本人可见）</span><textarea v-model="form.personal_note" class="input" maxlength="1000"></textarea></label>
+      <div v-else class="card">
+        <p>资料需审核通过后公开。修改已有公开资料时，旧版保留到新版通过。</p>
+        <label class="field"
+          ><span>个人备注（仅本人可见）</span
+          ><textarea v-model="form.personal_note" class="input" maxlength="1000"></textarea>
+        </label>
         <label class="field">
           <span>标题</span>
-          <input v-model="form.title" class="input" maxlength="80" placeholder="如：英语真题精析 2010-2026" />
+          <input
+            v-model="form.title"
+            class="input"
+            maxlength="80"
+            placeholder="如：英语真题精析 2010-2026"
+          />
         </label>
         <label class="field">
           <span>网盘链接</span>
-          <input v-model="form.url" class="input" maxlength="600" placeholder="https://pan.quark.cn/s/..." />
+          <input
+            v-model="form.url"
+            class="input"
+            maxlength="600"
+            placeholder="https://pan.quark.cn/s/..."
+          />
         </label>
         <label class="field">
           <span>提取码（可空）</span>
@@ -106,12 +134,20 @@ onMounted(() => {
               class="cat-chip"
               :class="{ on: form.category === c }"
               @click="form.category = c"
-            >{{ c }}</button>
+            >
+              {{ c }}
+            </button>
           </div>
         </label>
         <label class="field">
           <span>简介（可空）</span>
-          <textarea v-model="form.intro" class="ta" rows="3" maxlength="300" placeholder="简单说明资料内容与适用阶段"></textarea>
+          <textarea
+            v-model="form.intro"
+            class="ta"
+            rows="3"
+            maxlength="300"
+            placeholder="简单说明资料内容与适用阶段"
+          ></textarea>
         </label>
         <button class="btn btn-primary btn-block mt16" :disabled="saving" @click="save">
           <Check :size="17" />{{ saving ? '保存中…' : editingId ? '保存修改' : '发布' }}
@@ -135,9 +171,21 @@ onMounted(() => {
   cursor: pointer;
   box-shadow: var(--shadow-soft);
 }
-.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
-.field > span { font-size: 14px; color: var(--sub); }
-.cat-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+.field > span {
+  font-size: 14px;
+  color: var(--sub);
+}
+.cat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
 .cat-chip {
   border: 1.5px solid var(--line);
   background: #fff;
@@ -148,7 +196,11 @@ onMounted(() => {
   font-weight: 600;
   cursor: pointer;
 }
-.cat-chip.on { border-color: transparent; background: var(--primary); color: #fff; }
+.cat-chip.on {
+  border-color: transparent;
+  background: var(--primary);
+  color: #fff;
+}
 .ta {
   width: 100%;
   box-sizing: border-box;
@@ -162,5 +214,7 @@ onMounted(() => {
   resize: vertical;
   outline: none;
 }
-.ta:focus { border-color: var(--primary); }
+.ta:focus {
+  border-color: var(--primary);
+}
 </style>

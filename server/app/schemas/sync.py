@@ -29,3 +29,4 @@ class LearningPreferences(BaseModel):
     shortBreakMin: int = Field(default=5, ge=1, le=60)
     longBreakMin: int = Field(default=15, ge=1, le=180)
     longBreakEvery: int = Field(default=4, ge=1, le=8)
+    dailyReminder: bool | None = None

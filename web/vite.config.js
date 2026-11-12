@@ -1,6 +1,6 @@
-import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
-import { offlinePlugin } from './build/offline.js'
+import vue from '@vitejs/plugin-vue';
+import { defineConfig } from 'vite';
+import { offlinePlugin } from './build/offline.js';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -20,4 +20,4 @@ export default defineConfig({
       },
     },
   },
-})
+});

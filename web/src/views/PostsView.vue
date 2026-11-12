@@ -1,90 +1,136 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ArrowLeft, Plus, MessageCircle, ChevronRight, Sparkles, Check } from 'lucide-vue-next';
+import { postApi } from '../api';
+import { fmtShort } from '../utils/time';
+import BlobImage from '../components/BlobImage.vue';
+import PageState from '../components/PageState.vue';
+import { useToast } from '../composables/useToast';
+import { useAuthStore } from '../stores/auth';
 import {
-  ArrowLeft, Plus, MessageCircle, ChevronRight, Sparkles, Check,
-} from 'lucide-vue-next'
-import { postApi } from '../api'
-import { fmtShort } from '../utils/time'
-import BlobImage from '../components/BlobImage.vue'
-import { useToast } from '../composables/useToast'
-import { useAuthStore } from '../stores/auth'
-import { pendingPosts, queuePost, cachedPosts, pullCommunityMirrors, SYNCED_EVENT } from '../sync/community'
-import { scheduleSync } from '../sync/engine'
+  pendingPosts,
+  queuePost,
+  cachedPosts,
+  pullCommunityMirrors,
+  SYNCED_EVENT,
+} from '../sync/community';
+import { scheduleSync } from '../sync/engine';
 
-const router = useRouter()
-const auth = useAuthStore()
-const { toast } = useToast()
+const router = useRouter();
+const auth = useAuthStore();
+const { toast } = useToast();
 
-const tab = ref('all')
-const rows = ref([])
-const pending = ref([])
-const loading = ref(true)
-const showCompose = ref(false)
-const draft = ref('')
-const posting = ref(false)
+const tab = ref('all');
+const rows = ref([]);
+const pending = ref([]);
+const loading = ref(true);
+const showCompose = ref(false);
+const draft = ref('');
+const posting = ref(false);
+const query = ref('');
+const activeQuery = ref('');
+const cursor = ref(null);
+const loadingMore = ref(false);
+const loadError = ref('');
+let loadVersion = 0;
+const visiblePending = computed(() =>
+  tab.value === 'all' && activeQuery.value
+    ? pending.value.filter((post) =>
+        post.content.toLowerCase().includes(activeQuery.value.toLowerCase()),
+      )
+    : pending.value,
+);
 
 function fmtTime(v) {
-  return fmtShort(v)
+  return fmtShort(v);
 }
 
 function fmtLocal(ms) {
-  return fmtShort(new Date(ms).toISOString())
+  return fmtShort(new Date(ms).toISOString());
 }
 
 async function loadPending() {
-  pending.value = await pendingPosts()
+  pending.value = await pendingPosts();
 }
 
-async function load() {
-  loading.value = true
-  await loadPending()
+async function load(append = false) {
+  if (append && (loadingMore.value || !cursor.value)) return;
+  const version = ++loadVersion;
+  loading.value = !append;
+  loadingMore.value = append;
+  loadError.value = '';
+  if (!append) cursor.value = null;
   try {
+    await loadPending();
+    if (version !== loadVersion) return;
     if (tab.value === 'mine') {
-      await pullCommunityMirrors().catch(() => {})
-      rows.value = await cachedPosts()
-    } else rows.value = await postApi.list()
+      await pullCommunityMirrors().catch(() => {});
+      const cached = await cachedPosts();
+      if (version === loadVersion) rows.value = cached;
+    } else {
+      const page = await postApi.list({
+        q: activeQuery.value,
+        page_size: 20,
+        ...(append ? { before_id: cursor.value } : {}),
+      });
+      if (version !== loadVersion) return;
+      rows.value = append ? [...rows.value, ...page.items] : page.items;
+      cursor.value = page.next;
+    }
   } catch (e) {
-    toast(e.message)
+    if (version !== loadVersion) return;
+    if (append || visiblePending.value.length) {
+      if (!append) rows.value = [];
+      toast(e.message);
+    } else loadError.value = e.message;
   } finally {
-    loading.value = false
+    if (version === loadVersion) {
+      loading.value = false;
+      loadingMore.value = false;
+    }
   }
 }
 
+function searchPosts() {
+  activeQuery.value = query.value.trim();
+  load();
+}
+
 function switchTab(t) {
-  tab.value = t
-  load()
+  tab.value = t;
+  load();
 }
 
 async function saveLocal(text) {
-  const row = await queuePost(text)
-  pending.value.unshift(row)
-  draft.value = ''
-  showCompose.value = false
-  toast('已保存到本机，联网后自动上传')
-  scheduleSync(0)
+  const row = await queuePost(text);
+  pending.value.unshift(row);
+  draft.value = '';
+  showCompose.value = false;
+  toast('已保存到本机，联网后自动上传');
+  scheduleSync(0);
 }
 
 async function publish() {
-  const text = draft.value.trim()
-  if (!text) return toast('写点什么再发布')
-  posting.value = true
+  const text = draft.value.trim();
+  if (!text) return toast('写点什么再发布');
+  posting.value = true;
   try {
-    await saveLocal(text)
+    await saveLocal(text);
   } finally {
-    posting.value = false
+    posting.value = false;
   }
 }
 
 async function onSynced() {
-  await load()
+  await load();
 }
 
 onMounted(() => {
-  load()
-  window.addEventListener(SYNCED_EVENT, onSynced)
-})
-onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
+  load();
+  window.addEventListener(SYNCED_EVENT, onSynced);
+});
+onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced));
 </script>
 
 <template>
@@ -110,35 +156,70 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
         <button :class="{ on: tab === 'mine' }" @click="switchTab('mine')">我的帖子</button>
       </div>
 
-      <div v-if="loading" class="empty">读取中…</div>
-      <div v-else-if="!rows.length && !pending.length" class="empty">
-        {{ tab === 'mine' ? '还没有发过动态' : '还没有动态，来第一条' }}
-      </div>
-      <div v-else class="post-list">
-        <div v-for="p in pending" :key="p.id" class="post-card is-pending">
-          <div class="post-head">
-            <BlobImage class="p-avatar" :src="auth.user?.avatar_key" :fallback="''" />
-            <span class="p-name">{{ auth.user?.nickname || '我' }}</span>
-            <span class="p-time">{{ fmtLocal(p.createdAt) }}</span>
+      <form v-if="tab === 'all'" class="search-row" @submit.prevent="searchPosts">
+        <input
+          v-model="query"
+          class="input"
+          type="search"
+          maxlength="80"
+          aria-label="搜索动态"
+          placeholder="搜索动态"
+        />
+        <button class="btn btn-outline btn-sm" type="submit">搜索</button>
+      </form>
+      <PageState
+        :loading="loading"
+        :error="loadError"
+        :empty="!rows.length && !visiblePending.length"
+        :empty-label="
+          tab === 'mine'
+            ? '还没有发过动态'
+            : activeQuery
+              ? '没有匹配的动态'
+              : '还没有动态，来第一条'
+        "
+        @retry="load()"
+      >
+        <div class="post-list">
+          <div v-for="p in visiblePending" :key="p.id" class="post-card is-pending">
+            <div class="post-head">
+              <BlobImage class="p-avatar" :src="auth.user?.avatar_key" :fallback="''" />
+              <span class="p-name">{{ auth.user?.nickname || '我' }}</span>
+              <span class="p-time">{{ fmtLocal(p.createdAt) }}</span>
+            </div>
+            <div class="p-content">{{ p.content }}</div>
+            <div class="p-foot">
+              <span class="p-pending">待上传 · 仅本机可见</span>
+            </div>
           </div>
-          <div class="p-content">{{ p.content }}</div>
-          <div class="p-foot">
-            <span class="p-pending">待上传 · 仅本机可见</span>
-          </div>
+          <button
+            v-for="p in rows"
+            :key="p.id"
+            class="post-card"
+            @click="router.push(`/posts/${p.id}`)"
+          >
+            <div class="post-head">
+              <BlobImage class="p-avatar" :src="p.author?.avatar_key" :fallback="''" />
+              <span class="p-name">{{ p.author?.nickname || '研友' }}</span>
+              <span class="p-time">{{ fmtTime(p.created_at) }}</span>
+            </div>
+            <div class="p-content">{{ p.content }}</div>
+            <div class="p-foot">
+              <span><MessageCircle :size="13" />{{ p.comment_count }} 条评论</span>
+              <span v-if="p.mine" class="p-mine">我发布的</span>
+            </div>
+          </button>
+          <button
+            v-if="cursor"
+            class="btn btn-outline"
+            type="button"
+            :disabled="loadingMore"
+            @click="load(true)"
+          >
+            {{ loadingMore ? '读取中…' : '加载更多' }}
+          </button>
         </div>
-        <button v-for="p in rows" :key="p.id" class="post-card" @click="router.push(`/posts/${p.id}`)">
-          <div class="post-head">
-            <BlobImage class="p-avatar" :src="p.author?.avatar_key" :fallback="''" />
-            <span class="p-name">{{ p.author?.nickname || '研友' }}</span>
-            <span class="p-time">{{ fmtTime(p.created_at) }}</span>
-          </div>
-          <div class="p-content">{{ p.content }}</div>
-          <div class="p-foot">
-            <span><MessageCircle :size="13" />{{ p.comment_count }} 条评论</span>
-            <span v-if="p.mine" class="p-mine">我发布的</span>
-          </div>
-        </button>
-      </div>
+      </PageState>
     </div>
 
     <div v-if="showCompose" class="mask" @click.self="showCompose = false">
@@ -168,33 +249,215 @@ onUnmounted(() => window.removeEventListener(SYNCED_EVENT, onSynced))
 </template>
 
 <style scoped>
-.back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.compose-btn { margin-left: auto; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 14px; font-weight: 600; padding: 9px 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.insp-banner { width: 100%; display: flex; align-items: center; gap: 10px; border: none; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; background: linear-gradient(135deg, #4f46e5, #312e81); color: #eef2ff; cursor: pointer; text-align: left; }
-.ib-main { flex: 1; }
-.ib-title { font-size: 14px; font-weight: 700; }
-.ib-sub { font-size: 12px; color: rgba(234, 241, 255, 0.66); margin-top: 2px; }
-.tabs { display: flex; gap: 6px; background: #fff; border-radius: 12px; padding: 4px; margin-bottom: 12px; box-shadow: var(--shadow-soft); }
-.tabs button { flex: 1; border: none; background: transparent; padding: 9px 0; border-radius: 9px; font-size: 14px; color: var(--sub); cursor: pointer; }
-.tabs button.on { background: var(--primary); color: #fff; font-weight: 600; }
-.post-list { display: flex; flex-direction: column; gap: 10px; }
-.post-card { text-align: left; background: #fff; border: none; border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-soft); color: var(--ink); cursor: pointer; }
-.post-card.is-pending { border: 1px dashed #e6c98a; background: #fffdf7; cursor: default; }
-.p-pending { color: #a5781f; font-weight: 600; }
-.post-head { display: flex; align-items: center; gap: 8px; }
-.p-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #eef3f9; flex-shrink: 0; }
-.p-name { font-size: 14px; font-weight: 700; }
-.p-time { margin-left: auto; font-size: 12px; color: var(--faint); }
-.p-content { margin-top: 9px; font-size: 14px; line-height: 1.72; white-space: pre-wrap; word-break: break-word; }
-.p-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--faint); }
-.p-foot span { display: inline-flex; align-items: center; gap: 3px; }
-.p-mine { color: var(--primary); }
-.mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
-.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
-.sheet-title { font-size: 16px; font-weight: 800; text-align: center; margin-bottom: 12px; }
-.ta { width: 100%; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14px; font-family: inherit; background: #fafbfe; resize: vertical; outline: none; }
-.ta:focus { border-color: var(--primary); }
-.compose-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 12px; color: var(--faint); }
-.compose-legal { margin-top: 10px; font-size: 12px; color: var(--faint); line-height: 1.6; }
-.compose-legal a { color: var(--primary); cursor: pointer; text-decoration: none; }
+.search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.search-row .input {
+  flex: 1;
+  min-width: 0;
+}
+.back {
+  border: none;
+  background: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sub);
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+.compose-btn {
+  margin-left: auto;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.insp-banner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #4f46e5, #312e81);
+  color: #eef2ff;
+  cursor: pointer;
+  text-align: left;
+}
+.ib-main {
+  flex: 1;
+}
+.ib-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.ib-sub {
+  font-size: 12px;
+  color: rgba(234, 241, 255, 0.66);
+  margin-top: 2px;
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-soft);
+}
+.tabs button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 9px 0;
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--sub);
+  cursor: pointer;
+}
+.tabs button.on {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+.post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.post-card {
+  text-align: left;
+  background: var(--surface-raised);
+  border: none;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-soft);
+  color: var(--ink);
+  cursor: pointer;
+}
+.post-card.is-pending {
+  border: 1px dashed var(--status-warning-line);
+  background: var(--status-warning-surface);
+  cursor: default;
+}
+.p-pending {
+  color: var(--status-warning-ink);
+  font-weight: 600;
+}
+.post-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.p-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #eef3f9;
+  flex-shrink: 0;
+}
+.p-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+.p-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--faint);
+}
+.p-content {
+  margin-top: 9px;
+  font-size: 14px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.p-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.p-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.p-mine {
+  color: var(--primary);
+}
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 150;
+}
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border-radius: 22px 22px 0 0;
+  padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+}
+.sheet-title {
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.ta {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fafbfe;
+  resize: vertical;
+  outline: none;
+}
+.ta:focus {
+  border-color: var(--primary);
+}
+.compose-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.compose-legal {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.6;
+}
+.compose-legal a {
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: none;
+}
 </style>

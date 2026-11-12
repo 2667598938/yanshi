@@ -1,5 +1,5 @@
 """动态帖子与二级评论。"""
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -58,13 +58,27 @@ def _comment_counts(db, ids):
 
 
 @router.get('/posts')
-def list_posts(user=Depends(get_current_user), db=Depends(get_db)):
-    rows = db.scalars(select(Post).where(
-        Post.deleted_at.is_(None)).order_by(Post.id.desc()).limit(50)).all()
+def list_posts(
+    q: str = Query('', max_length=80),
+    before_id: int | None = Query(None, gt=0),
+    page_size: int | None = Query(None, ge=1, le=50),
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    query = select(Post).where(Post.deleted_at.is_(None))
+    if q.strip():
+        query = query.where(Post.content.icontains(q.strip(), autoescape=True))
+    if before_id is not None:
+        query = query.where(Post.id < before_id)
+    rows = db.scalars(query.order_by(Post.id.desc()).limit(page_size + 1 if page_size else 50)).all()
+    has_more = page_size is not None and len(rows) > page_size
+    if has_more:
+        rows.pop()
     authors = {u.id: u for u in db.scalars(select(User).where(
         User.id.in_([r.user_id for r in rows]))).all()}
     counts = _comment_counts(db, [r.id for r in rows])
-    return ok([post_dict(r, authors.get(r.user_id), counts.get(r.id, 0), user) for r in rows])
+    items = [post_dict(r, authors.get(r.user_id), counts.get(r.id, 0), user) for r in rows]
+    return ok({'items': items, 'next': rows[-1].id if has_more else None} if page_size else items)
 
 
 @router.get('/posts/mine')
@@ -125,6 +139,7 @@ def create_post(body: PostInput, request: Request, user=Depends(get_current_user
         if existing:
             counts = _comment_counts(db, [existing.id])
             return ok(post_dict(existing, user, counts.get(existing.id, 0), user))
+    request.app.state.transient.limit(f"post-create:{user.id}", 5, 600)
     row = Post(user_id=user.id, content=body.content.strip(), client_id=body.client_id or None)
     db.add(row)
     audit(db, request, 'post.create', user_id=user.id)
@@ -197,6 +212,7 @@ def list_comments(pid: int, user=Depends(get_current_user), db=Depends(get_db)):
 @router.post('/posts/{pid}/comments')
 def create_comment(pid: int, body: CommentInput, request: Request,
                    user=Depends(get_current_user), db=Depends(get_db)):
+    request.app.state.transient.limit(f"comment-create:{user.id}", 20, 600)
     post = db.get(Post, pid)
     if not post or post.deleted_at:
         raise ApiError(404, 40401, '帖子不存在')

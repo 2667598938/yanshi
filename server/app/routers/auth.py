@@ -39,11 +39,11 @@ CODE_MAX_ATTEMPTS = 5  # 输错 5 次作废
 
 
 def ensure_email_domain(request: Request, email: str) -> None:
-    """按配置限制邮箱域名（一期为 QQ 邮箱；留空则不限制）。"""
+    """按配置限制邮箱验证码和注册所用的域名。"""
     raw = request.app.state.settings.auth_email_domains
     allowed = {x.strip().lower() for x in raw.split(",") if x.strip()}
     if allowed and email.rsplit("@", 1)[-1].lower() not in allowed:
-        raise ApiError(400, 40001, "仅支持 QQ 邮箱登录")
+        raise ApiError(400, 40001, "当前不支持此邮箱域名，请使用：" + "、".join(sorted(allowed)))
     if (
         allowed == {"qq.com"}
         and request.app.state.settings.auth_qq_numeric_only

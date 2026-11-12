@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "pretest": "npm run lint && npm run format:check",
     "test": "vitest run",
     "prebuild": "node scripts/build-neural-demo.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint src build scripts tests *.config.js",
+    "format": "prettier --write src build scripts tests *.config.js",
+    "format:check": "prettier --check src build scripts tests *.config.js"
   },
   "dependencies": {
     "dexie": "^4.4.6",
@@ -20,11 +24,23 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/test-utils": "^2.5.1",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.12.1",
     "fake-indexeddb": "^6.2.6",
+    "globals": "^17.14.0",
     "happy-dom": "^21.0.4",
+    "prettier": "^3.10.1",
     "vite": "^8.3.4",
     "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "minimatch": "11.0.8",
+    "js-beautify": {
+      "glob": "14.0.5"
+    }
   }
 }

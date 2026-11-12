@@ -1,48 +1,83 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useSchoolsStore } from '../stores/schools'
-import SchoolBullets from '../components/SchoolBullets.vue'
-import BlobImage from '../components/BlobImage.vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, MapPin, Quote, ChevronRight } from 'lucide-vue-next'
-import { SCHOOL_MAP } from '../data/schools'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useSchoolsStore } from '../stores/schools';
+import SchoolBullets from '../components/SchoolBullets.vue';
+import BlobImage from '../components/BlobImage.vue';
+import { useRouter, useRoute } from 'vue-router';
+import { ArrowLeft, MapPin, Quote, ChevronRight } from 'lucide-vue-next';
+import { SCHOOL_MAP } from '../data/schools';
 
-const router = useRouter()
-const route = useRoute()
-const schools = ref([])
-const catalog = useSchoolsStore()
-const active = ref(null)
-const albumIndex = ref(0)
-const image = computed(() => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view)
-let interval
-let alive = true
-let lastManual = 0
-function pickSchool(school) { active.value = school; albumIndex.value = 0; lastManual = Date.now() }
-function pickAlbum(index) { albumIndex.value = index; lastManual = Date.now() }
-function merge(rows) {
-  if (!Array.isArray(rows)) return
-  schools.value = rows.map((row) => {
-    const local = SCHOOL_MAP[row.key] || { color: '#526484', logo: '', view: '', motto: '', city: '' }
-    return { ...local, ...row.info, key: row.key, name: row.name, short: row.short,
-      logo: row.logo_key || local.logo, view: row.album_keys?.[0] || local.view,
-      album: row.album_keys?.length ? row.album_keys : [local.view] }
-  })
+const router = useRouter();
+const route = useRoute();
+const schools = ref([]);
+const catalog = useSchoolsStore();
+const active = ref(null);
+const albumIndex = ref(0);
+const image = computed(
+  () => active.value?.album?.[albumIndex.value % active.value.album.length] || active.value?.view,
+);
+let interval;
+let alive = true;
+let lastManual = 0;
+function pickSchool(school) {
+  active.value = school;
+  albumIndex.value = 0;
+  lastManual = Date.now();
 }
-watch(() => catalog.rows, (rows) => {
-  merge(rows)
-  if (active.value) active.value = schools.value.find(row => row.key === active.value.key) || null
-})
+function pickAlbum(index) {
+  albumIndex.value = index;
+  lastManual = Date.now();
+}
+function merge(rows) {
+  if (!Array.isArray(rows)) return;
+  schools.value = rows.map((row) => {
+    const local = SCHOOL_MAP[row.key] || {
+      color: '#526484',
+      logo: '',
+      view: '',
+      motto: '',
+      city: '',
+    };
+    return {
+      ...local,
+      ...row.info,
+      key: row.key,
+      name: row.name,
+      short: row.short,
+      logo: row.logo_key || local.logo,
+      view: row.album_keys?.[0] || local.view,
+      album: row.album_keys?.length ? row.album_keys : [local.view],
+    };
+  });
+}
+watch(
+  () => catalog.rows,
+  (rows) => {
+    merge(rows);
+    if (active.value)
+      active.value = schools.value.find((row) => row.key === active.value.key) || null;
+  },
+);
 onMounted(async () => {
   interval = setInterval(() => {
-    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && active.value && document.visibilityState === 'visible' && Date.now() - lastManual >= 10000) albumIndex.value += 1
-  }, 5000)
-  await catalog.load()
-  if (!alive) return
-  merge(catalog.rows)
-  const requested=schools.value.find(row=>row.key===route.query.school)
-  if(requested)pickSchool(requested)
-})
-onBeforeUnmount(() => { alive = false; clearInterval(interval) })
+    if (
+      !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches &&
+      active.value &&
+      document.visibilityState === 'visible' &&
+      Date.now() - lastManual >= 10000
+    )
+      albumIndex.value += 1;
+  }, 5000);
+  await catalog.load();
+  if (!alive) return;
+  merge(catalog.rows);
+  const requested = schools.value.find((row) => row.key === route.query.school);
+  if (requested) pickSchool(requested);
+});
+onBeforeUnmount(() => {
+  alive = false;
+  clearInterval(interval);
+});
 </script>
 
 <template>
@@ -59,7 +94,9 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
       </div>
 
       <SchoolBullets />
-      <button class="btn btn-primary mb16" @click="router.push('/schools/manage')">管理我的梦校</button>
+      <button class="btn btn-primary mb16" @click="router.push('/schools/manage')">
+        管理我的梦校
+      </button>
       <p v-if="!schools.length">还没有梦校，点击上方按钮添加。</p>
       <div class="school-grid">
         <button
@@ -93,9 +130,18 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
           </div>
         </div>
         <div v-if="active.album?.length > 1" class="motto">
-          <button v-for="(key, i) in active.album" :key="key" class="btn btn-outline btn-sm" @click="pickAlbum(i)">{{ i + 1 }}</button>
+          <button
+            v-for="(key, i) in active.album"
+            :key="key"
+            class="btn btn-outline btn-sm"
+            @click="pickAlbum(i)"
+          >
+            {{ i + 1 }}
+          </button>
         </div>
-        <p v-if="active.description || active.info?.description">{{ active.description || active.info?.description }}</p>
+        <p v-if="active.description || active.info?.description">
+          {{ active.description || active.info?.description }}
+        </p>
         <div class="motto"><Quote :size="15" />{{ active.motto }}</div>
         <button class="btn btn-ghost btn-block" @click="active = null">收好，继续学</button>
       </div>
@@ -104,26 +150,156 @@ onBeforeUnmount(() => { alive = false; clearInterval(interval) })
 </template>
 
 <style scoped>
-.back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.wall-hero { border-radius: 16px; padding: 20px; background: linear-gradient(140deg, #0f1f3a, #31547f); color: #eef4ff; margin-bottom: 14px; }
-.wh-title { font-size: 16px; font-weight: 700; line-height: 1.6; }
-.wh-sub { font-size: 12px; color: rgba(238,244,255,.62); margin-top: 7px; }
-.school-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.school-card { position: relative; border: none; padding: 0; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: var(--shadow-soft); cursor: pointer; text-align: left; }
-.sc-view { width: 100%; height: 88px; object-fit: cover; display: block; }
-.sc-body { display: flex; align-items: center; gap: 8px; padding: 9px 10px; background: #fff; }
-.sc-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--sc); }
-.sc-main { flex: 1; min-width: 0; }
-.sc-name { font-size: 14px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sc-city { display: flex; align-items: center; gap: 2px; font-size: 12px; color: var(--faint); margin-top: 1px; }
-.sc-arrow { color: #c9d2df; flex-shrink: 0; }
-.mask { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
-.sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; overflow: hidden; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
-.big-view { width: 100%; height: 190px; object-fit: cover; display: block; }
-.big-body { display: flex; align-items: center; gap: 11px; padding: 16px 18px 0; }
-.big-logo { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; border: 2px solid var(--sc); }
-.big-name { font-size: 16px; font-weight: 800; }
-.big-city { display: flex; align-items: center; gap: 3px; font-size: 12px; color: var(--faint); margin-top: 2px; }
-.motto { display: flex; align-items: flex-start; gap: 6px; margin: 14px 18px; font-size: 14px; line-height: 1.7; color: var(--sc); font-weight: 600; }
-.sheet .btn { width: calc(100% - 36px); margin: 0 18px; }
+.back {
+  border: none;
+  background: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sub);
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+.wall-hero {
+  border-radius: 16px;
+  padding: 20px;
+  background: linear-gradient(140deg, #0f1f3a, #31547f);
+  color: #eef4ff;
+  margin-bottom: 14px;
+}
+.wh-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.wh-sub {
+  font-size: 12px;
+  color: rgba(238, 244, 255, 0.62);
+  margin-top: 7px;
+}
+.school-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.school-card {
+  position: relative;
+  border: none;
+  padding: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  text-align: left;
+}
+.sc-view {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+  display: block;
+}
+.sc-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  background: #fff;
+}
+.sc-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid var(--sc);
+}
+.sc-main {
+  flex: 1;
+  min-width: 0;
+}
+.sc-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-city {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 1px;
+}
+.sc-arrow {
+  color: #c9d2df;
+  flex-shrink: 0;
+}
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 150;
+}
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border-radius: 22px 22px 0 0;
+  overflow: hidden;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+}
+.big-view {
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  display: block;
+}
+.big-body {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 16px 18px 0;
+}
+.big-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--sc);
+}
+.big-name {
+  font-size: 16px;
+  font-weight: 800;
+}
+.big-city {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 2px;
+}
+.motto {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 14px 18px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--sc);
+  font-weight: 600;
+}
+.sheet .btn {
+  width: calc(100% - 36px);
+  margin: 0 18px;
+}
 </style>
