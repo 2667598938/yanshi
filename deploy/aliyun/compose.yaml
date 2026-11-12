@@ -1,0 +1,49 @@
+name: yanshi
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+services:
+  api:
+    image: ghcr.io/2667598938/yanshi-api:main
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: /etc/yanshi/server.env
+        format: raw
+    volumes:
+      - data:/var/lib/yanshi
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 2
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging: *logging
+  web:
+    image: ghcr.io/2667598938/yanshi-web:main
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    logging: *logging
+volumes:
+  data:
+    name: yanshi-data
