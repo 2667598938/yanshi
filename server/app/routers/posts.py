@@ -125,6 +125,8 @@ def create_post(body: PostInput, request: Request, user=Depends(get_current_user
         if existing:
             counts = _comment_counts(db, [existing.id])
             return ok(post_dict(existing, user, counts.get(existing.id, 0), user))
+    # 幂等重试直接返回已有帖子，不消耗发帖额度。
+    request.app.state.transient.limit(f'post-create:{user.id}', 5, 600)
     row = Post(user_id=user.id, content=body.content.strip(), client_id=body.client_id or None)
     db.add(row)
     audit(db, request, 'post.create', user_id=user.id)
@@ -197,6 +199,7 @@ def list_comments(pid: int, user=Depends(get_current_user), db=Depends(get_db)):
 @router.post('/posts/{pid}/comments')
 def create_comment(pid: int, body: CommentInput, request: Request,
                    user=Depends(get_current_user), db=Depends(get_db)):
+    request.app.state.transient.limit(f'comment-create:{user.id}', 20, 600)
     post = db.get(Post, pid)
     if not post or post.deleted_at:
         raise ApiError(404, 40401, '帖子不存在')

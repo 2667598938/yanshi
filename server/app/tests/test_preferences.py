@@ -79,6 +79,7 @@ def test_email_three_requests_per_five_minutes(client, monkeypatch):
 
 def test_qq_numeric_policy_is_configurable(client):
     client.app.state.settings.auth_email_domains = "qq.com"
+    client.app.state.settings.auth_qq_numeric_only = True
     assert (
         client.post(
             "/api/v1/auth/email-code", json={"email": "alias@qq.com", "scene": "login"}

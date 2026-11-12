@@ -256,6 +256,7 @@ def create_resource(
 ):
     if not is_vip(user):
         raise ApiError(403, 40301, "仅 VIP 可发布资料")
+    request.app.state.transient.limit(f"resource-create:{user.id}", 10, 3600)
     now = utcnow()
     row = Resource(
         user_id=user.id,

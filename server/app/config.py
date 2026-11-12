@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     auth_password_only: bool = True
     # email 表示邮箱账号，验证码登录另受 auth_password_only 控制。
     auth_channels: str = "email"  # 逗号分隔：email,wechat,qq,phone
-    # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，测试环境用空值）
-    auth_email_domains: str = "qq.com"
-    auth_qq_numeric_only: bool = True
+    # 邮箱验证码/注册仅允许的邮箱域名（逗号分隔；留空=不限制，公开注册用空值）
+    auth_email_domains: str = ""
+    auth_qq_numeric_only: bool = False
     github_client_id: str = ""
     github_client_secret: str = ""
     wechat_app_id: str = ""

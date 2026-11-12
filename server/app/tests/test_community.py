@@ -15,6 +15,28 @@ def make_member(client, ah, email, name):
     return r.json()['data']
 
 
+def test_post_and_comment_rate_limit(client):
+    """开放注册后必须限流：单账号不能无限发帖或刷评论。"""
+    admin = login(client, **ADMIN)
+    ah = h(admin['access_token'])
+    make_member(client, ah, 'spam@test.com', '刷屏者')
+    ph = h(login(client, 'spam@test.com', 'Friend2028')['access_token'])
+
+    for i in range(5):
+        r = client.post('/api/v1/posts', headers=ph, json={'content': f'第{i}条动态'})
+        assert r.status_code == 200, r.text
+    assert client.post('/api/v1/posts', headers=ph,
+                       json={'content': '第六条动态'}).status_code == 429
+
+    pid = client.get('/api/v1/posts', headers=ph).json()['data'][0]['id']
+    for i in range(20):
+        r = client.post(f'/api/v1/posts/{pid}/comments', headers=ph,
+                        json={'content': f'评论{i}'})
+        assert r.status_code == 200, r.text
+    assert client.post(f'/api/v1/posts/{pid}/comments', headers=ph,
+                       json={'content': '第21条评论'}).status_code == 429
+
+
 def test_posts_and_nested_comments(client):
     admin = login(client, **ADMIN)
     ah = h(admin['access_token'])
