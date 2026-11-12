@@ -37,7 +37,7 @@ jobs:
           node-version: '22'
       - name: Audit frontend lockfile
         working-directory: web
-        run: npm audit --registry=https://registry.npmjs.org
+        run: npm audit --audit-level=high --registry=https://registry.npmjs.org
       - id: release
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}

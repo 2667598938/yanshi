@@ -76,7 +76,7 @@ jobs:
         run: npm test
 
       - name: 前端依赖安全审计
-        run: npm audit --registry=https://registry.npmjs.org
+        run: npm audit --audit-level=high --registry=https://registry.npmjs.org
 
       - name: 构建
         run: npm run build
