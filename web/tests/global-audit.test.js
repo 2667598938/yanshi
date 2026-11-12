@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { mount, flushPromises } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { db, activateAccount, localAccountScope } from '../src/db';
 import { useTasksStore } from '../src/stores/tasks';

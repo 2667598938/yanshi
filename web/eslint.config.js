@@ -10,7 +10,10 @@ export default [
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },
   {
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      'no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true },
+      ],
       'no-empty': ['error', { allowEmptyCatch: true }],
       'vue/multi-word-component-names': 'off',
     },

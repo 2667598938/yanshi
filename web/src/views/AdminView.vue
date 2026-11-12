@@ -7,12 +7,10 @@ import {
   Plus,
   UserPlus,
   Megaphone,
-  Users,
   Trash2,
   Ban,
   KeyRound,
   Crown,
-  ClipboardCheck,
   Check,
   X,
   Sparkles,
@@ -21,7 +19,6 @@ import { useAuthStore } from '../stores/auth';
 import { adminApi, inspirationApi } from '../api';
 import BlobImage from '../components/BlobImage.vue';
 import { fmtDate, fmtShort, fmtDateTime } from '../utils/time';
-import { SCHOOL_MAP } from '../data/schools';
 import { useToast } from '../composables/useToast';
 import { useClipboard } from '../composables/useClipboard';
 import CopyFallback from '../components/CopyFallback.vue';
@@ -102,10 +99,6 @@ const reviewNote = ref('');
 function fmtBytes(n) {
   if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
   return Math.round(n / 1024) + ' KB';
-}
-function fmtSec(sec) {
-  const m = Math.round((sec || 0) / 60);
-  return m >= 60 ? (m / 60).toFixed(1) + 'h' : m + 'm';
 }
 
 async function loadAll() {

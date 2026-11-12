@@ -1,11 +1,9 @@
 <script setup>
 import { useRoute } from 'vue-router';
-import { Home, BarChart3, Users, User, Timer, Sparkles } from 'lucide-vue-next';
-import { useTimerStore } from '../stores/timer';
+import { Home, BarChart3, Users, User, Sparkles } from 'lucide-vue-next';
 import { useNotificationsStore } from '../stores/notifications';
 
 const route = useRoute();
-const timer = useTimerStore();
 const notifications = useNotificationsStore();
 
 const tabs = [

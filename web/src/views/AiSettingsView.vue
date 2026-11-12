@@ -3,11 +3,9 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowLeft, KeyRound, RefreshCw, Save, Trash2, Crown, ChevronRight } from 'lucide-vue-next';
 import { aiApi } from '../api';
-import { useAuthStore } from '../stores/auth';
 import { useToast } from '../composables/useToast';
 
 const router = useRouter();
-const auth = useAuthStore();
 const { toast } = useToast();
 
 const PROVIDERS = [
@@ -76,7 +74,6 @@ async function saveContext() {
   }
 }
 
-const isVip = computed(() => auth.isVip);
 const canUse = ref(false);
 const configured = computed(() => !!status.value?.configured);
 const canReuseKey = computed(

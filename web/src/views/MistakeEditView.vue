@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { ChevronLeft, Check, ImagePlus, X, NotebookPen } from 'lucide-vue-next';
+import { ChevronLeft, ImagePlus, X, NotebookPen } from 'lucide-vue-next';
 import BlobImage from '../components/BlobImage.vue';
 import { useMistakesStore } from '../stores/mistakes';
 import { useSubjectsStore } from '../stores/subjects';

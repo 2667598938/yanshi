@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, reactive, nextTick } from 'vue';
+import { reactive, nextTick } from 'vue';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { useGroupPresence } from '../src/composables/useGroupPresence';
 import { useStudyRoomStore } from '../src/stores/studyRoom';

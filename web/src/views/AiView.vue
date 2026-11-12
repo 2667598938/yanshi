@@ -33,14 +33,12 @@ import { db, uid, activeAccountId } from '../db';
 import BlobImage from '../components/BlobImage.vue';
 import CopyFallback from '../components/CopyFallback.vue';
 import AiAnswer from '../components/AiAnswer.vue';
-import { useAuthStore } from '../stores/auth';
 import { useSubjectsStore } from '../stores/subjects';
 import { useTasksStore } from '../stores/tasks';
 import { useToast } from '../composables/useToast';
 import { useClipboard } from '../composables/useClipboard';
 
 const router = useRouter();
-const auth = useAuthStore();
 const subjects = useSubjectsStore();
 const tasksStore = useTasksStore();
 const { toast } = useToast();

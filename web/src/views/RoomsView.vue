@@ -7,7 +7,6 @@ import {
   Users,
   Lock,
   Globe2,
-  KeyRound,
   Copy,
   ChevronRight,
   Check,

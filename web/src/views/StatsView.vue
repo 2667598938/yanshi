@@ -11,9 +11,7 @@ import {
   ChevronRight,
   Download,
   FileImage,
-  CheckCircle2,
   NotebookPen,
-  Target,
   ListChecks,
 } from 'lucide-vue-next';
 import Heatmap from '../components/Heatmap.vue';
@@ -25,7 +23,7 @@ import { useMistakesStore } from '../stores/mistakes';
 import { useAppStore } from '../stores/app';
 import { useClockStore } from '../stores/clock';
 import { ACTIVITIES } from '../data/subjects';
-import { fmtMinutes, todayKey, addDaysKey, diffDayKeys, mdLabel } from '../utils/date';
+import { fmtMinutes, addDaysKey, diffDayKeys, mdLabel } from '../utils/date';
 import {
   filterSessions,
   sumMin,

@@ -219,11 +219,12 @@ export async function resolveCommunityIssue(id, choice, content) {
 
 export async function flushCommunity() {
   let changed = false;
+  const rateLimited = new Set();
   const items = (await db.outbox.toArray()).filter((p) =>
     ['post', 'postEdit', 'postDelete', 'favorite'].includes(p.type),
   );
   for (const item of items) {
-    if (item.error) continue;
+    if (item.error || rateLimited.has(item.type)) continue;
     try {
       let response;
       if (item.type === 'post')
@@ -256,6 +257,10 @@ export async function flushCommunity() {
       changed = true;
     } catch (e) {
       if (!e.status) break;
+      if (e.status === 429) {
+        rateLimited.add(item.type);
+        continue;
+      }
       if ([400, 404, 409, 422].includes(e.status)) {
         // 保留原文与队列，由用户明确选择；不因校验或删除目标而悄悄丢稿。
         let cloud = e.data?.current || null;

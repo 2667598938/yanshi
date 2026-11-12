@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, Send, Trash2, MessageCircle } from 'lucide-vue-next';
+import { ArrowLeft, Send, Trash2 } from 'lucide-vue-next';
 import { postApi } from '../api';
 import { queuePostEdit, queuePostDelete, cachedPosts } from '../sync/community';
 import { scheduleSync } from '../sync/engine';

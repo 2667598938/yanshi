@@ -1,15 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import {
-  ChevronLeft,
-  Plus,
-  Pencil,
-  Archive,
-  RotateCcw,
-  Check,
-  ArchiveRestore,
-} from 'lucide-vue-next';
+import { ChevronLeft, Plus, Pencil, Archive, Check, ArchiveRestore } from 'lucide-vue-next';
 import SubjectIcon from '../components/SubjectIcon.vue';
 import { useSubjectsStore } from '../stores/subjects';
 import { SUBJECT_COLORS, SUBJECT_ICONS, DEFAULT_SUBJECTS } from '../data/subjects';

@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   ChevronRight,
-  Pencil,
   Target,
   Clock3,
   Bell,
@@ -14,7 +13,6 @@ import {
   Check,
   ListChecks,
   Download,
-  Camera,
   LogOut,
   ShieldCheck,
   FileText,
@@ -39,7 +37,7 @@ import { useProfileStore } from '../stores/profile';
 import { useNotificationsStore } from '../stores/notifications';
 import { SCHOOL_MAP } from '../data/schools';
 import { fmtDate } from '../utils/time';
-import { FIGURES, FIGURE_MAP } from '../data/figures';
+import { FIGURES } from '../data/figures';
 import { db, currentKey } from '../db';
 import {
   syncNow,
@@ -50,7 +48,7 @@ import {
 import { buildBackup } from '../utils/backup';
 import { inspectBackup, restoreBackup } from '../utils/restore';
 import { fmtMinutes, todayKey } from '../utils/date';
-import { authApi, publicApi, attachmentApi, messageApi } from '../api';
+import { authApi, publicApi, attachmentApi } from '../api';
 import { useSchoolsStore } from '../stores/schools';
 import BlobImage from '../components/BlobImage.vue';
 import ProfileCard from '../components/ProfileCard.vue';
@@ -102,8 +100,6 @@ const signatureDraft = ref('');
 const figureDraft = ref('figure-1');
 const notifications = useNotificationsStore();
 const unread = computed(() => notifications.unread);
-const uploading = ref(false);
-const fileInput = ref(null);
 const showLegal = ref(false);
 const legal = ref(null);
 const legalTab = ref('terms');
@@ -227,11 +223,9 @@ const school = computed(() => {
       }
     : SCHOOL_MAP[key] || { name: key || '尚未选择梦校', motto: '', logo: '' };
 });
-const avatar = computed(() => auth.user?.avatar_key || '');
 const vipUntil = computed(() =>
   auth.user?.vip_permanent ? '永久有效' : fmtDate(auth.user?.vip_until),
 );
-const figure = computed(() => FIGURE_MAP[auth.user?.figure_id || 'figure-1'] || FIGURES[0]);
 
 const goals = [
   { min: 120, label: '2 小时' },
@@ -305,25 +299,6 @@ async function pickGoal(min) {
     toast(e.message);
   } finally {
     savingSheet.value = false;
-  }
-}
-
-function pickAvatar() {
-  fileInput.value?.click();
-}
-async function onAvatarChange(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  uploading.value = true;
-  try {
-    await attachmentApi.uploadAvatar(file);
-    await auth.fetchMe();
-    toast('头像已更新');
-  } catch (err) {
-    toast(err.message || '头像上传失败');
-  } finally {
-    uploading.value = false;
-    if (fileInput.value) fileInput.value.value = '';
   }
 }
 

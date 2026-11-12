@@ -10,12 +10,8 @@ import {
   Trophy,
   Flame,
   ArrowLeft,
-  Copy,
   LogIn,
   Settings,
-  UserMinus,
-  Check,
-  X,
   RefreshCw,
   ArrowDown,
 } from 'lucide-vue-next';
@@ -85,7 +81,6 @@ async function finishRoomFocus() {
     toast(error.message || '记录未保存，请重试');
   }
 }
-let presenceInitialized = false;
 const schools = useSchoolsStore();
 const { toast } = useToast();
 const { copy: copyToClipboard, manualCopy } = useClipboard(toast);
@@ -236,7 +231,6 @@ async function pullRoom() {
   joined.value = data.joined !== false;
   if (joined.value && studyRoom.room?.id !== data.room.id) {
     studyRoom.enter(data.room, auth.user?.id);
-    presenceInitialized = true;
   }
   preview.value = null;
   loadError.value = '';

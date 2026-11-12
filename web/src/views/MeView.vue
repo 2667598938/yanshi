@@ -1,5 +1,4 @@
 <script setup>
-import { useAuthStore } from '../stores/auth';
 import { useRouter } from 'vue-router';
 import ProfileCard from '../components/ProfileCard.vue';
 import {
@@ -10,7 +9,6 @@ import {
   Users,
   Database,
 } from 'lucide-vue-next';
-const auth = useAuthStore();
 const router = useRouter();
 const categories = [
   {
