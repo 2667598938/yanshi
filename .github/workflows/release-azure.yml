@@ -21,7 +21,7 @@ jobs:
       api: ${{ steps.api.outputs.digest }}
       web: ${{ steps.web.outputs.digest }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, verified 2026-10-29
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
@@ -48,7 +48,7 @@ jobs:
           [[ "$current" == "$SHA" ]] || { echo 'A newer main commit exists; do not release this stale run.' >&2; exit 1; }
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@c94ce9fb4685202752c5c67727a062f6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -60,7 +60,9 @@ jobs:
           file: deploy/azure/Dockerfile.api
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/2667598938/yanshi-api:${{ steps.release.outputs.sha }}-${{ github.run_id }}
+          tags: |
+            ghcr.io/2667598938/yanshi-api:${{ steps.release.outputs.sha }}-${{ github.run_id }}
+            ghcr.io/2667598938/yanshi-api:main
           labels: org.opencontainers.image.source=https://github.com/2667598938/yanshi
       - id: web
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -69,7 +71,9 @@ jobs:
           file: deploy/azure/Dockerfile.web
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/2667598938/yanshi-web:${{ steps.release.outputs.sha }}-${{ github.run_id }}
+          tags: |
+            ghcr.io/2667598938/yanshi-web:${{ steps.release.outputs.sha }}-${{ github.run_id }}
+            ghcr.io/2667598938/yanshi-web:main
           labels: org.opencontainers.image.source=https://github.com/2667598938/yanshi
       - name: Record immutable release identities
         env:
@@ -86,7 +90,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: Azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2, verified 2026-10-29
+      - uses: Azure/login@7184910d9eb2b1c5e48f7063196f09bb9f6d6 # v2, verified 2026-10-29
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
