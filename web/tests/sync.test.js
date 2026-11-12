@@ -97,6 +97,33 @@ it('实际错题 store 保存后原子入队，题图和解析图补传完成再
   expect(await db.outbox.count()).toBe(0)
 })
 
+it('错题图片上传完成时保留期间的文字与图片修改', async () => {
+  const store = useMistakesStore()
+  const row = await store.add({ content: '旧文字', images: [new Blob(['旧图片'])] })
+  attachmentApi.uploadImage.mockImplementationOnce(async () => {
+    await store.update(row.id, { content: '新文字', images: [new Blob(['新图片'])] })
+    return { key: 'key/old' }
+  })
+  await syncNow()
+  const saved = await db.mistakes.get(row.id)
+  expect(saved.content).toBe('新文字')
+  expect(await saved.images[0].text()).toBe('新图片')
+  expect(syncApi.commands).not.toHaveBeenCalled()
+})
+
+it('错题图片上传完成时不重新提交已删除的记录', async () => {
+  const store = useMistakesStore()
+  const row = await store.add({ content: '即将删除', images: [new Blob(['图片'])] })
+  attachmentApi.uploadImage.mockImplementationOnce(async () => {
+    await store.remove(row.id)
+    return { key: 'key/deleted' }
+  })
+  await syncNow()
+  expect(await db.mistakes.get(row.id)).toBeUndefined()
+  expect(await db.outbox.count()).toBe(0)
+  expect(syncApi.commands).not.toHaveBeenCalled()
+})
+
 it('实际 outbox 写入失败时错题新增也回滚，重试不会重复收录', async () => {
   const fail = () => { throw new Error('outbox unavailable') }
   db.outbox.hook('creating', fail)

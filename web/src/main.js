@@ -20,6 +20,7 @@ const app = createApp(App)
 app.use(createPinia())
 
 const auth = useAuthStore()
+window.addEventListener('online', () => { void auth.retryPendingLogout() })
 for (const [key, value] of Object.entries(brandColorVars())) document.documentElement.style.setProperty(key, value)
 const openingState = reactive({ siteName: BRAND.name })
 let openingApp = null

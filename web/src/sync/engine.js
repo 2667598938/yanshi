@@ -454,8 +454,7 @@ export async function syncNow() {
     const bootstrap = await ensureBootstrapped()
     if (!bootstrap.ready) return false
     // 先把离线拍的错题图补传为附件 key，再推送记录
-    const uploaded = await flushMistakeImages()
-    for (const row of uploaded) await enqueueRecord('mistakes', row)
+    const uploaded = await flushMistakeImages((row) => enqueueRecord('mistakes', row))
     await flushCommunity()
     const pushed = await pushOutbox()
     const changed = await pullAll()

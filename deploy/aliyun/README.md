@@ -2,7 +2,7 @@
 
 适用：阿里云 ECS 2核2G、Ubuntu 24.04、公网 IP 139.196.205.43。
 域名 duzhi.xin 已在阿里云完成备案，同厂商换机无需重新备案，只改解析。
-本目录为全新部署，不迁移旧数据。
+本目录支持首次部署及现有 Aliyun Compose 安装的更新。现有站点直接看第 10 节。
 
 ---
 
@@ -64,8 +64,10 @@ openssl rand -hex 48   # 填 AI_KEY_ENC_SECRET
 
 ## 5. 首次部署
 
+打开 GitHub Actions 中成功的 `Build and release Azure images` 运行记录，从同一个 Summary 复制 `Commit`、`API` 和 `Web` 三个值。
+
 ```bash
-sudo bash deploy/aliyun/deploy.sh
+sudo bash deploy/aliyun/deploy.sh '<Commit>' '<API sha256:…>' '<Web sha256:…>'
 ```
 
 脚本会自动：拉取镜像 → 数据库迁移 → 首次 seed 管理员 → 启动容器 → 健康检查。
@@ -73,33 +75,30 @@ sudo bash deploy/aliyun/deploy.sh
 
 ## 6. 宿主 Nginx 反向代理
 
+已有 HTTPS 站点时，在现有站点配置中将研时的 `location /` 代理段替换为下面的 `include`。保留现有证书路径、监听端口、域名和 Certbot 配置。共享片段包含普通请求和音视频房间的 WebSocket 信令代理。
+
+```bash
+sudo install -m 0644 deploy/azure/nginx-host-location.conf /etc/nginx/snippets/yanshi-proxy.conf
+```
+
+仅在首次创建站点时运行下列命令。
+
 ```bash
 sudo apt install -y nginx
+sudo install -m 0644 deploy/azure/nginx-host-location.conf /etc/nginx/snippets/yanshi-proxy.conf
 sudo tee /etc/nginx/sites-available/yanshi >/dev/null <<'EOF'
 server {
     listen 80;
     listen [::]:80;
     server_name duzhi.xin;
 
-    client_max_body_size 8m;
-
-    location / {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_read_timeout 180s;
-    }
+    include /etc/nginx/snippets/yanshi-proxy.conf;
 }
 EOF
 sudo ln -sf /etc/nginx/sites-available/yanshi /etc/nginx/sites-enabled/yanshi
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
 ```
+
+新增或修改代理后执行 `sudo nginx -t && sudo systemctl reload nginx`。
 
 ## 7. 切换域名解析
 
@@ -115,10 +114,7 @@ sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d duzhi.xin --redirect
 ```
 
-certbot 会自动把站点改为 443 并加 HTTP 跳 HTTPS，证书到期自动续期。
-完成后把安全头加进 HTTPS server 块：在 `include /etc/nginx/security-headers.conf;` 前先
-`sudo cp deploy/azure/security-headers.conf /etc/nginx/security-headers.conf`，再在站点
-配置的 server 块内引用，reload 生效。
+Certbot 会配置 443、HTTP 跳转及证书续期。安全响应头由 Web 容器生成。已有站点曾按旧指南引用 `/etc/nginx/security-headers.conf` 时，从研时宿主站点配置中移除该引用，再检查配置并重载。
 
 ## 9. 上线验证
 
@@ -130,23 +126,27 @@ certbot 会自动把站点改为 443 并加 HTTP 跳 HTTPS，证书到期自动�
 
 ## 10. 后续更新代码
 
-代码合并到 main 后，CI 会自动构建并更新 `:main` 镜像。服务器上执行：
+代码合并到 main 并完成镜像发布后，从对应运行记录复制第 5 节的三个值。保留现有 `/etc/yanshi/server.env` 和数据卷。
 
 ```bash
-sudo bash deploy/aliyun/deploy.sh
+sudo install -m 0644 deploy/aliyun/compose.yaml /opt/yanshi/compose.yaml
+sudo bash deploy/aliyun/deploy.sh '<Commit>' '<API sha256:…>' '<Web sha256:…>'
 ```
+
+更新脚本先拉取镜像，再短暂停服。已有数据库会先备份并校验 SQLite 和本地图片，随后才执行数据库迁移。备份或校验失败会停止更新并尝试恢复原服务。
+
+如果迁移或启动失败，检查日志及 `/var/backups/yanshi` 中本次备份。回滚前应在新目录演练恢复数据库及图片，再用 `/etc/yanshi/previous-release.env` 记录的镜像恢复服务。首次从旧模板升级时，该文件记录的是当前机器上的镜像 ID，演练结束前保留这些镜像。
 
 ## 11. 备份（重要）
 
-本地存储后，图片是服务器上的唯一权威副本，现有备份只覆盖数据库。建议：
+迁移前备份保存在 `/var/backups/yanshi`，保留最近 14 份，包含 SQLite 和本地图片。七牛图片需要独立备份。
 
-- 定期对 `yanshi-data` 卷做快照（阿里云可对系统盘/数据盘创建快照）。
-- 或定期把 uploads 目录与数据库打包，下载到本机或异地保存。
+定期做磁盘快照或把已校验的备份复制到异地，避免服务器故障时同时丢失原数据和备份。
 
 ## 日常运维命令
 
 ```bash
-docker compose -p yanshi -f /opt/yanshi/compose.yaml ps      # 查看容器状态
-docker compose -p yanshi -f /opt/yanshi/compose.yaml logs -f # 查看日志
-docker stats                                                 # 实时内存占用
+sudo docker compose -p yanshi -f /opt/yanshi/compose.yaml --env-file /etc/yanshi/release.env ps
+sudo docker compose -p yanshi -f /opt/yanshi/compose.yaml --env-file /etc/yanshi/release.env logs -f
+sudo docker stats
 ```

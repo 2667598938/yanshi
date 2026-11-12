@@ -47,3 +47,14 @@ it('4xx 失败保留该图，其他图片可成功补传', async () => {
   expect(await saved.images[0].text()).toBe('bad')
   expect(saved.images[1]).toBe('key/good')
 })
+
+it('单条错题图片被拒绝后仍处理后面的错题', async () => {
+  await db.mistakes.bulkAdd([
+    { id: 'a', images: [new Blob(['bad'])] },
+    { id: 'b', images: [new Blob(['good'])] },
+  ])
+  attachmentApi.uploadImage.mockRejectedValueOnce({ status: 400 })
+    .mockResolvedValueOnce({ key: 'key/good' })
+  expect(await flushMistakeImages()).toMatchObject([{ id: 'b', images: ['key/good'] }])
+  expect(await (await db.mistakes.get('a')).images[0].text()).toBe('bad')
+})

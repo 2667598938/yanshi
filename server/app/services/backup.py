@@ -18,6 +18,33 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def check_attachment_inventory(db, files):
+    has_attachments = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='attachments'"
+    ).fetchone()
+    if not has_attachments:
+        return False
+    cloud_objects = False
+    missing = 0
+    wrong_size = 0
+    for backend, key, size in db.execute(
+        "SELECT storage_backend, object_key, size_bytes FROM attachments WHERE deleted_at IS NULL"
+    ):
+        if backend != 'local':
+            cloud_objects = True
+            continue
+        file = files.get('uploads/' + key)
+        if file is None:
+            missing += 1
+        elif size and file['bytes'] != size:
+            wrong_size += 1
+    if missing:
+        raise ValueError(f'备份缺少 {missing} 个数据库引用的本地附件')
+    if wrong_size:
+        raise ValueError(f'备份中有 {wrong_size} 个本地附件大小与数据库记录不一致')
+    return cloud_objects
+
+
 def create_backup(settings, output):
     if not settings.is_sqlite: raise ValueError('此工具只备份SQLite；MySQL请使用事务一致性数据库备份工具')
     source = Path(make_url(settings.database_url).database).resolve()
@@ -29,11 +56,6 @@ def create_backup(settings, output):
         snapshot = Path(scratch) / 'database.sqlite'
         with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True)) as src, closing(sqlite3.connect(snapshot)) as dst:
             src.backup(dst)
-        with closing(sqlite3.connect(snapshot.as_uri() + '?mode=ro', uri=True)) as db:
-            has_attachments = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='attachments'").fetchone()
-            has_cloud_objects = bool(has_attachments and db.execute(
-                "SELECT 1 FROM attachments WHERE storage_backend='qiniu' AND deleted_at IS NULL LIMIT 1"
-            ).fetchone())
         files = {'database.sqlite': snapshot}
         uploads = Path(settings.image_directory).resolve()
         # Legacy local attachments can coexist with new Qiniu uploads after migration.
@@ -41,11 +63,17 @@ def create_backup(settings, output):
             for path in uploads.rglob('*'):
                 if path.is_file() and not path.is_symlink():
                     files['uploads/' + path.relative_to(uploads).as_posix()] = path
+        file_manifest = {
+            name: {'sha256': sha256(path), 'bytes': path.stat().st_size}
+            for name, path in files.items()
+        }
+        with closing(sqlite3.connect(snapshot.as_uri() + '?mode=ro', uri=True)) as db:
+            has_cloud_objects = check_attachment_inventory(db, file_manifest)
         manifest = {'format': 1, 'created_at': datetime.now(timezone.utc).isoformat(),
             'storage': settings.image_storage, 'objects_included': settings.image_storage == 'local' and not has_cloud_objects,
             'remote_objects_included': False,
             'local_objects_included': len(files) > 1,
-            'files': {name: {'sha256': sha256(path), 'bytes': path.stat().st_size} for name, path in files.items()}}
+            'files': file_manifest}
         try:
             with zipfile.ZipFile(destination, 'x', zipfile.ZIP_DEFLATED) as archive:
                 for name, path in files.items(): archive.write(path, name)
@@ -89,5 +117,7 @@ def verify_and_restore(archive_path, target=None):
             with closing(sqlite3.connect((staging / 'database.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
                 if db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok': raise ValueError('数据库完整性校验失败')
                 if db.execute('PRAGMA foreign_key_check').fetchone(): raise ValueError('数据库外键校验失败')
+                has_cloud_objects = check_attachment_inventory(db, manifest['files'])
+                manifest['objects_included'] = manifest.get('storage') == 'local' and not has_cloud_objects
             if target: staging.rename(target)
     return manifest

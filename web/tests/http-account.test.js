@@ -1,5 +1,7 @@
 import {beforeEach,it,expect,vi} from 'vitest'
 import {http,fetchBlob} from '../src/api/http'
+import {authApi} from '../src/api'
+import {PENDING_LOGOUT_KEY} from '../src/utils/pendingLogout'
 const auth=vi.hoisted(()=>({user:{id:1},accessToken:'old-token',canRefresh:true,tryRefresh:vi.fn()}))
 vi.mock('../src/stores/auth',()=>({useAuthStore:()=>auth}))
 beforeEach(()=>{auth.user={id:1};auth.accessToken='old-token';auth.tryRefresh.mockReset()})
@@ -28,4 +30,18 @@ it('退出请求保留当前访问凭证，且失败时不在Cookie锁内重新�
  await expect(http.post('/auth/logout',{})).rejects.toMatchObject({status:401})
  expect(fetch).toHaveBeenCalledOnce();expect(auth.tryRefresh).not.toHaveBeenCalled()
  expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer old-token')
+})
+
+it('注销失败保留待办，重新登录成功后不发送过期的补注销请求', async () => {
+  const fetch = vi.fn()
+    .mockRejectedValueOnce(new TypeError('offline'))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { access_token: 'new-token' } })))
+  vi.stubGlobal('fetch', fetch)
+  localStorage.setItem(PENDING_LOGOUT_KEY, '1')
+  await expect(authApi.logout({ pendingOnly: true })).rejects.toThrow('offline')
+  expect(localStorage.getItem(PENDING_LOGOUT_KEY)).toBe('1')
+  await authApi.login('account@example.test', 'fixture-password')
+  expect(localStorage.getItem(PENDING_LOGOUT_KEY)).toBeNull()
+  await authApi.logout({ pendingOnly: true })
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/v1/auth/logout', '/api/v1/auth/login'])
 })

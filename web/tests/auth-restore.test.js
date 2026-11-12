@@ -1,7 +1,8 @@
 import { it, expect, vi } from 'vitest'
 import { useAuthStore } from '../src/stores/auth'
 import { authApi } from '../src/api'
-vi.mock('../src/api', () => ({ authApi: { refresh: vi.fn() } }))
+import { PENDING_LOGOUT_KEY } from '../src/utils/pendingLogout'
+vi.mock('../src/api', () => ({ authApi: { refresh: vi.fn(), logout: vi.fn() } }))
 it('会话明确过期时清除缓存身份，不能以昵称缓存绕过登录页', async () => {
   const auth = useAuthStore()
   auth.user = { id: 7, nickname: '缓存账号' }; auth.persist()
@@ -22,4 +23,18 @@ it('没有本机用户缓存但Cookie有效时，先恢复真实账号再判断�
   expect(await auth.restore()).toBe(true)
   expect(auth.isLoggedIn).toBe(true)
   expect(auth.user.id).toBe(9)
+})
+
+it('上次断网退出后启动时优先补注销，服务暂不可用也不恢复旧会话', async () => {
+  localStorage.setItem(PENDING_LOGOUT_KEY, '1')
+  localStorage.setItem('yanshi:session', JSON.stringify({ id: 7 }))
+  const auth = useAuthStore()
+  authApi.logout.mockRejectedValueOnce(new TypeError('offline')).mockResolvedValueOnce({})
+  expect(await auth.restore()).toBe(false)
+  expect(auth.isLoggedIn).toBe(false)
+  expect(authApi.refresh).not.toHaveBeenCalled()
+  expect(localStorage.getItem(PENDING_LOGOUT_KEY)).toBe('1')
+  expect(await auth.restore()).toBe(false)
+  expect(authApi.logout).toHaveBeenCalledTimes(2)
+  expect(authApi.refresh).not.toHaveBeenCalled()
 })

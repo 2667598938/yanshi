@@ -1,6 +1,7 @@
 import json
 import zipfile
 import pytest
+from app.models import Attachment
 from app.services.backup import create_backup, verify_and_restore
 
 
@@ -38,3 +39,34 @@ def test_restore_rejects_tampering_and_traversal_without_partial_output(client, 
         archive.writestr('manifest.json', json.dumps({'format': 1, 'files': {}}))
     with pytest.raises(ValueError, match='非法路径'): verify_and_restore(attack, target)
     assert not (tmp_path / 'escape').exists()
+
+
+def test_backup_and_restore_require_referenced_local_images(client, tmp_path):
+    settings = client.app.state.settings
+    key = 'mistake/1/sample.jpg'
+    original_bytes = b'local-image-fixture'
+    with client.app.state.session_factory() as db:
+        db.add(Attachment(object_key=key, uploader_id=1, biz_type='mistake', size_bytes=len(original_bytes)))
+        db.commit()
+    image = settings.image_directory / key
+    image.parent.mkdir(parents=True)
+    image.write_bytes(original_bytes)
+    path = create_backup(settings, tmp_path / 'backups')
+    assert verify_and_restore(path)['objects_included']
+
+    incomplete = tmp_path / 'incomplete.zip'
+    with zipfile.ZipFile(path) as original, zipfile.ZipFile(incomplete, 'w') as archive:
+        manifest = json.loads(original.read('manifest.json'))
+        del manifest['files']['uploads/' + key]
+        archive.writestr('database.sqlite', original.read('database.sqlite'))
+        archive.writestr('manifest.json', json.dumps(manifest))
+    target = tmp_path / 'restore'
+    with pytest.raises(ValueError, match='数据库引用的本地附件'):
+        verify_and_restore(incomplete, target)
+    assert not target.exists()
+    image.write_bytes(original_bytes[:4])
+    with pytest.raises(ValueError, match='附件大小与数据库记录不一致'):
+        create_backup(settings, tmp_path / 'backups')
+    image.unlink()
+    with pytest.raises(ValueError, match='数据库引用的本地附件'):
+        create_backup(settings, tmp_path / 'backups')

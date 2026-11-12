@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { authApi } from '../api'
 import { afterLogin, afterLogout } from '../sync/account'
+import { PENDING_LOGOUT_KEY } from '../utils/pendingLogout'
 
 // 只缓存非敏感的展示资料；access token 常驻内存，refresh token 在 httpOnly Cookie
 const SESSION_KEY = 'yanshi:session'
@@ -9,6 +10,7 @@ const refreshRequests = new WeakMap()
 
 function loadCachedUser() {
   try {
+    if (localStorage.getItem(PENDING_LOGOUT_KEY)) return null
     const raw = localStorage.getItem(SESSION_KEY)
     return raw ? JSON.parse(raw) : null
   } catch {
@@ -81,8 +83,14 @@ export const useAuthStore = defineStore('auth', {
     // 启动/刷新时用 httpOnly Cookie 恢复会话；离线时保留本地缓存资料
     async restore() {
       localStorage.removeItem(LEGACY_KEY) // 清理旧版本遗留的 token
+      if (localStorage.getItem(PENDING_LOGOUT_KEY)) {
+        this.clear()
+        await this.retryPendingLogout()
+        return false
+      }
       try {
         const data = await authApi.refresh()
+        if (localStorage.getItem(PENDING_LOGOUT_KEY)) return false
         this.accessToken = data.access_token
         if (data.user) this.user = data.user
         this.persist()
@@ -96,7 +104,7 @@ export const useAuthStore = defineStore('auth', {
     },
     // 用 refresh Cookie 换新 access，成功返回 true
     async tryRefresh() {
-      if (!this.user) return false
+      if (!this.user || localStorage.getItem(PENDING_LOGOUT_KEY)) return false
       const owner=this.user.id, avatarRevision=this.avatarRevision
       const pending=refreshRequests.get(this)
       if(pending?.owner===owner)return pending.promise
@@ -104,7 +112,7 @@ export const useAuthStore = defineStore('auth', {
       entry.promise=(async()=>{
         try {
           const data = await authApi.refresh()
-          if(this.user?.id!==owner)return false
+          if(this.user?.id!==owner || localStorage.getItem(PENDING_LOGOUT_KEY))return false
           // Cookie 可能已在另一标签页切换账号；必须先核对身份，再接受凭证。
           if(data.user?.id!==owner){this.clear();return false}
           this.accessToken = data.access_token
@@ -138,18 +146,27 @@ export const useAuthStore = defineStore('auth', {
       if (this.user?.id===owner) this.mergeServerUser(data,revision)
       return this.user
     },
+    async retryPendingLogout() {
+      if (!localStorage.getItem(PENDING_LOGOUT_KEY)) return
+      try {
+        await authApi.logout({ pendingOnly: true })
+      } catch {
+        // Keep the marker for the next reconnect or startup.
+      }
+    },
     async logout() {
       const sync = await import('../sync/engine')
       await sync.pauseSyncForAccountSwitch()
       try {
+        localStorage.setItem(PENDING_LOGOUT_KEY, '1')
         try {
           const { groupApi } = await import('../api')
           const { presenceDeviceId } = await import('../utils/presence')
           await groupApi?.presence?.({device_id:presenceDeviceId(),status:'offline'})?.catch(()=>{})
-          await authApi.logout()
         } catch {
-          /* 忽略网络错误，本地照常登出 */
+          /* 忽略在线状态上报失败 */
         }
+        await this.retryPendingLogout()
         this.clear()
         await afterLogout()
       } finally {
