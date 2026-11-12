@@ -17,6 +17,7 @@ import SessionIssues from './components/SessionIssues.vue'
 import { useGroupPresence } from './composables/useGroupPresence'
 import { useNotificationsStore } from './stores/notifications'
 import { useClockStore } from './stores/clock'
+import AdminNav from './components/AdminNav.vue'
 import StudyStatusBar from './components/StudyStatusBar.vue'
 import SiteFooter from './components/SiteFooter.vue'
 
@@ -25,8 +26,9 @@ const app = useAppStore()
 const subjects = useSubjectsStore()
 const route = useRoute()
 const router = useRouter()
-const showDesktopNav = computed(() => auth.isLoggedIn !== false && !['login', 'disclaimer'].includes(route.name))
+const showDesktopNav = computed(() => auth.isLoggedIn !== false && !auth.isSuperAdmin && !['login', 'disclaimer'].includes(route.name))
 const auth = useAuthStore()
+const isLearner = computed(() => auth.isLoggedIn && !auth.isSuperAdmin)
 const mayRenderRoute = computed(() => PUBLIC_PAGES.has(route.path) || auth.isLoggedIn !== false)
 const notifications = useNotificationsStore()
 const clock = useClockStore()
@@ -109,28 +111,30 @@ watch(
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'with-desktop-nav': showDesktopNav, 'auth-shell': !showDesktopNav, 'login-shell': route.name === 'login' }" :style="{ '--notice-h': noticeH + 'px' }">
+  <div class="app-shell" :class="{ 'with-desktop-nav': showDesktopNav, 'auth-shell': !showDesktopNav && !auth.isSuperAdmin, 'admin-shell': auth.isSuperAdmin, 'login-shell': route.name === 'login' }" :style="{ '--notice-h': noticeH + 'px' }">
     <a href="#main-content" class="skip-link">跳到主要内容</a>
     <DesktopNav v-if="showDesktopNav" />
+    <AdminNav v-if="auth.isSuperAdmin && route.meta.requiresAdmin" />
     <div ref="noticeStack" class="notice-stack">
-      <div v-if="auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
-      <div v-if="auth.isLoggedIn !== false && timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
-      <div v-if="auth.isLoggedIn !== false && timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
+      <div v-if="isLearner && auth.user?.is_private_mode" class="privacy-banner">隐私模式已开启，小组内其他人看不到你的学习数据</div>
+      <div v-if="isLearner && timer.remoteLease && !timer.current" class="privacy-banner">另一设备正在主计时：{{timer.remoteLease.label||'专注中'}}，本机仅查看。</div>
+      <div v-if="isLearner && timer.leaseLost" class="privacy-banner">本机已失去主计时权限并暂停。<button @click="timer.abort()">结束本机记录并同步检查冲突</button></div>
       <OfflineBanner />
-      <StudyStatusBar v-if="auth.isLoggedIn !== false" />
+      <StudyStatusBar v-if="isLearner" />
     </div>
-    <SessionIssues v-if="auth.isLoggedIn !== false" />
-    <CommunityIssues v-if="auth.isLoggedIn !== false" />
+    <SessionIssues v-if="isLearner" />
+    <CommunityIssues v-if="isLearner" />
     <main id="main-content" class="app-main" :class="{ 'no-tab': route.meta.hideTabbar }" :data-view="route.path.split('/')[1] || 'home'" :data-page="route.name" tabindex="-1">
       <router-view v-if="mayRenderRoute" :key="route.path" />
       <SiteFooter v-if="mayRenderRoute" />
     </main>
-    <TabBar v-if="mayRenderRoute && !route.meta.hideTabbar" />
+    <TabBar v-if="mayRenderRoute && !auth.isSuperAdmin && !route.meta.hideTabbar" />
     <ToastLayer />
-    <ConflictDialog v-if="auth.isLoggedIn !== false" />
+    <ConflictDialog v-if="isLearner" />
   </div>
 </template>
 
 <style>
-.privacy-banner{position:sticky;top:0;z-index:220;background:#eee9f5;color:#67527d;font-size:12px;padding:7px 12px;text-align:center}
+.app-shell.admin-shell{max-width:none;box-shadow:none}.admin-shell .app-main{padding-bottom:24px}.admin-shell .page{max-width:1400px;margin:auto}
+.privacy-banner{position:sticky;top:0;z-index:220;background:#eee9f5;color:#67527d;font-size: 14px;padding:7px 12px;text-align:center}
 </style>

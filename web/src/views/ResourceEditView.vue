@@ -136,7 +136,7 @@ onMounted(() => {
   box-shadow: var(--shadow-soft);
 }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
-.field > span { font-size: 12.5px; color: var(--sub); }
+.field > span { font-size: 14px; color: var(--sub); }
 .cat-row { display: flex; flex-wrap: wrap; gap: 7px; }
 .cat-chip {
   border: 1.5px solid var(--line);
@@ -144,7 +144,7 @@ onMounted(() => {
   color: var(--sub);
   border-radius: 999px;
   padding: 7px 13px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }

@@ -32,4 +32,4 @@ async function save() {
     </div>
   </div>
 </template>
-<style scoped>.settings-form { display: grid; gap: 18px; padding: 20px; }.settings-form label { display: grid; gap: 8px; font-size: 14px; }.settings-form p { font-size: 13px; color: var(--sub); line-height: 1.6; }</style>
+<style scoped>.settings-form { display: grid; gap: 18px; padding: 20px; }.settings-form label { display: grid; gap: 8px; font-size: 14px; }.settings-form p { font-size: 14px; color: var(--sub); line-height: 1.6; }</style>

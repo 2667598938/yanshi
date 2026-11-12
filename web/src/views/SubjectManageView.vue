@@ -184,7 +184,7 @@ async function setArchived(s, archived) {
 }
 .subj-name {
   flex: 1;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .row-ic {
@@ -203,20 +203,20 @@ async function setArchived(s, archived) {
   color: var(--faint);
 }
 .arch-head {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--faint);
   margin-bottom: 4px;
 }
 .tip {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
   line-height: 1.6;
   margin-top: 12px;
   padding: 0 4px;
 }
 .f-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   margin: 14px 0 8px;
 }
@@ -276,7 +276,7 @@ async function setArchived(s, archived) {
   overflow-y: auto;
 }
 .sheet-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   text-align: center;
   margin-bottom: 6px;

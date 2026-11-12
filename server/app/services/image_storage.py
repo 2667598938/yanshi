@@ -47,6 +47,8 @@ class ImageStorage:
         if self.s.image_storage != 'qiniu':
             path = self.path(key)
             path.parent.mkdir(parents=True, exist_ok=True)
+            if shutil.disk_usage(path.parent).free-size<self.s.storage_min_free_bytes:
+                raise ApiError(507,50701,'图片存储空间不足，请稍后重试或联系管理员')
             src.seek(0)
             try:
                 with path.open('xb') as dest:
@@ -54,6 +56,10 @@ class ImageStorage:
                 return
             except FileExistsError:
                 raise ApiError(409, 40901, '图片标识冲突，请重试') from None
+            except OSError:
+                try:path.unlink(missing_ok=True)
+                except OSError:pass
+                raise ApiError(507,50701,'图片保存失败，请稍后重试') from None
         if not self.s.qiniu_access_key:
             raise ApiError(503, 50301, '七牛存储未配置')
         client = self._s3_client()

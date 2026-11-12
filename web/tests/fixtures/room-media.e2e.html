@@ -1,0 +1,32 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>双端音视频本地验收</title><style>body{font:14px system-ui;background:#f8faff;color:#111827;margin:24px}.test-peers{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}#result{display:block;padding:16px;background:#e9efff;border-radius:16px;margin-bottom:16px}</style></head><body><h1>双端音视频本地验收</h1><p>独立测试账号与合成音视频，不采集真实摄像头或麦克风。</p><output id="result">等待两端开启音视频</output><div class="test-peers"><div><h2>研友甲</h2><div id="first"></div></div><div><h2>研友乙</h2><div id="second"></div></div></div>
+<script type="module">
+import {createApp} from 'vue'
+import {createPinia} from 'pinia'
+import RoomMedia from '/src/components/RoomMedia.vue'
+import {useAuthStore} from '/src/stores/auth.js'
+import '/src/assets/styles/main.css'
+import '/src/assets/styles/tokens.css'
+const nativePeer=window.RTCPeerConnection,peers=[]
+window.RTCPeerConnection=class extends nativePeer{constructor(options){super(options);peers.push(this)}}
+const cleanup=[]
+Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async constraints=>{
+ const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;const context=canvas.getContext('2d');let frame=0
+ const draw=()=>{context.fillStyle=frame%2?'#4f46e5':'#8b5cf6';context.fillRect(0,0,320,180);context.fillStyle='white';context.font='24px sans-serif';context.fillText('QA video '+frame++,40,90)};draw()
+ const animation=setInterval(draw,150);const video=canvas.captureStream(8)
+ const audio=new AudioContext();await audio.resume();const oscillator=audio.createOscillator(),gain=audio.createGain(),destination=audio.createMediaStreamDestination();gain.gain.value=0;oscillator.connect(gain).connect(destination);oscillator.start()
+ cleanup.push(()=>{clearInterval(animation);video.getTracks().forEach(track=>track.stop());oscillator.stop();audio.close()})
+ return new MediaStream([...destination.stream.getAudioTracks(),...(constraints.video?video.getVideoTracks():[])])
+}}})
+const fixtures=await fetch('/api/__qa/media-fixtures').then(response=>response.json())
+for(const [index,target] of ['#first','#second'].entries()){
+ const pinia=createPinia(),auth=useAuthStore(pinia);auth.user=fixtures.sessions[index].user;auth.accessToken=fixtures.sessions[index].access_token
+ const app=createApp(RoomMedia,{roomId:fixtures.roomId});app.use(pinia);app.mount(target);cleanup.push(()=>app.unmount())
+}
+const timer=setInterval(async()=>{
+ let frames=0,audio=0,connected=0,receiving=0
+ for(const peer of peers){if(peer.connectionState==='connected')connected++;if(peer.connectionState==='closed')continue;let peerFrames=0,peerAudio=0;const stats=await peer.getStats();for(const value of stats.values()){if(value.type==='inbound-rtp'&&value.kind==='video')peerFrames+=value.framesDecoded||0;if(value.type==='inbound-rtp'&&value.kind==='audio')peerAudio+=value.bytesReceived||0}frames+=peerFrames;audio+=peerAudio;if(peerFrames>0&&peerAudio>0)receiving++}
+ document.querySelectorAll('video').forEach(element=>element.muted=true)
+ document.querySelector('#result').textContent=connected===2&&receiving===2?`双端音视频连通：${connected} 条连接，双向接收 ${frames} 帧视频、${audio} 字节音频`:`连接 ${connected}，视频帧 ${frames}，音频字节 ${audio}`
+},1000)
+window.addEventListener('beforeunload',()=>{clearInterval(timer);cleanup.forEach(fn=>fn())})
+</script></body></html>

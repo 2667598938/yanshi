@@ -121,7 +121,7 @@ html.brand-opening-active body { background: var(--brand-background,#F7F8FA); }
   letter-spacing: 0.4px;
 }
 .nav .nav-sub {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
   margin-top: 4px;
 }
@@ -178,7 +178,6 @@ body .sheet.sheet > .btn:nth-last-of-type(1) {
   position: sticky;
   bottom: 0;
   z-index: 4;
-  background: #fff;
   box-shadow: 0 -10px 14px -12px rgba(15, 23, 42, 0.28);
 }
 
@@ -186,7 +185,6 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
   position: sticky;
   bottom: 52px;
   z-index: 4;
-  background: #fff;
 }
 
 /* 窄屏适当降低模糊，保证滚动流畅 */
@@ -208,7 +206,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 }
 .section-title .more {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--faint);
   display: inline-flex;
@@ -279,7 +277,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 }
 .btn-sm {
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: 14px;
   border-radius: 12px;
 }
 
@@ -305,7 +303,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(79, 70, 229, 0.16);
   color: var(--sub);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -336,7 +334,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
   color: #fff;
   border-radius: 999px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -363,7 +361,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 /* ---------- 工具 ---------- */
 .sub {
   color: var(--sub);
-  font-size: 12px;
+  font-size: 14px;
 }
 .faint {
   color: var(--faint);
@@ -381,7 +379,7 @@ body .sheet.sheet > .btn:nth-last-of-type(2) {
 .empty {
   text-align: center;
   color: var(--faint);
-  font-size: 12px;
+  font-size: 14px;
   padding: 24px 8px;
 }
 
@@ -441,7 +439,7 @@ html.ai-neural-dark .privacy-banner {
   justify-content: center;
   gap: 4px;
   color: var(--faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   position: relative;
@@ -500,7 +498,7 @@ html.ai-neural-dark .privacy-banner {
 .toast {
   background: rgba(30, 27, 75, 0.9);
   color: #fff;
-  font-size: 12px;
+  font-size: 14px;
   padding: 8px 16px;
   border-radius: 999px;
   box-shadow: 0 8px 24px rgba(30, 27, 75, 0.24);

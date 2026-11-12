@@ -9,7 +9,7 @@ const state=vi.hoisted(()=>({auth:null,settings:null}))
 vi.mock('vue-router',()=>({useRouter:()=>({back:vi.fn()})}))
 vi.mock('../src/stores/auth',()=>({useAuthStore:()=>state.auth}))
 vi.mock('../src/stores/learningSettings',()=>({useLearningSettingsStore:()=>state.settings}))
-vi.mock('../src/api',()=>({
+vi.mock('../src/api',()=>({roomApi:{list:vi.fn().mockResolvedValue([])},
  groupApi:{members:vi.fn(),learning:vi.fn(),changes:vi.fn()},
  inspirationApi:{bullets:vi.fn()}
 }))
@@ -35,7 +35,7 @@ it('首次快照后只请求增量，删除不残留，隐私切换立即清空'
  groupApi.changes.mockResolvedValue({items:[{id:'task',record:null},{id:'new',record:{id:'new',type:'task',title:'新任务'}}],cursor:7,has_more:false})
  await vi.advanceTimersByTimeAsync(5000);await flushPromises()
  expect(groupApi.learning).toHaveBeenCalledTimes(1)
- expect(groupApi.changes).toHaveBeenLastCalledWith(2,4)
+ expect(groupApi.changes).toHaveBeenLastCalledWith(2,4,null)
  expect(wrapper.text()).toContain('新任务');expect(wrapper.text()).not.toContain('原任务')
  groupApi.members.mockResolvedValue([{id:2,nickname:'组员',is_private_mode:true}])
  await vi.advanceTimersByTimeAsync(5000);await flushPromises()
@@ -50,7 +50,7 @@ it('分页期间保留首页游标并补拉变更，含空的私人变更页',as
  groupApi.changes.mockResolvedValueOnce({items:[],cursor:210,has_more:true})
   .mockResolvedValueOnce({items:[{id:'task',record:null}],cursor:211,has_more:false})
  await openGroup()
- expect(groupApi.changes.mock.calls).toEqual([[2,10],[2,210]])
+ expect(groupApi.changes.mock.calls).toEqual([[2,10,null],[2,210,null]])
  expect(wrapper.text()).not.toContain('原任务')
 })
 it('换账号后在途共享响应不能回填旧数据',async()=>{

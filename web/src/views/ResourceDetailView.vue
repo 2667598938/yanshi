@@ -180,10 +180,10 @@ onMounted(load)
   cursor: pointer;
 }
 .mini.danger { color: var(--red); }
-.head h1 { margin: 6px 0 0; font-size: 21px; font-weight: 800; line-height: 1.4; }
-.cat { font-size: 10.5px; font-weight: 700; color: var(--primary); background: #eef4fb; padding: 2px 8px; border-radius: 999px; }
-.meta { font-size: 11.5px; color: var(--faint); margin-top: 6px; }
-.intro { margin-top: 14px; font-size: 13.5px; color: var(--sub); line-height: 1.75; }
+.head h1 { margin: 6px 0 0; font-size: 20px; font-weight: 800; line-height: 1.4; }
+.cat { font-size: 12px; font-weight: 700; color: var(--primary); background: #eef4fb; padding: 2px 8px; border-radius: 999px; }
+.meta { font-size: 12px; color: var(--faint); margin-top: 6px; }
+.intro { margin-top: 14px; font-size: 14px; color: var(--sub); line-height: 1.75; }
 .link-box {
   margin-top: 16px;
   display: flex;
@@ -196,10 +196,10 @@ onMounted(load)
 }
 .link-box.masked { background: #fff7f3; color: var(--tomato-deep); }
 .mask-main, .link-main { flex: 1; min-width: 0; }
-.mask-url { font-size: 12.5px; word-break: break-all; }
-.mask-tip { font-size: 11px; margin-top: 3px; color: var(--faint); }
-.link-url { font-size: 12.5px; word-break: break-all; color: var(--ink); }
-.link-code { font-size: 12px; margin-top: 5px; color: var(--primary); font-weight: 700; }
+.mask-url { font-size: 14px; word-break: break-all; }
+.mask-tip { font-size: 12px; margin-top: 3px; color: var(--faint); }
+.link-url { font-size: 14px; word-break: break-all; color: var(--ink); }
+.link-code { font-size: 14px; margin-top: 5px; color: var(--primary); font-weight: 700; }
 .code-btn {
   margin-top: 10px;
   border: none;
@@ -207,7 +207,7 @@ onMounted(load)
   color: var(--primary);
   border-radius: 9px;
   padding: 9px 12px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -226,7 +226,7 @@ onMounted(load)
   color: var(--sub);
   border-radius: 13px;
   padding: 13px;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }

@@ -11,7 +11,6 @@ const notifications = useNotificationsStore()
 const tabs = [
   { to: '/', label: '今日', icon: Home },
   { to: '/stats', label: '统计', icon: BarChart3 },
-  { to: '/focus', label: '专注', icon: Timer, focus: true },
   { to: '/rooms', label: '自习室', icon: Users },
   { to: '/ai', label: 'AI', icon: Sparkles },
   { to: '/me', label: '我的', icon: User },
@@ -30,23 +29,17 @@ function isActive(t) {
       :key="t.to"
       :to="t.to"
       class="tab-item"
-      :class="[t.focus ? 'tab-focus' : '', isActive(t) ? 'is-active' : '']"
+      :class="{ 'is-active': isActive(t) }"
     >
-      <span v-if="t.focus" class="tab-fab">
-        <component :is="t.icon" :size="25" :stroke-width="2.4" />
-        <span v-if="timer.isActive" class="run-dot"></span>
-      </span>
-      <template v-else>
-        <component :is="t.icon" :size="21" :stroke-width="2.1" />
-        <span>{{ t.label }}</span>
-        <span v-if="t.to === '/me' && notifications.unread" class="notification-count">{{ notifications.unread > 99 ? '99+' : notifications.unread }}</span>
-      </template>
+      <component :is="t.icon" :size="21" :stroke-width="2.1" />
+      <span>{{ t.label }}</span>
+      <span v-if="t.to === '/me' && notifications.unread" class="notification-count">{{ notifications.unread > 99 ? '99+' : notifications.unread }}</span>
     </router-link>
   </nav>
 </template>
 
 <style scoped>
-.tab-item { position: relative; }.notification-count { position: absolute; top: 3px; right: 12%; background: var(--tomato); color: #fff; border-radius: 12px; font-size: 10px; padding: 1px 5px; }
+.tab-item { position: relative; }.notification-count { position: absolute; top: 3px; right: 12%; background: var(--tomato); color: #fff; border-radius: 12px; font-size: 12px; padding: 1px 5px; }
 .tab-item.is-active {
   color: var(--primary);
 }

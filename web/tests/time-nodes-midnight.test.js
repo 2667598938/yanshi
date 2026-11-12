@@ -6,11 +6,11 @@ import {useClockStore} from '../src/stores/clock'
 import {dayKey,diffDayKeys} from '../src/utils/date'
 import HomeView from '../src/views/HomeView.vue'
 vi.mock('vue-router',()=>({useRouter:()=>({push:vi.fn()})}))
-vi.mock('../src/stores/auth',()=>({useAuthStore:()=>({user:{}})}))
+vi.mock('../src/stores/auth',()=>({useAuthStore:()=>({user:{exam_date:'2026-10-30'}})}))
 vi.mock('../src/stores/timeNodes',()=>({useTimeNodesStore:()=>({load:vi.fn().mockResolvedValue(),list:[{
  id:'exam',value:{node_name:'模拟考试',target_date:'2026-10-30',show_on_home:true,custom_msg:''}
 }]})}))
-it('跨北京时间午夜，节点随全局时钟刷新；收起梦校不移除节点',async()=>{
+it('跨北京时间午夜，节点刷新且首页仅保留紧凑初试倒计时',async()=>{
  vi.useFakeTimers({toFake:['Date','setInterval','clearInterval']})
  vi.setSystemTime(new Date('2026-10-29T15:59:59Z'))
  const clock=useClockStore();clock.start()
@@ -19,12 +19,12 @@ it('跨北京时间午夜，节点随全局时钟刷新；收起梦校不移除�
   await flushPromises();expect(wrapper.get('strong').text()).toBe('还有 1 天')
   await vi.advanceTimersByTimeAsync(16000);await flushPromises()
   expect(wrapper.get('strong').text()).toBe('还有 0 天')
-  const home=mount(HomeView,{global:{stubs:{SchoolHero:true,RouterLink:true}}})
+  const home=mount(HomeView,{global:{stubs:{SchoolHero:true,RouterLink:{template:'<a><slot/></a>'}}}})
   try{
-   expect(home.findComponent(TimeNodesHome).exists()).toBe(true)
-   await home.get('.hero-toggle').trigger('click')
-   expect(home.findComponent(TimeNodesHome).exists()).toBe(true)
-   expect(home.text()).toContain('模拟考试')
+   expect(home.findComponent(TimeNodesHome).exists()).toBe(false)
+   expect(home.get('.exam-strip').text()).toContain('还有 0 天')
+   expect(home.find('.hero-toggle').exists()).toBe(false)
+   expect(home.text()).toContain('开始一次专注')
   }finally{home.unmount()}
  }finally{wrapper.unmount();clock.stop();vi.useRealTimers()}
 })

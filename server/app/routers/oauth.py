@@ -6,12 +6,14 @@
 
 import json
 import secrets
+import base64
+import hashlib
 from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
 from ..deps import audit, clock, get_db
@@ -24,7 +26,7 @@ from .public import config_get
 
 router = APIRouter(prefix="/api/v1/auth", tags=["oauth"])
 
-PROVIDERS = {"wechat": "微信", "qq": "QQ", "phone": "手机号"}
+PROVIDERS = {"wechat": "微信", "qq": "QQ", "phone": "手机号", "github": "GitHub"}
 
 
 def _require_channel(request: Request, provider: str):
@@ -45,7 +47,7 @@ def _oauth_email(provider: str, uid: str) -> str:
 
 
 def _get_or_create_user(
-    db, request, provider, uid, nickname, avatar="", phone=None, accepted_terms=False
+    db, request, provider, uid, nickname, avatar="", phone=None, accepted_terms=False, verified_email=None
 ):
     row = db.scalar(
         select(UserAuth).where(
@@ -57,6 +59,22 @@ def _get_or_create_user(
         if not user or user.status in ("banned", "deleted"):
             raise ApiError(403, 40302, "账号不可用", "请联系管理员")
         return user, False
+    # GitHub identities are keyed by immutable provider ID. Only a verified email may link an existing account.
+    if provider == "github" and verified_email:
+        existing = db.scalar(select(User).where(func.lower(User.email) == verified_email.casefold()))
+        if existing:
+            if existing.status in ("banned", "deleted"):
+                raise ApiError(403, 40302, "账号不可用")
+            other = db.scalar(select(UserAuth).where(UserAuth.user_id == existing.id, UserAuth.provider == provider))
+            if other:
+                raise ApiError(409, 40901, "此邮箱已绑定其他 GitHub 账号")
+            db.add(UserAuth(user_id=existing.id,provider=provider,provider_uid=uid,nickname=nickname or "",avatar_url=avatar or ""))
+            try:
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                raise ApiError(409,40901,"GitHub账号绑定已变化，请重新登录") from None
+            return existing, False
     if not config_get(db, "registration_open", False):
         raise ApiError(403, 40301, "注册已关闭，请联系管理员创建账号")
 
@@ -69,7 +87,7 @@ def _get_or_create_user(
 
     check_capacity(db, request.app.state.settings)
     user = User(
-        email=_oauth_email(provider, uid),
+        email=verified_email or _oauth_email(provider, uid),
         phone=phone,
         nickname=name,
         password_hash=hash_password(secrets.token_urlsafe(18)),
@@ -120,15 +138,21 @@ def authorize(
 ):
     _require_channel(request, provider)
     settings = request.app.state.settings
-    state = secrets.token_urlsafe(16)
+    state = secrets.token_urlsafe(32)
+    verifier = secrets.token_urlsafe(64)
     request.app.state.transient.set(
         "oauth-state:" + digest(state),
-        json.dumps({"provider": provider, "accepted_terms": accepted_terms}),
+        json.dumps({"provider": provider, "accepted_terms": accepted_terms, "pkce_verifier": verifier}),
         600,
     )
     redirect_uri = _callback_url(request, provider)
 
-    if provider == "wechat":
+    if provider == "github":
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        url = ("https://github.com/login/oauth/authorize"
+               f"?client_id={quote(settings.github_client_id,safe='')}&redirect_uri={quote(redirect_uri,safe='')}"
+               f"&scope=read%3Auser%20user%3Aemail&state={state}&code_challenge={challenge}&code_challenge_method=S256")
+    elif provider == "wechat":
         if not settings.wechat_app_id:
             raise ApiError(503, 50301, "微信登录未配置 AppID")
         url = (
@@ -187,7 +211,10 @@ async def callback(
         raise ApiError(400, 40001, "授权状态校验失败，请重新发起登录")
 
     settings = request.app.state.settings
-    if provider == "wechat":
+    verified_email = None
+    if provider == "github":
+        uid, nickname, avatar, verified_email = await _github_profile(settings, code, _callback_url(request,provider), expected.get("pkce_verifier", ""))
+    elif provider == "wechat":
         uid, nickname, avatar = await _wechat_profile(settings, code)
     else:
         uid, nickname, avatar = await _qq_profile(
@@ -202,6 +229,7 @@ async def callback(
         nickname,
         avatar,
         accepted_terms=bool(expected.get("accepted_terms")),
+        verified_email=verified_email,
     )
     if request.query_params.get("format") == "json":
         return ok(_finish_login(db, request, user, provider, response))
@@ -371,3 +399,30 @@ def _send_sms(settings, phone, code):
     from ..services.sms import send_sms
 
     return send_sms(settings, phone, code)
+
+
+async def _github_profile(settings, code, redirect_uri, verifier):
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post("https://github.com/login/oauth/access_token",
+                headers={"Accept":"application/json"}, data={"client_id":settings.github_client_id,
+                "client_secret":settings.github_client_secret,"code":code,"redirect_uri":redirect_uri,
+                "code_verifier":verifier})
+            response.raise_for_status()
+            token = response.json().get("access_token")
+            if not token: raise ValueError("OAuth token unavailable")
+            headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}
+            response=await client.get("https://api.github.com/user",headers=headers)
+            response.raise_for_status(); profile=response.json()
+            response=await client.get("https://api.github.com/user/emails",headers=headers)
+            response.raise_for_status(); emails=response.json()
+            verified=[row for row in emails if row.get("verified") is True and isinstance(row.get("email"),str) and "@" in row["email"]]
+            if not verified: raise ApiError(403,40301,"请先在 GitHub 验证邮箱后再登录")
+            email=next((row["email"] for row in verified if row.get("primary") is True),verified[0]["email"]).strip().casefold()
+            uid=str(int(profile["id"]))
+            if int(uid)<=0: raise ValueError("Invalid GitHub user ID")
+            return uid,profile.get("name") or profile.get("login") or "GitHub研友",profile.get("avatar_url") or "",email
+    except ApiError:
+        raise
+    except (httpx.HTTPError,ValueError,KeyError,TypeError):
+        raise ApiError(502,50201,"GitHub 登录暂时不可用，请稍后重试") from None

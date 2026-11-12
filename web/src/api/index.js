@@ -1,6 +1,12 @@
 // 后端接口集中封装（统一前缀 /api/v1）。所有方法返回 data 部分。
 import { http, streamPost } from './http'
 
+// 多标签页共享 refresh Cookie，按顺序轮换，避免同时续期互相作废。
+function sessionCookieRequest(request) {
+  const locks=globalThis.navigator?.locks
+  return locks?.request ? locks.request('yanshi:auth-cookie',request) : request()
+}
+
 // ------------------------------------------------------------ 公共
 export const publicApi = {
   config: () => http.get('/config/public', { auth: false }),
@@ -14,18 +20,18 @@ export const authApi = {
   bindPhone: (phone, code) => http.put('/users/me/phone', { phone, code }),
   sendCode: (email, scene = 'register') =>
     http.post('/auth/email-code', { email, scene }, { auth: false }),
-  emailLogin: (body) => http.post('/auth/email-login', body, { auth: false }),
+  emailLogin: (body) => sessionCookieRequest(() => http.post('/auth/email-login', body, { auth: false })),
   oauthAuthorize: (provider, accepted = false) =>
     http.get(`/auth/oauth/${provider}/authorize`, { auth: false, query: { accepted_terms: accepted } }),
   oauthExchange: (ticket) =>
-    http.post('/auth/oauth/exchange', { ticket }, { auth: false }),
+    sessionCookieRequest(() => http.post('/auth/oauth/exchange', { ticket }, { auth: false })),
   phoneSendCode: (phone) => http.post('/auth/phone/send-code', { phone }, { auth: false }),
   phoneVerify: (phone, code, accepted = false) =>
-    http.post('/auth/phone/verify-code', { phone, code, accepted_terms: accepted }, { auth: false }),
-  register: (body) => http.post('/auth/register', body, { auth: false }),
-  login: (email, password) => http.post('/auth/login', { email, password }, { auth: false }),
-  refresh: () => http.post('/auth/refresh', {}, { auth: false }),
-  logout: () => http.post('/auth/logout', {}),
+    sessionCookieRequest(() => http.post('/auth/phone/verify-code', { phone, code, accepted_terms: accepted }, { auth: false })),
+  register: (body) => sessionCookieRequest(() => http.post('/auth/register', body, { auth: false })),
+  login: (email, password) => sessionCookieRequest(() => http.post('/auth/login', { email, password }, { auth: false })),
+  refresh: () => sessionCookieRequest(() => http.post('/auth/refresh', {}, { auth: false })),
+  logout: () => sessionCookieRequest(() => http.post('/auth/logout', {})),
   resetPassword: (body) => http.post('/auth/reset-password', body, { auth: false }),
   me: () => http.get('/auth/me'),
   updateMe: (body) => http.put('/users/me', body),
@@ -53,10 +59,11 @@ export const roomApi = {
   putGoal: (body, id) => http.put(id ? `/rooms/${id}/goal` : '/room/goal', body),
   list: () => http.get('/rooms'),
   create: (body) => http.post('/rooms', body),
-  join: (id, code = '') => http.post(`/rooms/${id}/join`, { code }),
-  joinByCode: (code) => http.post('/rooms/join-by-code', { code }),
+  join: (id, code = '', acceptSharing = false) => http.post(`/rooms/${id}/join`, { code, accept_sharing: acceptSharing }),
+  joinByCode: (code, acceptSharing = false) => http.post('/rooms/join-by-code', { code, accept_sharing: acceptSharing }),
+  confirmSharing: (id) => http.post(`/rooms/${id}/sharing/confirm`, { accept_sharing: true }),
   preview: (id) => http.get(`/rooms/${id}/preview`),
-  apply: (id, message = '') => http.post(`/rooms/${id}/apply`, { message }),
+  apply: (id, message = '', acceptSharing = false) => http.post(`/rooms/${id}/apply`, { message, accept_sharing: acceptSharing }),
   applies: (id, status = 'pending') => http.get(`/rooms/${id}/applies`, { query: { status } }),
   reviewApply: (id, applyId, approve) =>
     http.post(`/rooms/${id}/applies/${applyId}/review`, { approve }),
@@ -67,18 +74,23 @@ export const roomApi = {
   dissolve: (id) => http.del(`/rooms/${id}`),
 }
 
+import { cacheImage } from '../db/imageCache'
+import { localAccountScope } from '../db'
+
 // ------------------------------------------------------------ 附件 / 图片
 export const attachmentApi = {
   viewUrl: (key) => `/api/v1/attachments/view?key=${encodeURIComponent(key)}`,
   uploadAvatar: (file) => {
     const fd = new FormData()
     fd.append('file', file)
-    return http.post('/attachments/avatar', fd)
+    const scope = localAccountScope()
+    return http.post('/attachments/avatar', fd).then(async result => { await cacheImage(result.key,file,scope); return result })
   },
   uploadImage: (file, biz) => {
     const fd = new FormData()
     fd.append('file', file)
-    return http.post('/attachments/image', fd, { query: { biz } })
+    const scope = localAccountScope()
+    return http.post('/attachments/image', fd, { query: { biz } }).then(async result => { await cacheImage(result.key,file,scope); return result })
   },
   remove: (key) => http.del('/attachments', { query: { key } }),
   storage: () => http.get('/attachments/storage'),
@@ -87,9 +99,9 @@ export const attachmentApi = {
 
 // ------------------------------------------------------------ 院校
 export const groupApi = {
-  members: () => http.get('/group/members'),
-  changes: (id, since) => http.get(`/group/members/${id}/learning/changes`, { query: { since } }),
-  learning: (id, after = '') => http.get(`/group/members/${id}/learning`, { query: { after } }),
+  members: (roomId) => http.get('/group/members', { query: roomId ? { room_id: roomId } : {} }),
+  changes: (id, since, roomId) => http.get(`/group/members/${id}/learning/changes`, { query: { since, ...(roomId ? { room_id: roomId } : {}) } }),
+  learning: (id, after = '', roomId) => http.get(`/group/members/${id}/learning`, { query: { after, ...(roomId ? { room_id: roomId } : {}) } }),
   presence: (body) => http.post('/group/presence', body),
 }
 export const timeNodeApi = { list: () => http.get('/time-nodes') }
@@ -227,15 +239,4 @@ export const timerApi = {
  release:(body)=>http.post('/timer/release',body),
  conflicts:()=>http.get('/timer/conflicts'),
  resolve:(body)=>http.post('/timer/resolve',body),
-}
-
-export const groupAdmissionApi={
- mine:()=>http.get('/group-admission/mine'),
- apply:(body)=>http.post('/group-admission/applications',body),
- withdraw:(id,revision)=>http.post(`/group-admission/applications/${id}/withdraw`,{expected_revision:revision}),
- createInvite:(body)=>http.post('/group-admission/invites',body),
- invites:()=>http.get('/group-admission/invites'),
- revoke:(id)=>http.post(`/group-admission/invites/${id}/revoke`,{}),
- queue:()=>http.get('/group-admission/applications'),
- review:(id,body)=>http.post(`/group-admission/applications/${id}/review`,body),
 }

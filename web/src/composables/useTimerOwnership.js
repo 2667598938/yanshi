@@ -7,7 +7,7 @@ import {presenceDeviceId} from '../utils/presence'
 export function useTimerOwnership(){
  const timer=useTimerStore(),auth=useAuthStore();let busy=false,alive=true,generation=0
  async function beat(){
-  if(!auth.isLoggedIn||busy)return
+  if(!auth.isLoggedIn||auth.isSuperAdmin||busy)return
   busy=true;const uid=auth.user?.id,seq=generation
   try{
    const c=timer.current

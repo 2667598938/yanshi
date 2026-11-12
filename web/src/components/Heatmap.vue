@@ -116,7 +116,7 @@ function dayNum(key) {
 }
 .hm-ml {
   position: absolute;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--faint);
   transform: translateX(0);
 }
@@ -158,7 +158,7 @@ function dayNum(key) {
 }
 .cal-dow span {
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
 }
 .cal-cell {
@@ -179,7 +179,7 @@ function dayNum(key) {
   outline-offset: 1px;
 }
 .cal-num {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -190,7 +190,7 @@ function dayNum(key) {
   color: #fff;
 }
 .cal-min {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   color: #fff;
 }
@@ -228,17 +228,17 @@ function dayNum(key) {
   background: #eef5fb;
 }
 .wk-dow {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   width: 40px;
 }
 .wk-date {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
   flex: 1;
 }
 .wk-min {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--primary);
 }
@@ -272,7 +272,7 @@ function dayNum(key) {
   gap: 4px;
   justify-content: flex-end;
   margin-top: 12px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
 }
 .lg {

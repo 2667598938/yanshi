@@ -315,7 +315,7 @@ async function save() {
   flex-shrink: 0;
 }
 .f-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   margin: 12px 0 8px;
 }
@@ -334,7 +334,7 @@ async function save() {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   padding: 4px 6px 4px 10px;
   border-radius: 999px;
@@ -354,7 +354,7 @@ async function save() {
   min-width: 90px;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
   padding: 4px;
 }
@@ -408,7 +408,7 @@ async function save() {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
 }
 .big-input {

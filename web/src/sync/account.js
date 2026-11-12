@@ -2,9 +2,18 @@
 import { activateAccount, initDb, db } from '../db'
 
 export async function afterLogin(userId) {
+  const { useAuthStore } = await import('../stores/auth')
+  const adminOnly = useAuthStore().isSuperAdmin
   const { useSchoolsStore } = await import('../stores/schools')
   useSchoolsStore().resetForAccount()
-  await activateAccount(userId, { migrateGuest: true })
+  await activateAccount(userId, { migrateGuest: !adminOnly })
+  if (adminOnly) {
+    const { useTimerStore } = await import('../stores/timer')
+    useTimerStore().resetForAccount()
+    const { resetSyncRuntime } = await import('./engine')
+    resetSyncRuntime()
+    return
+  }
   await initDb()
   await reloadLocal()
   const { initSyncForUser, resetSyncRuntime } = await import('./engine')

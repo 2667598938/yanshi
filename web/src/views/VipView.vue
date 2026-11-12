@@ -138,14 +138,14 @@ onMounted(load)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.78);
 }
 .vh-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #3a2700;
   background: linear-gradient(120deg, #fcd34d, #f59e0b);
@@ -155,7 +155,7 @@ onMounted(load)
 .vh-state {
   position: relative;
   margin-top: 10px;
-  font-size: 19px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.3px;
   line-height: 1.45;
@@ -208,7 +208,7 @@ onMounted(load)
   font-weight: 700;
 }
 .benefit-sub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--faint);
   margin-top: 2px;
 }
@@ -225,7 +225,7 @@ onMounted(load)
   border-radius: 14px;
   background: #eef3f9;
   color: var(--sub);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.7;
 }
 </style>

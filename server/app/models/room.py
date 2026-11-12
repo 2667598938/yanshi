@@ -2,6 +2,7 @@
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -26,16 +27,17 @@ class Room(Base):
     name = Column(String(80), nullable=False)
     intro = Column(String(500), default="", server_default="")
     owner_id = Column(ForeignKey("users.id"), nullable=True)
-    capacity = Column(Integer, default=4, server_default="4", nullable=False)
+    capacity = Column(Integer, default=50, server_default="50", nullable=False)
     visibility = Column(
-        String(12), default="public", server_default="public", nullable=False
+        String(12), default="private", server_default="private", nullable=False
     )
     room_type = Column(
         String(24),
-        default="checkin_room",
-        server_default="checkin_room",
+        default="text_room",
+        server_default="text_room",
         nullable=False,
     )
+    media_mode = Column(String(12), default="", server_default="", nullable=False)
     created_at = Column(DateTime, default=now, nullable=False)
     dissolved_at = Column(DateTime)
 
@@ -50,6 +52,9 @@ class RoomMember(Base):
     role = Column(
         String(12), default="member", server_default="member", nullable=False
     )  # owner|member
+    sharing_confirmed = Column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     joined_at = Column(DateTime, default=now, nullable=False)
 
 
@@ -95,6 +100,7 @@ class RoomJoinApply(Base):
     # 待审时为 f'{room_id}-{user_id}'，审批后置 NULL，让同一人可再次申请
     pending_key = Column(String(40), nullable=True)
     created_at = Column(DateTime, default=now, nullable=False, index=True)
+    accept_sharing = Column(Boolean, default=False, server_default="0", nullable=False)
     handled_at = Column(DateTime)
     handled_by = Column(ForeignKey("users.id"), nullable=True)
 

@@ -120,6 +120,8 @@ def run_maintenance(session_factory, settings, secret=None):
     with session_factory() as db:
         db.execute(delete(TransientState).where(TransientState.expires_at < time.time()))
         db.commit()
+    from .attachments import purge_deleted_attachments
+    purge_deleted_attachments(session_factory,settings)
     enqueue_expiry_notifications(session_factory, settings)
     deliver_email_jobs(session_factory, settings)
     if secret: refresh_model_catalogs(session_factory, settings, secret)

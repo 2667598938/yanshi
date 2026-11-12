@@ -11,4 +11,4 @@ COPY server/ ./
 USER 10001:10001
 EXPOSE 8000
 # No host port is published for this service. Only the dedicated Compose proxy is trusted.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--ws-max-size", "65536", "--proxy-headers", "--forwarded-allow-ips=*"]

@@ -339,10 +339,10 @@ async function toggleAnnouncement(row){
   <div class="admin-page">
     <CopyFallback v-model="manualCopy" />
     <div class="nav">
-      <button class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
+      <button v-if="!auth.isSuperAdmin" class="back" @click="router.back()"><ArrowLeft :size="20" /></button>
       <div class="nav-title">后台管理</div>
     </div>
-    <nav class="admin-subnav" aria-label="后台功能"><router-link class="btn btn-ghost btn-sm" to="/admin/group">小组邀请与审批</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/resources">资料审核</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/email-jobs">通知邮件任务与重试</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/operations">设置、日志与运行状态</router-link></nav>
+    <nav class="admin-subnav" aria-label="后台功能"><router-link class="btn btn-ghost btn-sm" to="/rooms">好友房间与入房审批</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/resources">资料审核</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/email-jobs">通知邮件任务与重试</router-link><router-link class="btn btn-ghost btn-sm" to="/admin/operations">设置、日志与运行状态</router-link></nav>
 
     <div class="page">
       <!-- 概览 -->
@@ -350,13 +350,13 @@ async function toggleAnnouncement(row){
         <div class="ov"><div class="ov-n tnum">{{ overview.member_count }}</div><div class="ov-l">成员</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.vip_count || 0 }}</div><div class="ov-l">VIP</div></div>
 
-        <div class="ov"><div class="ov-n tnum">{{ overview.room_member_count }}</div><div class="ov-l">有效房间席位占用（人次）</div></div>
+        <div class="ov"><div class="ov-n tnum">{{ overview.room_member_count }}</div><div class="ov-l">有效房间成员关系（人次）</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.online_count }}</div><div class="ov-l">可见在线成员（去重）</div></div>
         <div class="ov"><div class="ov-n tnum">{{ fmtBytes(overview.attachment_bytes) }}</div><div class="ov-l">图片占用</div></div>
         <div class="ov"><div class="ov-n tnum">{{ overview.record_count }}</div><div class="ov-l">同步记录</div></div>
       </div>
 
-      <p v-if="overview" class="field-hint">席位统计全部未解散房间的成员关系，同一人在不同房间分别计次。在线人数按90秒有效心跳去重，并遵守小组共享与隐私权限。</p>
+      <p v-if="overview" class="field-hint">统计全部未解散房间的有效成员关系（旧待重新邀请成员不计），同一人在不同房间分别计次。在线人数按90秒有效心跳去重，并遵守小组共享与隐私权限。</p>
 
       <div class="tabs">
         <button :class="{ on: tab === 'invite' }" @click="switchTab('invite')">邀请码</button>
@@ -601,21 +601,21 @@ async function toggleAnnouncement(row){
 .back { border: none; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
 .ov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
 .ov { background: #fff; border-radius: 14px; padding: 14px 8px; text-align: center; box-shadow: var(--shadow-soft); }
-.ov-n { font-size: 18px; font-weight: 800; color: var(--primary); }
-.ov-l { font-size: 11.5px; color: var(--faint); margin-top: 3px; }
+.ov-n { font-size: 16px; font-weight: 800; color: var(--primary); }
+.ov-l { font-size: 12px; color: var(--faint); margin-top: 3px; }
 .tabs { display: flex; gap: 6px; background: #fff; border-radius: 12px; padding: 4px; margin-bottom: 12px; box-shadow: var(--shadow-soft); }
 .tabs button { flex: 1; border: none; background: transparent; padding: 10px 0; border-radius: 9px; font-size: 14px; color: var(--sub); cursor: pointer; }
 .tabs button.on { background: var(--primary); color: #fff; font-weight: 600; }
 .invite-row, .member-row, .ann-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .invite-row:last-child, .member-row:last-child, .ann-row:last-child { border-bottom: none; }
 .invite-main, .member-main { flex: 1; min-width: 0; }
-.invite-code { font-size: 19px; font-weight: 800; letter-spacing: 2px; color: var(--ink); }
-.invite-sub, .member-sub { font-size: 12px; color: var(--faint); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.member-name { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.invite-code { font-size: 16px; font-weight: 800; letter-spacing: 2px; color: var(--ink); }
+.invite-sub, .member-sub { font-size: 14px; color: var(--faint); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.member-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 .member-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .mini { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--sub); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .mini.danger { color: var(--red); }
-.tag { font-size: 10px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
+.tag { font-size: 12px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
 .tag-new { background: #ecfdf5; color: #10b981; }
 .tag-used { background: #eef1f6; color: var(--faint); }
 .tag-admin { background: #fff3df; color: var(--accent-deep); }
@@ -624,35 +624,35 @@ async function toggleAnnouncement(row){
 .tag-feature { background: #eef0fe; color: var(--purple); }
 
 .seg { display: flex; gap: 2px; background: #f1f4fa; border-radius: 10px; padding: 3px; }
-.seg button { flex: 1; border: none; background: transparent; padding: 7px 0; border-radius: 7px; font-size: 12.5px; color: var(--sub); cursor: pointer; }
+.seg button { flex: 1; border: none; background: transparent; padding: 7px 0; border-radius: 7px; font-size: 14px; color: var(--sub); cursor: pointer; }
 .seg button.on { background: #fff; color: var(--primary); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
 .req-card { padding: 13px 0; border-bottom: 1px solid var(--line); }
 .req-card:last-child { border-bottom: none; }
 .req-top { display: flex; align-items: center; gap: 9px; }
-.req-avatar { width: 30px; height: 30px; border-radius: 50%; background: #e6f0fb; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.req-avatar { width: 30px; height: 30px; border-radius: 50%; background: #e6f0fb; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
 .req-user { flex: 1; min-width: 0; }
-.req-nick { font-size: 13.5px; font-weight: 700; }
-.req-time { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
-.req-body { margin-top: 9px; font-size: 12.5px; color: var(--sub); line-height: 1.65; background: #f6f9fd; border-radius: 9px; padding: 8px 10px; }
+.req-nick { font-size: 14px; font-weight: 700; }
+.req-time { font-size: 12px; color: var(--faint); margin-top: 1px; }
+.req-body { margin-top: 9px; font-size: 14px; color: var(--sub); line-height: 1.65; background: #f6f9fd; border-radius: 9px; padding: 8px 10px; }
 .insp-thumb { width: 100%; max-height: 150px; object-fit: cover; border-radius: 10px; margin-top: 9px; }
-.req-note { margin-top: 7px; font-size: 11.5px; color: var(--primary-deep); }
+.req-note { margin-top: 7px; font-size: 12px; color: var(--primary-deep); }
 .req-actions { display: flex; gap: 8px; margin-top: 10px; }
-.req-reject, .req-approve { flex: 1; height: 34px; border: none; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.req-reject, .req-approve { flex: 1; height: 34px; border: none; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .req-reject { background: #f1f4fa; color: var(--sub); }
 .req-approve { background: var(--primary); color: #fff; }
-.req-status { margin-top: 8px; font-size: 11.5px; color: var(--faint); }
-.req-revoke { margin-left: 8px; border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 7px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
-.vip-current { font-size: 12.5px; color: var(--sub); margin-bottom: 12px; line-height: 1.6; }
+.req-status { margin-top: 8px; font-size: 12px; color: var(--faint); }
+.req-revoke { margin-left: 8px; border: 1px solid var(--line); background: #fff; color: var(--sub); border-radius: 7px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.vip-current { font-size: 14px; color: var(--sub); margin-bottom: 12px; line-height: 1.6; }
 .ann-content { font-size: 14px; line-height: 1.6; color: var(--ink); }
-.ann-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--faint); }
-.empty { text-align: center; color: var(--faint); font-size: 13px; padding: 20px 0; }
+.ann-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--faint); }
+.empty { text-align: center; color: var(--faint); font-size: 14px; padding: 20px 0; }
 
 .mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 150; }
 .sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 22px 22px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
-.sheet-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 14px; }
+.sheet-title { font-size: 16px; font-weight: 800; text-align: center; margin-bottom: 14px; }
 .sf { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.sf span { font-size: 13px; color: var(--sub); }
-.sf input { height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 15px; background: #fafbfe; }
+.sf span { font-size: 14px; color: var(--sub); }
+.sf input { height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-size: 14px; background: #fafbfe; }
 .sf input:focus { outline: none; border-color: var(--primary); }
 .ta { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 14px; font-family: inherit; background: #fafbfe; resize: vertical; }
 .ta:focus { outline: none; border-color: var(--primary); }

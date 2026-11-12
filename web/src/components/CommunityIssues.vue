@@ -35,7 +35,7 @@ async function choose(item, choice) {
 </template>
 <style scoped>
 .community-issues { position: fixed; z-index: 110; right: 12px; bottom: 76px; width: min(360px, calc(100vw - 24px)); max-height: 65vh; overflow: auto; box-shadow: var(--shadow); border-radius: 12px; background: #fff8e9; padding: 12px; }
-p, label { font-size: 12px; margin: 8px 0; white-space: pre-wrap; }
+p, label { font-size: 14px; margin: 8px 0; white-space: pre-wrap; }
 textarea { width: 100%; min-height: 80px; margin: 6px 0; }
 button { margin: 4px 4px 0 0; }
 </style>

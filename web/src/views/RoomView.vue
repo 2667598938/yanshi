@@ -9,16 +9,40 @@ import { useTimerStore } from '../stores/timer'
 import { useAuthStore } from '../stores/auth'
 import { useSchoolsStore } from '../stores/schools'
 import { roomApi } from '../api'
+import { ROOM_SHARING_NOTICE } from '../utils/roomSharing'
 import BlobImage from '../components/BlobImage.vue'
+import RoomMedia from '../components/RoomMedia.vue'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import CopyFallback from '../components/CopyFallback.vue'
+import {useSubjectsStore} from '../stores/subjects'
+import {useLearningSettingsStore} from '../stores/learningSettings'
+import {fmtClock} from '../utils/date'
 import { useStudyRoomStore } from '../stores/studyRoom'
 import { FIGURES, FIGURE_MAP } from '../data/figures'
 
 const timer = useTimerStore()
 const auth = useAuthStore()
 const studyRoom = useStudyRoomStore()
+const subjects=useSubjectsStore(),learningSettings=useLearningSettingsStore()
+const focusSubjectId=ref(''),focusStarting=ref(false)
+const focusSubject=computed(()=>focusSubjectId.value || timer.current?.subjectId || subjects.active?.[0]?.id || '')
+async function startRoomFocus(){
+ if(focusStarting.value)return
+ studyRoom.enter(room.value,auth.user?.id)
+ if(timer.current)return
+ if(!focusSubject.value)return toast('请先添加学习科目')
+ if(timer.rest)return toast('本轮正在休息，休息结束后再开始')
+ focusStarting.value=true
+ try{const started=await timer.start({subjectId:focusSubject.value,mode:'timer',plannedMin:learningSettings.value.focusMin||25});if(!started)toast(timer.startError||'暂时无法开始，请稍后重试')}
+ catch(error){toast(error.message||'暂时无法开始')}
+ finally{focusStarting.value=false}
+}
+function pauseRoomFocus(){try{timer.isPaused?timer.resume():timer.pause()}catch(error){toast(error.message)}}
+async function finishRoomFocus(){
+ try{const saved=await timer.finish(false);if(!saved)return;activePanel.value='ranking';const {syncNow}=await import('../sync/engine');await syncNow().catch(()=>{});await fetchRoom();toast('本次专注已保存')}
+ catch(error){toast(error.message||'记录未保存，请重试')}
+}
 let presenceInitialized = false
 const schools = useSchoolsStore()
 const { toast } = useToast()
@@ -30,6 +54,7 @@ const roomId = computed(() => (route.params.id ? Number(route.params.id) : null)
 let alive = true
 const room = ref(null)
 const joined = ref(true)
+const joining = ref(false)
 const members = ref([])
 const ranking = ref({ today: [], week: [], all: [] })
 const messages = ref([])
@@ -49,7 +74,8 @@ const showGoal = ref(false)
 const goalDraft = ref({ target_school: '', target_score: '', words: '' })
 const showManage = ref(false)
 const manageForm = ref({ name: '', intro: '', visibility: 'public' })
-const isOwner = computed(() => room.value?.my_role === 'owner' || auth.isAdmin)
+const manageSaving = ref(false)
+const isOwner = computed(() => room.value?.my_role === 'owner')
 const preview = ref(null)
 const joinCode = ref('')
 const applyDraft = ref('')
@@ -82,7 +108,7 @@ function fmtTime(iso) {
 function presenceText(m) {
   const p = m.presence || {}
   if (p.status === 'private') return { label: '隐私中', color: '#8d7fa3' }
-  if (p.status === 'unshared') return { label: '仅同组可见', color: '#8d7fa3' }
+  if (p.status === 'unshared') return { label: '未确认本房间共享', color: '#8d7fa3' }
   if (!m.online) return { label: '离线', color: '#b6bfcc' }
   if (p.status === 'resting') return { label: '休息中', color: '#8b5cf6' }
   if (p.status === 'away') return { label: '暂离 · 后台', color: '#8d8f96' }
@@ -93,18 +119,20 @@ function presenceText(m) {
   return { label: '在线', color: '#4f46e5' }
 }
 
-// 4 个座位：成员在前，空位补满 capacity
+const showAllMembers=ref(false)
+const activePanel=ref('messages')
+const firstSeats=computed(()=>[...members.value].sort((a,b)=>Number(b.online)-Number(a.online) || Number(b.user_id===auth.user?.id)-Number(a.user_id===auth.user?.id)))
+// Keep the first screen compact; the full member list remains available on demand.
 const seats = computed(() => {
-  const cap = room.value?.capacity || 4
-  const filled = members.value.map((m) => ({ ...m, empty: false }))
-  const empties = Math.max(0, cap - filled.length)
-  return [...filled, ...Array.from({ length: empties }, () => ({ empty: true }))]
+  const filled = (showAllMembers.value?firstSeats.value:firstSeats.value.slice(0,6)).map(m => ({ ...m, empty: false }))
+  const empties = room.value?.capacity > 0 ? Math.max(0, room.value.capacity - members.value.length) : 1
+  return [...filled, ...Array.from({ length: Math.min(empties, 1) }, () => ({ empty: true }))]
 })
 
 const todayTotal = computed(() => members.value.reduce((a, m) => a + (m.today_sec || 0), 0))
 const onlineCount = computed(() => room.value?.online_count || 0)
 const isFull = computed(() =>
-  Math.max(room.value?.member_count || 0, members.value.length) >= (room.value?.capacity || 4))
+  room.value?.capacity > 0 && Math.max(room.value?.member_count || 0, members.value.length) >= room.value.capacity)
 
 const rankList = computed(() => {
   const ids = ranking.value[rankTab.value] || []
@@ -141,7 +169,7 @@ async function pullRoom() {
   room.value = data.room
   if(route.name==='room' && data.joined!==false)router.replace(`/rooms/${data.room.id}`)
   joined.value = data.joined !== false
-  if (joined.value && !presenceInitialized) { studyRoom.enter(data.room,auth.user?.id); presenceInitialized=true }
+  if (joined.value && studyRoom.room?.id!==data.room.id) { studyRoom.enter(data.room,auth.user?.id); presenceInitialized=true }
   preview.value = null
   loadError.value = ''
   members.value = data.members || []
@@ -216,8 +244,10 @@ function startBeating() {
 }
 
 async function join() {
+  if (joining.value || !confirm(ROOM_SHARING_NOTICE)) return
+  joining.value = true
   try {
-    await roomApi.join(roomId.value, joinCode.value.trim())
+    await roomApi.join(roomId.value, joinCode.value.trim(), true)
     toast('已加入自习室')
     applyDraft.value = ''
     preview.value = null
@@ -225,14 +255,15 @@ async function join() {
     startBeating()
   } catch (e) {
     toast(e.message)
-  }
+  } finally { joining.value = false }
 }
 
 async function applyJoin() {
-  if (applying.value || myApply.value?.status === 'pending') return
+  if (applying.value || (myApply.value?.status === 'pending' && myApply.value?.accept_sharing)) return
+  if (!confirm(ROOM_SHARING_NOTICE)) return
   applying.value = true
   try {
-    await roomApi.apply(roomId.value, applyDraft.value.trim())
+    await roomApi.apply(roomId.value, applyDraft.value.trim(), true)
     toast('申请已提交，等待房主审批')
     await loadPreview()
   } catch (e) {
@@ -240,6 +271,14 @@ async function applyJoin() {
   } finally {
     applying.value = false
   }
+}
+
+async function confirmRoomSharing() {
+  if (joining.value || !confirm(ROOM_SHARING_NOTICE)) return
+  joining.value = true
+  try { await roomApi.confirmSharing(roomId.value); await fetchRoom(); toast('本房间共享已开启') }
+  catch (e) { toast(e.message) }
+  finally { joining.value = false }
 }
 
 async function loadApplies() {
@@ -273,7 +312,7 @@ async function copyCode() {
 }
 async function copyInvite() {
   const url = new URL(`/rooms/${room.value.id}`, location.origin)
-  await copyToClipboard(url.href, room.value.visibility === 'private' ? '申请链接已复制，房主审批后加入' : '房间链接已复制')
+  await copyToClipboard(url.href, '申请链接已复制，确认共享并经房主审批后加入')
 }
 async function leaveRoom() {
   if (!confirm('退出这个自习室？')) return
@@ -376,24 +415,43 @@ function openManage() {
     name: room.value?.name || '',
     intro: room.value?.intro || '',
     visibility: room.value?.visibility || 'public',
+    room_type: room.value?.room_type || 'text_room',
+    capacity: room.value?.capacity ?? 50,
   }
   loadApplies()
   showManage.value = true
 }
 
+function changeManageType() {
+  manageForm.value.capacity = manageForm.value.room_type === 'av_room' ? 6 : 50
+}
+
 async function saveManage() {
+  if (manageSaving.value) return
+  if (manageForm.value.name.trim().length < 2) return toast('房间名至少 2 个字')
+  manageSaving.value = true
   try {
-    await roomApi.update(roomId.value, {
+    const body = {
       name: manageForm.value.name.trim(),
       intro: manageForm.value.intro.trim(),
       visibility: manageForm.value.visibility,
-    })
+    }
+    if (manageForm.value.room_type !== room.value.room_type) {
+      body.room_type = manageForm.value.room_type
+      body.capacity = manageForm.value.capacity
+      if (body.room_type === 'av_room') body.media_mode = 'mesh'
+    } else if (manageForm.value.room_type === 'text_room' && manageForm.value.capacity !== room.value.capacity) {
+      body.capacity = manageForm.value.capacity
+    }
+    const updated = await roomApi.update(roomId.value, body)
+    if (!alive) return
+    room.value = { ...room.value, ...updated }
     showManage.value = false
     toast('房间信息已更新')
     await fetchRoom()
   } catch (e) {
     toast(e.message)
-  }
+  } finally { manageSaving.value = false }
 }
 
 async function changeCode() {
@@ -448,7 +506,7 @@ onMounted(async () => {
   if (!alive) return
   loading.value = false
   if (joined.value) startBeating()
-  pollTimer = setInterval(fetchRoom, 15000)
+  pollTimer = setInterval(fetchRoom, 5000)
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('beforeunload', onLeave)
 })
@@ -475,10 +533,10 @@ onBeforeUnmount(() => {
     <div class="nav">
       <button class="back" @click="router.push('/rooms')"><ArrowLeft :size="20" /></button>
       <div>
-        <div class="nav-title">{{ room?.name || '四人自习室' }}</div>
+        <div class="nav-title">{{ room?.name || '好友自习室' }}</div>
         <div class="nav-sub">大雪深埋，与同道并肩</div>
       </div>
-      <button v-if="isOwner" class="switch-btn gear" @click="openManage"><Settings :size="15" /></button>
+      <button v-if="joined" class="switch-btn gear" aria-label="房间设置" @click="openManage"><Settings :size="15" /></button>
       <button class="switch-btn" @click="router.push('/rooms')">换房间</button>
     </div>
 
@@ -513,54 +571,52 @@ onBeforeUnmount(() => {
         <div class="room-top">
           <div class="room-icon"><Users :size="22" /></div>
           <div class="room-meta">
-            <div class="room-name">{{ room?.name || '研时 · 四人自习室' }}</div>
             <div class="room-private">
               <Lock v-if="room?.visibility === 'private'" :size="11" :stroke-width="2.5" />
-              {{ room?.visibility === 'private' ? '私密 · 凭房间码加入' : '公开 · 欢迎同频研友' }}
-              · 无摄像头 · 状态同步
+              {{ room?.visibility === 'private' ? '私密 · 凭房间码加入' : '公开预览 · 邀请或审批加入' }}
+              · {{room?.room_type==='av_room'?'音视频共学 · 最多6人':'文字共学 · 状态与留言'}}
+              · {{room?.capacity>0?room.capacity+'人上限':'不限人数'}}
             </div>
-            <button v-if="joined && room?.code" class="room-code" @click="copyCode">
-              房间码 {{ room.code }}<Copy :size="11" />
-            </button>
-            <button v-if="joined" class="room-code" @click="copyInvite">{{ room?.visibility === 'private' ? '申请链接' : '房间链接' }}</button>
-            <button v-if="joined && room?.my_role !== 'owner'" class="room-code" @click="leaveRoom">退出房间</button>
+
           </div>
         </div>
         <div class="room-stat">
           <div>
-            <div class="rs-num tnum">{{ onlineCount }} / {{ room?.capacity || 4 }}</div>
-            <div class="rs-label">当前连接（含暂离）</div>
+            <div class="rs-num tnum">{{ onlineCount }}</div>
+            <div class="rs-label">在线（含暂离）</div>
           </div>
           <div class="rs-line"></div>
           <div>
             <div class="rs-num tnum">{{ fmtSec(todayTotal) }}</div>
-            <div class="rs-label">成员今日学习总时长</div>
+            <div class="rs-label">今日共学</div>
           </div>
         </div>
       </div>
 
-      <div v-if="joined" class="card co-study-controls">
-        <strong>固定成员 {{room?.member_count || members.length}} / {{room?.capacity || 4}}</strong>
-        <p>离开共学只停止本次房间状态；成员席位会保留。切到专注、AI 或资料页不会离开共学。</p>
-        <button v-if="studyRoom.room?.id!==room?.id" class="btn btn-outline" @click="studyRoom.enter(room,auth.user?.id)">进入共学</button>
-        <button v-else class="btn btn-outline" @click="studyRoom.leave()">离开共学</button>
-        <button class="btn btn-primary" @click="studyRoom.enter(room,auth.user?.id);router.push('/focus')">{{timer.current?'查看当前专注':'开始专注'}}</button>
-        <button class="btn btn-outline" @click="studyRoom.enter(room,auth.user?.id);router.push('/tasks')">选一项任务学习</button>
+      <div v-if="joined && room?.sharing_confirmed === false" class="card sharing-consent">
+        <strong>旧房间需要重新确认共享</strong><p>当前未向本房间开放你的学习数据。确认后，任务、错题、番茄记录、热力图、学习时长与状态对本房间已确认的成员可见；隐私模式仍可一键隐藏。</p>
+        <button class="btn btn-primary" :disabled="joining" @click="confirmRoomSharing">了解并开启本房间共享</button>
       </div>
+      <section v-if="joined" class="card co-study-controls" aria-label="房间专注">
+        <div class="room-focus-heading"><strong>{{timer.current?(timer.isPaused?'专注已暂停':'正在一起专注'):'坐下，和研友一起开始'}}</strong><span v-if="timer.current" class="tnum">{{fmtClock(timer.isStopwatch?timer.elapsedSec:timer.remainingSec)}}</span></div>
+        <p>加入即同步状态，专注科目与时长会被同房间的研友看到。</p>
+        <div v-if="!timer.current" class="room-focus-start"><select v-model="focusSubjectId" aria-label="本次专注科目"><option value="">{{subjects.active?.[0]?.name||'选择学习科目'}}</option><option v-for="subject in (subjects.active||[])" :key="subject.id" :value="subject.id">{{subject.name}}</option></select><button class="btn btn-primary" :disabled="focusStarting" @click="startRoomFocus">{{focusStarting?'正在开始…':timer.rest?'休息中':'开始一次专注'}}</button></div>
+        <div v-else class="room-focus-start"><button class="btn btn-outline" @click="pauseRoomFocus">{{timer.isPaused?'继续专注':'暂停'}}</button><button class="btn btn-primary" :disabled="timer.persisting" @click="finishRoomFocus">结束并看排名</button></div>
+      </section>
 
       <!-- 未加入 -->
       <div v-if="!joined" class="full-banner">
         <component :is="joinRequired ? Lock : Users" :size="18" />
         <div v-if="isFull">
-          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || 4 }}）</div>
+          <div class="fb-title">自习室已满（{{ room?.member_count || members.length }} / {{ room?.capacity || 50 }}）</div>
           <div class="fb-sub">暂时没有座位，可以换一个自习室，或等成员退出后再加入。</div>
         </div>
         <div v-else-if="joinRequired">
-          <div class="fb-title">私密自习室 · 需房主通过</div>
+          <div class="fb-title">{{room?.visibility==='private'?'私密自习室 · 凭房间码加入':'公开自习室 · 凭邀请或审批加入'}}</div><p v-if="room?.legacy_member" class="field-hint">旧成员资格不自动开放学习共享，请联系房主获取新的房间码，或重新提交申请。</p>
           <div class="fb-sub">
-            <template v-if="myApply?.status === 'pending'">申请已提交，等待房主审批，通过后自动进入。</template>
+            <template v-if="room?.visibility==='public' && myApply?.status === 'pending' && myApply?.accept_sharing">申请已提交，等待房主审批，通过后自动进入。</template>
             <template v-else-if="myApply?.status === 'rejected'">上次申请未通过，可以补充说明后再次申请。</template>
-            <template v-else>有房间码可直接加入；没有房间码可提交申请，由房主审核。</template>
+            <template v-else>{{room?.visibility==='private'?'请向房主获取房间码，确认共享后加入。':'有房间码可直接加入；也可提交申请，由房主审核。'}}</template>
           </div>
         </div>
         <div v-else>
@@ -575,18 +631,18 @@ onBeforeUnmount(() => {
         <div class="ac-title"><Lock :size="14" /> 凭房间码直接加入</div>
         <div class="ac-code-row">
           <input v-model="joinCode" maxlength="32" placeholder="输入 6 位房间码" @keyup.enter="join" />
-          <button class="cc-btn" @click="join">加入</button>
+          <button class="cc-btn" :disabled="joining" @click="join">{{ joining ? '加入中…' : '确认共享并加入' }}</button>
         </div>
         <div class="ac-divider"></div>
-        <div class="ac-title">没有房间码？申请加入</div>
-        <template v-if="myApply?.status === 'pending'">
+        <div v-if="room?.visibility==='public'" class="ac-title">申请加入公开房间</div><p class="field-hint">加入后与本房间已确认的成员默认互看历史学习数据；隐私模式可一键隐藏。账号密码、AI 密钥和聊天、个人备注不共享。</p>
+        <template v-if="room?.visibility==='public' && myApply?.status === 'pending' && myApply?.accept_sharing">
           <div class="ac-pending">
             <span class="ac-dot"></span>
             申请已提交（{{ fmtTime(myApply.created_at) }}），等待房主审批
           </div>
           <div v-if="myApply.message" class="ac-quote">「{{ myApply.message }}」</div>
         </template>
-        <template v-else>
+        <template v-else-if="room?.visibility==='public'">
           <textarea
             v-model="applyDraft"
             maxlength="200"
@@ -626,12 +682,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div v-if="seat.today_sec != null" class="seat-min tnum">{{ fmtSec(seat.today_sec) }}</div>
-            <button
-              v-if="isOwner && seat.user_id !== auth.user?.id && seat.role !== 'owner'"
-              class="kick-btn"
-              title="移出成员"
-              @click.stop="kick(seat)"
-            ><UserMinus :size="13" /></button>
+
           </template>
           <template v-else>
             <div class="seat-empty-ic"><Users :size="22" :stroke-width="1.8" /></div>
@@ -641,8 +692,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <button v-if="members.length>6" class="btn btn-outline btn-block mt8" @click="showAllMembers=!showAllMembers">{{showAllMembers?'收起成员列表':`查看全部 ${members.length} 位成员`}}</button>
+      <RoomMedia v-if="joined && room?.room_type==='av_room' && room?.media_mode==='mesh'" :key="room.id" :room-id="room.id" />
+      <nav v-if="joined" class="room-secondary-tabs" aria-label="房间动态"><button v-for="tab in [{id:'messages',name:'留言打气'},{id:'ranking',name:'专注排名'},{id:'goals',name:'目标墙'}]" :key="tab.id" :class="{on:activePanel===tab.id}" @click="activePanel=tab.id">{{tab.name}}</button></nav>
       <!-- 排行榜 -->
-      <div v-if="joined || !joinRequired" class="card rank-card">
+      <div v-if="(joined || !joinRequired) && activePanel==='ranking'" class="card rank-card">
         <div class="rank-head">
           <span class="rank-title"><Trophy :size="16" />专注排行榜</span>
           <div class="rank-tabs">
@@ -664,7 +718,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 目标墙 -->
-      <div v-if="joined || !joinRequired" class="card goal-wall">
+      <div v-if="(joined || !joinRequired) && activePanel==='goals'" class="card goal-wall">
         <div class="wall-head">
           <span class="rank-title"><Flag :size="16" />目标墙</span>
           <button v-if="joined" class="link-btn" @click="openGoal">填写我的目标</button>
@@ -687,7 +741,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 留言板 -->
-      <div v-if="joined" class="card msg-card">
+      <div v-if="joined && activePanel==='messages'" class="card msg-card">
         <div class="rank-title"><Flame :size="16" />互相打气留言板</div>
         <div class="msg-wrap">
           <div ref="msgListEl" class="msg-list" @scroll.passive="onMsgScroll">
@@ -734,8 +788,12 @@ onBeforeUnmount(() => {
 
     <!-- 房主管理 -->
     <div v-if="showManage" class="mask" @click.self="showManage = false">
-      <div class="sheet">
-        <div class="sheet-title">房间管理</div>
+      <div class="sheet room-manage-sheet">
+        <div class="manage-content">
+        <div class="sheet-title">{{isOwner?'房间管理':'房间设置'}}</div>
+        <p v-if="room?.code">房间码 {{room.code}}</p><button v-if="room?.code" class="btn btn-outline btn-block" aria-label="复制房间码" @click="copyCode">复制房间码</button>
+        <button class="btn btn-outline btn-block mt8" @click="copyInvite">复制房间入口</button>
+        <button v-if="!isOwner" class="btn btn-danger btn-block mt16" @click="leaveRoom">退出房间并停止同步</button>
         <div v-if="isOwner" class="am-box">
           <div class="am-head">
             入房申请
@@ -754,22 +812,42 @@ onBeforeUnmount(() => {
             <button class="am-btn no" :disabled="applyBusyId === a.id" @click="reviewApply(a, false)">驳回</button>
           </div>
         </div>
+        <template v-if="isOwner">
+        <div class="manage-members"><h3>成员管理</h3><div v-for="member in members.filter(row=>row.user_id!==auth.user?.id && row.role!=='owner')" :key="member.user_id"><span>{{member.nickname}}</span><button class="btn btn-outline" @click="kick(member)">移出成员</button></div></div>
         <label class="sf"><span>房间名</span>
           <input v-model="manageForm.name" maxlength="20" />
         </label>
         <label class="sf"><span>简介</span>
           <input v-model="manageForm.intro" maxlength="200" />
         </label>
+        <label class="sf"><span>房间类型</span>
+          <select v-model="manageForm.room_type" aria-label="房间类型" :disabled="manageSaving" @change="changeManageType">
+            <option value="text_room">文字自习室</option>
+            <option value="av_room">音视频自习室</option>
+          </select>
+        </label>
+        <label v-if="manageForm.room_type === 'text_room'" class="sf"><span>成员上限</span>
+          <select v-model.number="manageForm.capacity" aria-label="成员上限" :disabled="manageSaving">
+            <option v-if="![20,50,100].includes(manageForm.capacity)" :value="manageForm.capacity" disabled>{{manageForm.capacity > 0 ? `当前 ${manageForm.capacity} 人` : '当前不限人数'}}</option>
+            <option :value="20">20 人</option><option :value="50">50 人</option><option :value="100">100 人</option>
+          </select>
+        </label>
+        <p v-if="manageForm.room_type === 'av_room'" class="manage-type-hint">音视频自习室最多 6 人，需 VIP 或房间授权；开启摄像头、麦克风仍由每位成员自行选择。</p>
+        <p v-if="manageForm.room_type !== room?.room_type" class="manage-type-hint">切换保留房间码、成员和留言。{{manageForm.room_type === 'text_room' ? '切回文字房会关闭当前音视频连接。' : '超过 6 位成员时，请先调整成员再保存。'}}</p>
         <label class="sf"><span>可见性</span>
           <div class="vis-row">
             <button :class="{ on: manageForm.visibility === 'public' }" @click="manageForm.visibility = 'public'">公开</button>
             <button :class="{ on: manageForm.visibility === 'private' }" @click="manageForm.visibility = 'private'">私密（凭码）</button>
           </div>
         </label>
-        <button class="btn btn-primary btn-block mt16" @click="saveManage">保存</button>
         <button class="btn btn-outline btn-block mt8" @click="changeCode">更换房间码</button>
         <button class="btn btn-danger btn-block mt8" @click="dissolve">解散自习室</button>
-        <button class="btn btn-ghost btn-block mt8" @click="showManage = false">取消</button>
+        </template>
+        </div>
+        <div class="sheet-foot manage-footer">
+          <button v-if="isOwner" class="btn btn-primary" :disabled="manageSaving" @click="saveManage">{{manageSaving ? '保存中…' : '保存'}}</button>
+          <button class="btn btn-outline" :disabled="manageSaving" @click="showManage = false">取消</button>
+        </div>
       </div>
     </div>
 
@@ -797,6 +875,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.room-focus-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.room-focus-heading strong{font-size:16px}.room-focus-heading .tnum{font-size:24px;font-weight:800;color:var(--primary)}.co-study-controls p{font-size:12px;color:var(--sub);margin:6px 0 12px}.room-focus-start{display:flex;gap:8px}.room-focus-start>*{flex:1;min-width:0}.room-focus-start select{border:1px solid var(--line);background:var(--glass);border-radius:12px;padding:8px;font-size:14px;color:var(--ink)}.co-study-controls{grid-column:1/-1;margin-top:12px}.manage-members>div{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.manage-members h3{font-size:16px}
+
+.room-secondary-tabs{display:flex;gap:8px;margin-top:20px;grid-column:1/-1}.room-secondary-tabs button{flex:1;padding:12px 8px;border:1px solid var(--line);border-radius:14px;background:var(--glass);color:var(--sub);font-size:14px}.room-secondary-tabs button.on{background:var(--primary-grad);color:#fff}.room-layout .sync-bar{display:flex;flex-wrap:wrap;gap:8px}.room-layout .sync-bar .btn-primary{flex:1;min-width:160px}.room-layout .seat-grid{margin-top:12px}
+
 .seat-identity { position: relative; flex-shrink: 0; }.seat-figure { position: absolute; right: -6px; bottom: -3px; border-radius: 50%; width: 25px; height: 25px; display: grid; place-items: center; font-size: 16px; border: 2px solid #fff; }
 .room-head {
   background: linear-gradient(150deg, #4f46e5, #312e81 65%);
@@ -824,77 +906,74 @@ onBeforeUnmount(() => {
   color: #92400e;
 }
 .fb-title { font-size: 14px; font-weight: 800; }
-.fb-sub { font-size: 12px; line-height: 1.6; margin-top: 4px; }
-.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 8px; background: #b45309; color: #fff; font-size: 12px; font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.fb-sub { font-size: 14px; line-height: 1.6; margin-top: 4px; }
+.join-btn { margin-left: auto; align-self: center; flex-shrink: 0; border: none; border-radius: 8px; background: #b45309; color: #fff; font-size: 14px; font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .nav .back { border: none; background: rgba(255, 255, 255, 0.72); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--sub); cursor: pointer; box-shadow: var(--shadow-soft); }
-.switch-btn { margin-left: auto; border: 1px solid rgba(79, 70, 229, 0.14); background: rgba(255, 255, 255, 0.72); color: var(--sub); border-radius: 8px; padding: 8px 16px; font-size: 12px; cursor: pointer; }
-.room-code { margin-top: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 12px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.room-private { display: flex; align-items: center; gap: 4px; font-size: 12px; color: rgba(255,255,255,.72); margin-top: 4px; }
+.switch-btn { margin-left: auto; border: 1px solid rgba(79, 70, 229, 0.14); background: rgba(255, 255, 255, 0.72); color: var(--sub); border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+.room-code { margin-top: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.14); color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 14px; font-weight: 700; letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.room-private { font-size: 12px; line-height:20px; color: rgba(255,255,255,.8); }.room-private svg{display:inline;vertical-align:middle;margin-right:4px}
 .room-stat { display: flex; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.14); }
 .room-stat > div { flex: 1; text-align: center; }
 .rs-num { font-size: 20px; font-weight: 800; }
-.rs-label { font-size: 12px; color: rgba(255,255,255,.68); margin-top: 4px; }
-.rs-line { flex: 0 0 1px; width: 1px; height: 30px; align-self: center; background: rgba(255,255,255,.2); }
+.rs-label { font-size: 14px; color: rgba(255,255,255,.68); margin-top: 4px; }
+.room-stat > .rs-line { flex: 0 0 1px; width: 1px; height: 30px; align-self: center; background: rgba(255,255,255,.2); }
 
 .seat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 .seat-card { background: var(--card); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); min-height: 132px; }
-.seat-card.me { padding: 16px; grid-column: span 2; display: flex; align-items: center; gap: 8px; }
-.seat-card.filled { padding: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
-.seat-avatar { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px var(--primary); flex-shrink: 0; }
-.seat-card.filled .seat-avatar { width: 50px; height: 50px; }
-.seat-info { flex: 1; min-width: 0; }
+.seat-card.me,.seat-card.filled { padding: 12px; display: grid; grid-template-columns:40px minmax(0,1fr); align-content:start; align-items:center; text-align:left; gap:8px; }
+.seat-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px var(--primary); flex-shrink: 0; }
+.seat-info { display:contents; }
 .seat-name { font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.seat-card.filled .seat-name { justify-content: center; }
-.me-tag { font-size: 11px; background: var(--primary-grad); color: #fff; border-radius: 6px; padding: 2px 8px; font-weight: 600; }
-.admin-tag { font-size: 11px; background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); border-radius: 6px; padding: 2px 8px; }
-.seat-school { font-size: 12px; color: var(--sub); margin-top: 4px; }
-.seat-state { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--sub); margin-top: 4px; }
-.seat-card.filled .seat-state { justify-content: center; }
+.seat-name{grid-column:2;min-width:0;overflow-wrap:anywhere}
+.me-tag { font-size: 12px; background: var(--primary-grad); color: #fff; border-radius: 6px; padding: 2px 8px; font-weight: 600; }
+.admin-tag { font-size: 12px; background: rgba(245, 158, 11, 0.12); color: var(--accent-deep); border-radius: 6px; padding: 2px 8px; }
+.seat-school { display:none; }
+.seat-state { grid-column:1/-1;display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--sub); margin-top: 4px; }
 .state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.seat-min { font-size: 12px; font-weight: 700; color: var(--primary); }
+.seat-min {grid-column:1/-1;font-size:12px;font-weight:700;color:var(--primary)}
 .seat-card { position: relative; }
 .kick-btn { position: absolute; right: 8px; bottom: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.9); color: var(--faint); width: 24px; height: 24px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .switch-btn.gear { margin-left: auto; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
 .switch-btn.gear + .switch-btn { margin-left: 8px; }
 .vis-row { display: flex; gap: 8px; }
-.vis-row button { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: var(--sub); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.24s ease, color 0.24s ease; }
+.vis-row button { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: var(--sub); font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.24s ease, color 0.24s ease; }
 .vis-row button.on { border-color: transparent; background: var(--primary-grad); color: #fff; }
 .seat-card.empty { border: 1px dashed rgba(79, 70, 229, 0.22); box-shadow: none; background: rgba(255, 255, 255, 0.5); backdrop-filter: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
 .seat-empty-ic { color: #c3c8dd; margin-bottom: 8px; }
 .seat-empty-txt { font-size: 14px; font-weight: 700; color: var(--faint); }
-.seat-empty-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+.seat-empty-sub { font-size: 14px; color: var(--faint); margin-top: 4px; }
 
 .rank-card, .goal-wall, .msg-card { margin-top: 16px; }
 .rank-head, .wall-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .rank-title { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
 .rank-tabs { display: flex; background: rgba(79, 70, 229, 0.06); border-radius: 8px; padding: 4px; }
-.rank-tabs button { border: none; background: transparent; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: var(--sub); cursor: pointer; }
+.rank-tabs button { border: none; background: transparent; padding: 4px 8px; border-radius: 6px; font-size: 14px; color: var(--sub); cursor: pointer; }
 .rank-tabs button.on { background: #fff; color: var(--primary); font-weight: 700; box-shadow: var(--shadow-soft); }
 .rank-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
-.rank-no { width: 24px; height: 24px; border-radius: 50%; background: rgba(79, 70, 229, 0.08); color: var(--faint); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rank-no { width: 24px; height: 24px; border-radius: 50%; background: rgba(79, 70, 229, 0.08); color: var(--faint); font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .rank-no.top { background: var(--primary-grad); color: #fff; }
-.rank-name { width: 56px; font-size: 12px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-name { width: 56px; font-size: 14px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank-bar { flex: 1; height: 8px; background: rgba(79, 70, 229, 0.08); border-radius: 999px; overflow: hidden; }
 .rank-bar i { display: block; height: 100%; background: var(--primary-grad); border-radius: 999px; }
-.rank-sec { font-size: 12px; font-weight: 700; color: var(--primary); width: 52px; text-align: right; }
-.rank-empty { text-align: center; color: var(--faint); font-size: 12px; padding: 16px 0; }
+.rank-sec { font-size: 14px; font-weight: 700; color: var(--primary); width: 52px; text-align: right; }
+.rank-empty { text-align: center; color: var(--faint); font-size: 14px; padding: 16px 0; }
 
-.link-btn { border: none; background: none; color: var(--primary); font-size: 12px; cursor: pointer; }
+.link-btn { border: none; background: none; color: var(--primary); font-size: 14px; cursor: pointer; }
 .goal-row { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .goal-row:last-child { border-bottom: none; }
 .g-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: rgba(79, 70, 229, 0.08); flex-shrink: 0; }
 .g-meta { flex: 1; min-width: 0; }
 .g-name { font-size: 14px; font-weight: 700; }
-.g-target { font-size: 12px; color: var(--sub); margin-top: 2px; }
+.g-target { font-size: 14px; color: var(--sub); margin-top: 2px; }
 .g-score { color: var(--faint); margin-left: 8px; }
-.g-words { font-size: 12px; color: var(--accent-deep); margin-top: 4px; }
+.g-words { font-size: 14px; color: var(--accent-deep); margin-top: 4px; }
 
 .msg-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; max-height: 320px; overflow-y: auto; }
 .msg { display: flex; }
 .msg.mine { justify-content: flex-end; }
 .msg-bubble { max-width: 78%; background: rgba(79, 70, 229, 0.06); border-radius: 12px; padding: 8px 16px; }
 .msg.mine .msg-bubble { background: rgba(79, 70, 229, 0.14); }
-.msg-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--faint); }
+.msg-meta { display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--faint); }
 .msg-del { border: none; background: none; color: var(--faint); cursor: pointer; padding: 0; display: flex; }
 .msg-content { font-size: 14px; color: var(--ink); margin-top: 4px; line-height: 1.6; word-break: break-word; }
 .msg-input { display: flex; gap: 8px; }
@@ -906,7 +985,10 @@ onBeforeUnmount(() => {
 .sheet { width: 100%; max-width: 520px; background: #fff; border-radius: 24px 24px 0 0; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
 .sheet-title { font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 16px; }
 .sf { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
-.sf span { font-size: 12px; color: var(--sub); }
+.sf span { font-size: 14px; color: var(--sub); }
+.manage-type-hint { font-size: 14px; line-height: 1.6; color: var(--sub); margin: 0 0 16px; }
+.manage-footer { display: flex; gap: 8px; }
+.manage-footer .btn { flex: 1; }
 .sf input, .sf select { height: 44px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); }
 .sf input:focus, .sf select:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
 
@@ -916,28 +998,28 @@ onBeforeUnmount(() => {
 .ac-code-row { display: flex; gap: 8px; margin-top: 8px; }
 .ac-code-row input { flex: 1; height: 40px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 0 16px; font-size: 14px; background: rgba(255, 255, 255, 0.9); letter-spacing: 2px; min-width: 0; }
 .ac-code-row input:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.cc-btn { border: none; background: var(--primary-grad); color: #fff; border-radius: 8px; padding: 0 16px; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.2); }
+.cc-btn { border: none; background: var(--primary-grad); color: #fff; border-radius: 8px; padding: 0 16px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.2); }
 .ac-divider { height: 1px; background: var(--line); margin: 16px 0; }
 .apply-card textarea { width: 100%; margin-top: 8px; border: 1px solid rgba(79, 70, 229, 0.16); border-radius: 8px; padding: 8px 16px; font-size: 14px; font-family: inherit; resize: vertical; background: rgba(255, 255, 255, 0.9); box-sizing: border-box; }
 .apply-card textarea:focus { outline: none; border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.ac-pending { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #92400e; background: #fff7ed; border-radius: 8px; padding: 8px 16px; }
+.ac-pending { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: #92400e; background: #fff7ed; border-radius: 8px; padding: 8px 16px; }
 .ac-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.ac-quote { margin-top: 8px; font-size: 12px; color: var(--sub); }
-.ac-reject { margin-top: 8px; font-size: 12px; color: var(--red); }
+.ac-quote { margin-top: 8px; font-size: 14px; color: var(--sub); }
+.ac-reject { margin-top: 8px; font-size: 14px; color: var(--red); }
 
 /* 房主待审列表 */
 .am-box { background: rgba(79, 70, 229, 0.04); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .am-head { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
-.am-count { background: var(--primary-grad); color: #fff; border-radius: 999px; font-size: 11px; padding: 2px 8px; }
-.am-empty { font-size: 12px; color: var(--faint); margin-top: 8px; }
+.am-count { background: var(--primary-grad); color: #fff; border-radius: 999px; font-size: 12px; padding: 2px 8px; }
+.am-empty { font-size: 14px; color: var(--faint); margin-top: 8px; }
 .am-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .am-row:last-child { border-bottom: none; }
 .am-info { flex: 1; min-width: 0; }
 .am-name { font-size: 14px; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
-.am-time { font-size: 12px; color: var(--faint); font-weight: 400; }
-.am-school { font-size: 12px; color: var(--sub); margin-top: 2px; }
-.am-msg { font-size: 12px; color: var(--sub); margin-top: 2px; word-break: break-word; }
-.am-btn { border: none; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.am-time { font-size: 14px; color: var(--faint); font-weight: 400; }
+.am-school { font-size: 14px; color: var(--sub); margin-top: 2px; }
+.am-msg { font-size: 14px; color: var(--sub); margin-top: 2px; word-break: break-word; }
+.am-btn { border: none; border-radius: 8px; font-size: 14px; font-weight: 600; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
 .am-btn.ok { background: var(--primary-grad); color: #fff; }
 .am-btn.no { background: #fff; color: var(--sub); border: 1px solid var(--line); }
 .am-btn:disabled { opacity: .6; cursor: default; }
@@ -959,23 +1041,23 @@ onBeforeUnmount(() => {
 
 .load-error { margin-top: 8px; padding: 24px 16px; text-align: center; }
 .le-title { font-size: 14px; font-weight: 800; }
-.le-sub { font-size: 12px; color: var(--sub); line-height: 1.6; margin: 8px 0 16px; }
-.sync-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 16px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); color: var(--accent-deep); font-size: 12px; }
+.le-sub { font-size: 14px; color: var(--sub); line-height: 1.6; margin: 8px 0 16px; }
+.sync-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 16px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); color: var(--accent-deep); font-size: 14px; }
 .sync-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sync-bar button { border: none; background: none; color: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; }
+.sync-bar button { border: none; background: none; color: var(--primary); font-size: 14px; font-weight: 700; cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* 留言：乐观发送、向上翻看不被抢滚动 */
 .msg-wrap { position: relative; }
 .msg.pending { opacity: .6; }
-.msg-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); border: none; border-radius: 999px; background: var(--primary-grad); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.28); transition: transform 0.2s ease; }
+.msg-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); border: none; border-radius: 999px; background: var(--primary-grad); color: #fff; font-size: 14px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.28); transition: transform 0.2s ease; }
 .msg-new:active { transform: translateX(-50%) scale(0.96); }
 .msg-input button:disabled { opacity: .45; cursor: default; box-shadow: none; }
 
 /* 排行榜高亮自己 */
 .rank-name { width: 64px; }
 .rank-row.me { background: rgba(79, 70, 229, 0.05); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
-.rank-me-tag { font-style: normal; font-size: 10px; background: rgba(79, 70, 229, 0.12); color: var(--primary); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
+.rank-me-tag { font-style: normal; font-size: 12px; background: rgba(79, 70, 229, 0.12); color: var(--primary); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
 
 /* 专注中的状态点轻微呼吸，表示实时同步中；关闭动画偏好时静止 */
 .state-dot.live { animation: dot-breathe 2.4s ease-in-out infinite; }

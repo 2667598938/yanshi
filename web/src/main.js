@@ -4,6 +4,7 @@ import router from './router'
 import App from './App.vue'
 import './assets/styles/main.css'
 import './assets/styles/responsive.css'
+import './assets/styles/tokens.css'
 import 'katex/dist/katex.min.css'
 import { useAuthStore } from './stores/auth'
 import { useTimerStore } from './stores/timer'
@@ -13,6 +14,7 @@ import BrandOpening from './components/BrandOpening.vue'
 import { BRAND, brandColorVars } from './config/brand'
 import { claimBrandOpening } from './utils/openingPolicy'
 import { publicApi } from './api'
+import { requestPersistentStorage } from './db/imageCache'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -50,7 +52,7 @@ async function boot() {
     await afterLogin(auth.user.id)
     try {
       await auth.fetchMe()
-      await useProfileStore().load(true)
+      if (!auth.isSuperAdmin) await useProfileStore().load(true)
     } catch (e) {
       // access 确实失效：清理登录态；纯离线/网络错误则保留缓存用户
       if (e.status && e.status < 500) {
@@ -61,13 +63,15 @@ async function boot() {
   } else {
     await afterLogout()
   }
-  useTimerStore().resumeOnLoad()
+  if (!auth.isSuperAdmin) useTimerStore().resumeOnLoad()
+  void requestPersistentStorage()
   await mountApplication()
 }
 
 boot().catch(async (e) => {
   console.error('本地数据初始化失败', e)
   auth.clear()
+  void requestPersistentStorage()
   await mountApplication()
 })
 

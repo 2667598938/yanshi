@@ -161,7 +161,7 @@ onMounted(load)
   border: none;
   background: none;
   color: var(--primary);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -169,8 +169,8 @@ onMounted(load)
   cursor: pointer;
 }
 .list { padding: 2px 16px; }
-.msg-scope { margin: 0 0 12px; font-size: 11.5px; line-height: 1.7; color: var(--faint); }
-.load-earlier { display: block; width: 100%; border: none; background: transparent; color: var(--primary); font-size: 12.5px; padding: 14px 0; cursor: pointer; }
+.msg-scope { margin: 0 0 12px; font-size: 12px; line-height: 1.7; color: var(--faint); }
+.load-earlier { display: block; width: 100%; border: none; background: transparent; color: var(--primary); font-size: 14px; padding: 14px 0; cursor: pointer; }
 .load-earlier:disabled { color: var(--faint); cursor: default; }
 .msg-row {
   display: flex;
@@ -197,10 +197,10 @@ onMounted(load)
 .msg-main { flex: 1; min-width: 0; }
 .msg-head { display: flex; align-items: baseline; gap: 8px; }
 .msg-title { font-size: 14px; font-weight: 700; flex: 1; }
-.msg-time { font-size: 10.5px; color: var(--faint); flex-shrink: 0; }
+.msg-time { font-size: 12px; color: var(--faint); flex-shrink: 0; }
 .msg-preview {
   margin-top: 3px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--faint);
   line-height: 1.55;
   overflow: hidden;
@@ -223,12 +223,12 @@ onMounted(load)
   border-radius: 22px 22px 0 0;
   padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
 }
-.detail-kind { font-size: 11.5px; color: var(--faint); }
-.detail-title { font-size: 18px; font-weight: 800; margin-top: 4px; }
-.detail-time { font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+.detail-kind { font-size: 12px; color: var(--faint); }
+.detail-title { font-size: 16px; font-weight: 800; margin-top: 4px; }
+.detail-time { font-size: 12px; color: var(--faint); margin-top: 4px; }
 .detail-content {
   margin: 14px 0 18px;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--sub);
   line-height: 1.8;
   white-space: pre-wrap;
